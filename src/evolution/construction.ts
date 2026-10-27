@@ -7,7 +7,7 @@ import {harvestDeposit,type ResourceDeposit,
   type ResourceKind} from './resources';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
-  'workshop','communal'] as const;
+  'workshop','market','communal'] as const;
 export type BuildingType=typeof BUILDING_TYPES[number];
 export type BuildingStage='foundation'|'frame'|'finishing'|'complete'|
   'abandoned'|'ruin';
@@ -37,11 +37,13 @@ export const COSTS:Record<BuildingType,{materials:MaterialStock;labor:number}>={
   storage:{materials:{wood:10,stone:6,clay:5},labor:16},
   well:{materials:{wood:4,stone:10,clay:5},labor:17},
   workshop:{materials:{wood:12,stone:11,clay:6},labor:22},
+  market:{materials:{wood:11,stone:8,clay:7},labor:19},
   communal:{materials:{wood:11,stone:9,clay:9},labor:21},
 };
 export const BUILDING_LABELS:Record<BuildingType,string>={
   shelter:'Shelter',house:'Residence',farm:'Farm',storage:'Storehouse',
   well:'Well',workshop:'Workshop',communal:'Communal hall',
+  market:'Marketplace',
 };
 export const ARCHITECTURE:Record<Species,{name:string;wall:string;
   roof:string;trim:string}>={
@@ -135,6 +137,9 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
     storage:count('storage')<Math.max(1,Math.ceil(s.population/55))?8:0,
     well:count('well')<Math.max(1,Math.ceil(s.population/35))?10:0,
     workshop:adultCount>=5&&count('workshop')<Math.max(1,Math.ceil(adultCount/40))?9:0,
+    market:adultCount>=8&&(s.population>=18||
+      (s.economy?.imports??0)+(s.economy?.exports??0)>=3)&&
+      count('market')<Math.max(1,Math.ceil(s.population/65))?8.5:0,
     communal:residents.length>=6&&count('communal')<
       Math.max(1,Math.ceil(s.population/45))?8+Math.max(-2,Math.min(2,votes)):0,
   };
@@ -251,8 +256,10 @@ function gather(w:World,s:Settlement,residents:Agent[],
     const quota=kind==='wood'||kind==='stone'||kind==='clay'?capacity:140;
     const available=kind==='wood'||kind==='stone'||kind==='clay'?
       i.stock[kind]:i.oreStock![kind];
+    const expertise=s.economy?.specialty==='forestry'&&kind==='wood'||
+      s.economy?.specialty==='mining'&&kind!=='wood'&&kind!=='clay';
     const yieldAmount=harvestDeposit(best,Math.min(quota-available,
-      1.05+(a.development?.skills.foraging??0)*.015));
+      (1.05+(a.development?.skills.foraging??0)*.015)*(expertise?1.18:1)));
     if(kind==='wood'||kind==='stone'||kind==='clay')
       i.stock[kind]=round(i.stock[kind]+yieldAmount);
     else i.oreStock![kind]=round(i.oreStock![kind]+yieldAmount);
