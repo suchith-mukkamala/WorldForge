@@ -12,6 +12,9 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - Observe villages construct actual buildings, draw on renewable wood and regenerating mineral deposits, and gradually develop infrastructure.
 - Follow workers as they choose farming, forestry, mining, construction, crafting and trading. Farm labor generates stored food, workshops turn ore and wood into tools, and supply shortages affect job and building priorities.
 - Watch caravans carry goods between land-connected settlements. Goods leave the origin when a merchant departs and reach the destination only when the merchant arrives; inventories, prices and community funds respond to shortages.
+- Watch communities invest their own wood, stone, labor and treasury in paved roads or bridges over narrow water channels. Well-maintained road segments let merchants move faster without teleporting their cargo.
+- Follow settlements specializing in agriculture, forestry, mining, industry or commerce based on resources, existing buildings and local work. Warehouses expand food storage and marketplaces attract traders.
+- Observe trade relations forming through delivered shipments: successful exchanges develop trusted partnerships and favorable prices; failed journeys erode trust and can temporarily interrupt trade.
 - Inspect world history, species populations, settlements and individuals as the simulation advances independently of camera zoom.
 - Intervene with blessings, curses, divine whispers, direct changes and other godlike abilities while people retain agency over suggestions.
 - Save automatically in the browser, or export and import a world as JSON.
@@ -47,8 +50,8 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v0.8 — Economy, Work & Trade, building on the v0.7.1 living-settlement and renewable-resource systems.
-- **Next:** Broader production chains, improved roads and transport technology, economic institutions, diplomacy and deeper autonomous exploration.
+- **Current:** v0.9 — Living Infrastructure, Regional Specialization & Trade Relationships, extending v0.8's autonomous economy.
+- **Next:** Broader production chains, river and ocean shipping, guilds, political diplomacy and deeper autonomous exploration.
 - **Future:** Optional mortal perspective with travel, interactions, choices and character progression. No mortal-play mode is implemented yet.
 
 ## Architecture
@@ -57,6 +60,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/mind.ts` and `development.ts`: goals, reasoning and life experiences.
 - `src/evolution/construction.ts` and `resources.ts`: settlement construction, materials and renewable deposits.
 - `src/evolution/economy.ts`: annual job allocation, staffed production, markets, shortages and physical merchant shipments.
+- `src/evolution/transport.ts`: settlement-funded roads and bridges, route planning, physical travel advantages and upkeep.
 - `src/evolution/divine.ts`: divine actions and their consequences.
 - `src/evolution/storage.ts`: browser persistence and world-file compatibility.
 - `src/evolution/WorldforgeApp.tsx`: the current god-perspective UI.

@@ -19,7 +19,9 @@ import {advanceConstruction,archiveRuins,cloneInfrastructure,
 import {createDeposits,editDeposit,regrowDeposits,validDeposits,
   type ResourceDeposit} from './resources';
 import {advanceEconomy,cloneEconomy,reconcileTradeTerrain,validEconomy,
-  type SettlementEconomy,type Shipment,type WorkAssignment} from './economy';
+  type SettlementEconomy,type Shipment,type WorkAssignment,type TradeRelation} from './economy';
+import {advanceTransport,bridgeTiles,cloneTransport,reconcileTransportTerrain,validTransport,
+  type TransportNetwork} from './transport';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -78,7 +80,8 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   demography?:Demography;codex?:WorldCodex;
   households?:Household[];nextHouseholdId?:number;divine?:DivineState;
   ruins?:RuinSite[];trails?:Trail[];deposits?:ResourceDeposit[];
-  shipments?:Shipment[];nextShipmentId?:number};
+  shipments?:Shipment[];nextShipmentId?:number;
+  transport?:TransportNetwork;tradeRelations?:TradeRelation[]};
 export const SPECIES:Species[]=['human','elf','dwarf','demon'];
 export const BIOMES:Biome[]=['plains','forest','mountain','cave','wasteland','volcanic','water'];
 export const SPECIES_INFO:Record<Species,{name:string;symbol:string;color:string;
@@ -222,7 +225,8 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     tiles,agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
     codex:{favoritePeople:[],favoriteSettlements:[],settlements:[]},divine:divineState(),
-    ruins:[],trails:[],deposits:[],shipments:[],nextShipmentId:1};
+    ruins:[],trails:[],deposits:[],shipments:[],nextShipmentId:1,
+    transport:{roads:[],bridges:[]},tradeRelations:[]};
   world.deposits=createDeposits(world);
   const occupied=new Set<number>();
   for(const s of SPECIES){
@@ -319,7 +323,9 @@ export function stepWorld(previous:World):World{
     trails:previous.trails?.map(t=>({...t}))??[],
     deposits:previous.deposits?.map(d=>({...d})),
     shipments:previous.shipments?.map(t=>({...t,route:[...t.route]}))??[],
-    nextShipmentId:previous.nextShipmentId??1};
+    nextShipmentId:previous.nextShipmentId??1,
+    transport:previous.transport?cloneTransport(previous.transport):undefined,
+    tradeRelations:previous.tradeRelations?.map(r=>({...r}))??[]};
   prepareDevelopment(world);
   regrowDeposits(world);
   for(const s of world.settlements){
@@ -552,6 +558,8 @@ export function stepWorld(previous:World):World{
   advanceEconomy(world,movementSteps);
   // Construction is a world-tick system. Map zoom and open UI tabs never enter it.
   advanceConstruction(world,movementSteps);
+  for(const crossing of advanceTransport(world))
+    reconcileTradeTerrain(world,crossing);
   const births=newborns.length;
   world.totalBirths+=births;world.totalDeaths+=deaths;
   if(births)log(world,'birth',births+' newborn'+(births===1?'':'s')+' entered the world.');
@@ -584,7 +592,9 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
     previous.agents.some(a=>a.x===x&&a.y===y))return previous;
   const world:World={...previous,agents:[...previous.agents],
     tiles:[...previous.tiles],lineage:[...previous.lineage],
-    events:[...previous.events],deposits:previous.deposits?.map(d=>({...d}))};
+    events:[...previous.events],deposits:previous.deposits?.map(d=>({...d})),
+    transport:previous.transport?cloneTransport(previous.transport):undefined,
+    tradeRelations:previous.tradeRelations?.map(r=>({...r}))};
   if(brush.kind==='spawn'){
     const state={n:prngState(previous.rngState)},info=SPECIES_INFO[brush.species];
     const age=info.maturity+Math.floor(random(state)*info.lifespan*.16);
@@ -605,6 +615,7 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
       BIOME_INFO[brush.biome].food*world.settings.resourceLevel)};
     editDeposit(world,index);
     reconcileTradeTerrain(world,index);
+    reconcileTransportTerrain(world,index);
   }
   const last=previous.history.at(-1);
   world.history=[...previous.history.slice(0,-1),
@@ -650,6 +661,7 @@ export function isWorld(value:unknown):value is World{
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
   const ids=new Set<number>(),positions=new Set<number>();
+  const traversableBridges=bridgeTiles(w as World);
   const checkGenes=(g:Genes)=>!!g&&
     (['vigor','curiosity','fertility','social'] as const).every(k=>
       Number.isFinite(g[k])&&g[k]>=.5&&g[k]<=1.5);
@@ -709,7 +721,8 @@ export function isWorld(value:unknown):value is World{
         (a.mind.lastGoodFood!==undefined&&!checkMemory(a.mind.lastGoodFood))))||
       (a.development!==undefined&&!checkDevelopment(a.development)))return false;
     const index=offset(width,a.x,a.y);
-    if(positions.has(index)||w.tiles[index].biome==='water')return false;
+    if(positions.has(index)||(w.tiles[index].biome==='water'&&
+      !traversableBridges.has(index)))return false;
     ids.add(a.id);positions.add(index);
   }
   const settlementIds=new Set<number>();
@@ -843,7 +856,7 @@ export function isWorld(value:unknown):value is World{
   }))return false;
   if(w.history.at(-1)!.year!==w.year||
     w.history.at(-1)!.total!==w.agents.length)return false;
-  if(!validEconomy(w as World))return false;
+  if(!validEconomy(w as World)||!validTransport(w as World))return false;
   if(!w.events.every(e=>Number.isSafeInteger(e.id)&&
     Number.isInteger(e.year)&&e.year>=0&&
     ['world','birth','death','settlement','collapse','milestone','bond','hybrid','trade']

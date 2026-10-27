@@ -3,7 +3,8 @@ import {BIOME_INFO,SPECIES_INFO,type Settlement,type World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
   settlementStage,type Building,type RuinSite} from './construction';
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
-import {GOODS,JOBS,JOB_LABELS,stockOf} from './economy';
+import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
+import {bridgeTiles,roadTiles} from './transport';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
   playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
@@ -44,7 +45,11 @@ function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
             {[8,13,18].map(px=><path key={px}
               d={`M${x+px} ${y+21}v-9m-3 3l3 2l3-2`}
               stroke="#a8d780" strokeWidth={2} fill="none"/>)}</>
-            :b.type==='communal'?<path d={`M${x+13} ${y+4}V${y-1}l7 3l-7 2`}
+            :b.type==='market'?<>
+              <path d={`M${x+4} ${y+12}h18l-3 5h-12Z`} fill="#f5c96d"/>
+              <path d={`M${x+9} ${y+12}l-1 5m8-5l1 5`} stroke="#a95e54"
+                strokeWidth={2}/>
+            </>:b.type==='communal'?<path d={`M${x+13} ${y+4}V${y-1}l7 3l-7 2`}
               stroke={style.trim} fill={style.roof} strokeWidth={1}/>
               :b.type==='workshop'?<>
                 <rect x={x+17} y={y+1} width={3} height={8} fill="#626879"/>
@@ -69,6 +74,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
   const place=settlement??ruin!;
   const buildings=settlement?.infrastructure?.buildings??ruin?.buildings??[];
   const roads=new Set(settlement?.infrastructure?.roads??ruin?.roads??[]);
+  const paved=roadTiles(world),bridges=bridgeTiles(world);
   const land=new Set(settlement?.infrastructure?.land??[]);
   const caravans=(world.shipments??[]).flatMap(t=>{
     const driver=world.agents.find(a=>a.id===t.carrierId);
@@ -84,6 +90,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
       world.tiles[y*world.width+x]:null;
     allTiles.push({id:dy*VIEW+dx,x:dx*CELL,y:dy*CELL,tile,
       owner:tile&&land.has(y*world.width+x),route:tile&&roads.has(y*world.width+x),
+      paved:tile&&paved.has(y*world.width+x),bridge:tile&&bridges.has(y*world.width+x),
       deposit:tile?deposits.get(y*world.width+x):undefined});
   }
   return <div className="evo-city-map-scroll">
@@ -102,6 +109,17 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
             fill="#af9d82" opacity={.8}/>
           <rect x={p.x+10} y={p.y} width={6} height={CELL}
             fill="#af9d82" opacity={.64}/>
+        </>}
+        {p.paved&&<>
+          <rect x={p.x} y={p.y+9} width={CELL} height={8} fill="#e0bd81"/>
+          <path d={`M${p.x} ${p.y+13}h${CELL}`} stroke="#8d755a"
+            strokeDasharray="4 3" strokeWidth={1}/>
+        </>}
+        {p.bridge&&<>
+          <rect x={p.x+2} y={p.y+7} width={CELL-4} height={12}
+            rx={2} fill="#ba9972" stroke="#ecd9b0" strokeWidth={1.4}/>
+          <path d={`M${p.x+4} ${p.y+13}h${CELL-8}`} stroke="#554b4a"
+            strokeDasharray="4 3" strokeWidth={1.2}/>
         </>}
         {p.deposit&&p.deposit.amount>.1&&<circle cx={p.x+5} cy={p.y+5}
           r={3.2} fill={RESOURCE_COLORS[p.deposit.kind]}/>} 
@@ -150,6 +168,12 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
   const homes=world.households?.filter(h=>h.residence?.settlementId===place?.id).length??0;
   const localShipments=(world.shipments??[]).filter(t=>
     t.originId===place?.id||t.destinationId===place?.id);
+  const relationships=(world.tradeRelations??[]).filter(r=>
+    r.a===place?.id||r.b===place?.id).sort((a,b)=>b.trust-a.trust||a.a-b.a);
+  const localTransport=[...(world.transport?.roads??[]),
+    ...(world.transport?.bridges??[])].filter(t=>place&&
+    Math.max(Math.abs(t.index%world.width-place.x),
+      Math.abs(Math.floor(t.index/world.width)-place.y))<=HALF);
   return <main className="evo-settlement-page">
     <header className="evo-section-header">
       <div><span className="evo-overline">WORLDFORGE / BUILT BY THE PEOPLE</span>
@@ -203,12 +227,17 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
             <div><small>HOUSED FAMILIES</small><strong>{homes}</strong></div>
             <div><small>ROADS / PATH TILES</small><strong>{place?.infrastructure?.roads.length??
               ruin?.roads.length??0}</strong></div>
+            <div><small>PAVED ROADS / BRIDGES</small><strong>{localTransport.filter(t=>
+              world.tiles[t.index].biome!=='water').length} / {localTransport.filter(t=>
+              world.tiles[t.index].biome==='water').length}</strong></div>
             <div><small>OWNED LAND TILES</small><strong>{place?.infrastructure?.land.length??0}</strong></div>
           </div>
           {place?.economy&&<section className="evo-economy-panel" aria-label="Settlement economy">
             <div className="evo-economy-heading"><h3>WORK, PROVISIONS & TRADE</h3>
               <span>Economy advances with the world, even off-screen.</span></div>
             <div className="evo-economy-metrics">
+              <div><small>ECONOMIC SPECIALTY</small><strong>{place.economy.specialty?
+                SPECIALTY_LABELS[place.economy.specialty]:'Emerging'}</strong></div>
               <div><small>STORED FOOD</small><strong>{place.economy.food.toFixed(1)}</strong></div>
               <div><small>TOOLS</small><strong>{place.economy.tools.toFixed(1)}</strong></div>
               <div><small>COMMUNITY COINS</small><strong>{place.economy.coins.toFixed(1)}</strong></div>
@@ -237,6 +266,17 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
                 {' · '+Math.round(t.progress/Math.max(1,t.route.length-1)*100)+'% of route'}
               </p>):<p>No active caravans.</p>}
             </div>
+            <div className="evo-economy-relations"><strong>TRADE RELATIONSHIPS</strong>
+              {relationships.length?relationships.slice(0,8).map(r=>{
+                const other=world.settlements.find(s=>s.id===
+                  (r.a===place.id?r.b:r.a));
+                const status=(r.disputeUntil??0)>world.year?'Dispute until Y'+r.disputeUntil:
+                  activePartnership(r,world.year)?'Trusted partner':'Developing ties';
+                return <p key={r.a+'-'+r.b}><b>{other?.name??'Lost settlement'}</b>
+                  {' · '+status+' · trust '+Math.round(r.trust)+'/100 · '+
+                    r.completed+' deliveries'}</p>;
+              }):<p>No established trade ties yet.</p>}
+            </div>
           </section>}
           <div className="evo-city-map-top"><strong>LOCAL VIEW · REAL BUILDING LOCATIONS</strong>
             <label htmlFor="evo-city-zoom">MAP ZOOM <input id="evo-city-zoom"
@@ -247,7 +287,8 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
           <div className="evo-city-legend"><span>▧ Owned land</span>
             <span>━ Worn paths</span><span>▤ Buildings</span>
             <span>⚒ Scaffolding / progress</span><span>● Trees & minerals</span>
-            <span>▣ Traveling caravans</span></div>
+            <span>▣ Traveling caravans</span><span>═ Paved roads</span>
+            <span>▰ Bridges</span></div>
           {place?.infrastructure&&<div className="evo-city-stock">
             <strong>COLLECTED MATERIALS & ORES</strong>
             {(['wood','stone','clay'] as const).map(m=><span key={m}>

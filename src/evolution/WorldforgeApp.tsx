@@ -9,6 +9,7 @@ import {DivineCodex} from './DivineCodex';
 import {DivinePowers} from './DivinePowers';
 import {SettlementView} from './SettlementView';
 import {settlementStage} from './construction';
+import {SPECIALTY_LABELS} from './economy';
 import {RESOURCE_LABELS,RESOURCE_COLORS} from './resources';
 import {intervene,type DivineAction} from './divine';
 import {personName,isPersonFavorite,renamePerson,togglePersonFavorite,
@@ -514,7 +515,12 @@ export function WorldforgeApp(){
                 <span>{settlement.population} nearby people · {settlement.stores.toFixed(0)} stores</span>
                 <span>{settlement.infrastructure?.buildings.filter(b=>b.stage==='complete').length??0}
                   {' completed buildings · '+(settlement.infrastructure?.roads.length??0)+' road tiles'}</span>
-                <button onClick={()=>openSettlement(settlement.id)}>⌂ VIEW LOCAL CONSTRUCTION ↗</button>
+                <span>{settlement.economy?.specialty?
+                  SPECIALTY_LABELS[settlement.economy.specialty]:'Emerging economy'}
+                  {' · '+(world.tradeRelations??[]).filter(r=>
+                    (r.a===settlement.id||r.b===settlement.id)&&
+                    r.completed>=3&&r.trust>=47).length+' trusted trade links'}</span>
+                <button onClick={()=>openSettlement(settlement.id)}>⌂ VIEW LOCAL ECONOMY & CONSTRUCTION ↗</button>
               </div>}
             </>}
           </section>

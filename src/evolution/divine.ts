@@ -8,6 +8,7 @@ import {initialDevelopment} from './development';
 import {initialMind} from './mind';
 import {editDeposit} from './resources';
 import {reconcileTradeTerrain} from './economy';
+import {reconcileTransportTerrain} from './transport';
 
 export const DIVINE_ASPECTS=['health','lifespan','intelligence','fertility',
   'skill_growth','luck','courage','social'] as const;
@@ -123,6 +124,7 @@ export function intervene(previous:World,action:DivineAction):World{
     lineage:previous.lineage.map(r=>({...r,moments:r.moments?.map(m=>({...m}))})),
     tiles:[...previous.tiles],deposits:previous.deposits?.map(d=>({...d})),
     events:[...previous.events],history:[...previous.history],
+    tradeRelations:previous.tradeRelations?.map(r=>({...r})),
     divine:cloneDivine(previous.divine??divineState())};
   const id=w.divine!.nextId++;
   const person=('personId' in action)?w.agents.find(a=>a.id===action.personId):undefined;
@@ -216,6 +218,7 @@ export function intervene(previous:World,action:DivineAction):World{
     w.tiles[idx]={biome:action.biome,food:food*w.settings.resourceLevel};
     editDeposit(w,idx);
     reconcileTradeTerrain(w,idx);
+    reconcileTransportTerrain(w,idx);
     record(w,id,'terrain','Transformed terrain at '+action.x+', '+action.y+
       ' into '+action.biome+'.');
   }

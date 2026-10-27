@@ -76,6 +76,24 @@ export function WorldCanvas({
         }
       }
     }
+    // Engine-owned transport infrastructure is visible at both world and
+    // neighborhood scales. Display decisions never enter its simulation.
+    for(const road of world.transport?.roads??[]){
+      if(road.condition<=25)continue;
+      const x=road.index%W,y=Math.floor(road.index/W);
+      ctx.fillStyle='rgba(229,185,111,.85)';
+      ctx.fillRect(x*CELL,y*CELL+2,CELL,3);
+      if(zoom>=2){
+        ctx.fillStyle='#725f53';ctx.fillRect(x*CELL+2,y*CELL+3,2,1);
+      }
+    }
+    for(const bridge of world.transport?.bridges??[]){
+      if(bridge.condition<=25)continue;
+      const x=bridge.index%W,y=Math.floor(bridge.index/W);
+      ctx.fillStyle='#f2d1a0';ctx.fillRect(x*CELL,y*CELL+1,CELL,4);
+      ctx.fillStyle='#876b58';ctx.fillRect(x*CELL+1,y*CELL+2,1,3);
+      ctx.fillRect(x*CELL+4,y*CELL+2,1,3);
+    }
     for(const ruin of world.ruins??[]){
       ctx.fillStyle='#b5a4ae';ctx.fillRect(ruin.x*CELL-1,ruin.y*CELL-2,8,6);
       ctx.fillStyle='#272b3e';ctx.fillRect(ruin.x*CELL+2,ruin.y*CELL-1,4,4);
@@ -116,6 +134,17 @@ export function WorldCanvas({
       ctx.fillRect(px+2,py+2,2,2);
       if(a.partnerId!==undefined){
         ctx.fillStyle='#ffe7b8';ctx.fillRect(px+4,py+1,1,1);
+      }
+    }
+    if(zoom>=1.5){
+      const drivers=new Map(world.agents.map(a=>[a.id,a]));
+      for(const shipment of world.shipments??[]){
+        const a=drivers.get(shipment.carrierId);if(!a)continue;
+        const px=a.x*CELL,py=a.y*CELL;
+        ctx.fillStyle='#201b2b';ctx.fillRect(px,py,6,5);
+        ctx.fillStyle='#f4bd76';ctx.fillRect(px+1,py,4,3);
+        ctx.fillStyle='#5b5c6a';ctx.fillRect(px+1,py+4,1,1);
+        ctx.fillRect(px+4,py+4,1,1);
       }
     }
     if(selected){

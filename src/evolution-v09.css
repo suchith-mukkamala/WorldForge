@@ -1,0 +1,6 @@
+/* v0.9 — economic identities and diplomacy shown inside settlement inspection. */
+.evo-economy-relations{margin-top:14px;padding-top:13px;
+  border-top:1px solid #719c9550;font-size:.72rem}
+.evo-economy-relations>strong{color:#f4d8a5;font-size:.7rem;letter-spacing:.06em}
+.evo-economy-relations p{margin:8px 0;color:#bdcfcf;line-height:1.7}
+.evo-economy-relations b{color:#e6d3a2}
