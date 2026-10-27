@@ -20,7 +20,7 @@ import {createDeposits,editDeposit,regrowDeposits,validDeposits,
   type ResourceDeposit} from './resources';
 import {advanceEconomy,cloneEconomy,reconcileTradeTerrain,validEconomy,
   type SettlementEconomy,type Shipment,type WorkAssignment,type TradeRelation} from './economy';
-import {advanceTransport,cloneTransport,reconcileTransportTerrain,validTransport,
+import {advanceTransport,bridgeTiles,cloneTransport,reconcileTransportTerrain,validTransport,
   type TransportNetwork} from './transport';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
@@ -661,6 +661,7 @@ export function isWorld(value:unknown):value is World{
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
   const ids=new Set<number>(),positions=new Set<number>();
+  const traversableBridges=bridgeTiles(w as World);
   const checkGenes=(g:Genes)=>!!g&&
     (['vigor','curiosity','fertility','social'] as const).every(k=>
       Number.isFinite(g[k])&&g[k]>=.5&&g[k]<=1.5);
@@ -720,7 +721,8 @@ export function isWorld(value:unknown):value is World{
         (a.mind.lastGoodFood!==undefined&&!checkMemory(a.mind.lastGoodFood))))||
       (a.development!==undefined&&!checkDevelopment(a.development)))return false;
     const index=offset(width,a.x,a.y);
-    if(positions.has(index)||w.tiles[index].biome==='water')return false;
+    if(positions.has(index)||(w.tiles[index].biome==='water'&&
+      !traversableBridges.has(index)))return false;
     ids.add(a.id);positions.add(index);
   }
   const settlementIds=new Set<number>();

@@ -48,18 +48,20 @@ export function findTradeRoute(w:World,from:{x:number;y:number},
   for(let head=0;head<queue.length&&head<6500;head++){
     const here=queue[head];if(here===end)break;
     const x=here%w.width,y=Math.floor(here/w.width);
-    const neighbors:number[]=[];
-    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    // Fixed-order visits avoid sorting thousands of tiny neighbor arrays on
+    // every trade query. First pass favors paved lanes at equal distance.
+    for(let pass=0;pass<(roads.size?2:1);pass++){
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
       if(!dx&&!dy)continue;
       const nx=x+dx,ny=y+dy;
       if(nx<minX||nx>maxX||ny<minY||ny>maxY)continue;
       const next=id(w,nx,ny);
       if(seen[next]||(w.tiles[next].biome==='water'&&
         !bridges.has(next)&&next!==prospectiveBridge))continue;
-      neighbors.push(next);
+      if(roads.size&&(pass===0)!==roads.has(next))continue;
+      seen[next]=1;parents[next]=here;queue.push(next);
+      }
     }
-    neighbors.sort((a,b)=>Number(roads.has(b))-Number(roads.has(a))||a-b);
-    for(const next of neighbors){seen[next]=1;parents[next]=here;queue.push(next);}
   }
   if(!seen[end])return null;
   const route:number[]=[];
@@ -155,6 +157,11 @@ export function advanceTransport(w:World):number[]{
       sponsor!.economy!.coins=round(sponsor!.economy!.coins-.5);
       segment.condition=Math.min(100,round(segment.condition+12));
     }
+    // An occupied bridge cannot disappear out from under a mortal. Keep it
+    // barely serviceable until its last traveler has stepped onto dry land.
+    if(w.tiles[segment.index].biome==='water'&&segment.condition<=25&&
+      w.agents.some(a=>a.y*w.width+a.x===segment.index))
+      segment.condition=25.01;
   }
   network.roads=network.roads.filter(s=>s.condition>0&&
     w.tiles[s.index].biome!=='water');

@@ -1,11 +1,13 @@
 import {describe,expect,it} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {createWorld,editWorld,isWorld,stepWorld,type Settlement,type World} from './engine';
-import {prepareInfrastructure,type Building} from './construction';
+import {advanceWorld,createWorld,editWorld,isWorld,stepWorld,
+  type Settlement,type World} from './engine';
+import {prepareInfrastructure,validConstruction,type Building} from './construction';
 import {activePartnership,advanceEconomy,createEconomy,inferSpecialty,
-  relationBetween,stockOf} from './economy';
+  relationBetween,stockOf,validEconomy} from './economy';
 import {advanceTransport,caravanPace,considerTradeBridge,findTradeRoute,
   validTransport} from './transport';
+import {validDeposits} from './resources';
 import {SettlementView} from './SettlementView';
 import {compactWorld,readSavedWorld} from './storage';
 
@@ -33,6 +35,16 @@ function building(s:Settlement,type:Building['type'],x=s.x,y=s.y):Building{
 }
 
 describe('Worldforge v0.9 — infrastructure, specialization and relations',()=>{
+  it('keeps a real 140-year ecology structurally valid across every subsystem',()=>{
+    const w=advanceWorld(createWorld({seed:31,size:'small',resourceLevel:1}),140);
+    expect(validConstruction(w),'construction').toBe(true);
+    expect(validDeposits(w),'deposits').toBe(true);
+    expect(validTransport(w),'transport').toBe(true);
+    expect(validEconomy(w),'economy').toBe(true);
+    const waterAgents=w.agents.filter(a=>w.tiles[a.y*w.width+a.x].biome==='water');
+    expect(isWorld(w),'complete world (water agents: '+waterAgents.length+
+      ', bridges: '+(w.transport?.bridges.length??0)+')').toBe(true);
+  },40000);
   it('lets communities spend stone, wood, treasury and builder labor on real roads',()=>{
     const w=emptyWorld();
     w.agents=[{...createWorld({seed:603}).agents[0],x:20,y:20}];
