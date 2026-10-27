@@ -3,6 +3,7 @@ import {SPECIES,SPECIES_INFO,type LineageRecord,type Species,type World} from '.
 import {ancestryLabel} from './family';
 import {GOAL_LABELS} from './mind';
 import {JOB_LABELS} from './economy';
+import {guildOf} from './institutions';
 import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
@@ -67,6 +68,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
   },[world,query,filter,species,living,favoriteIds]);
   const alive=focused&&living.get(focused.id);
   const development=alive?.development;
+  const guild=alive?guildOf(world,alive.id):undefined;
   const blessings=alive?activeEffects(alive,world.year):[];
   const divineRecords=(world.divine?.history??[]).filter(r=>r.targetId===focused?.id||
     focused?.divineOrigins?.includes(r.id)).slice(-12).reverse();
@@ -230,6 +232,9 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 <span><small>CURRENT WORK</small><strong>{alive.work?
                   JOB_LABELS[alive.work.job]+' · #'+alive.work.settlementId:
                   'Choosing freely'}</strong></span>
+                <span><small>GUILD MEMBERSHIP</small><strong>{guild?
+                  JOB_LABELS[guild.job]+' · '+Math.round(guild.expertise)+' expertise':
+                  'Independent worker'}</strong></span>
                 <span><small>HOUSEHOLD</small><strong>{household?
                   '#'+household.id+' · '+household.members.length+' residents':'Unassigned'}</strong></span>
               </div>

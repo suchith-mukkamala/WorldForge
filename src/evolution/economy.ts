@@ -6,6 +6,8 @@ import type {Agent,Settlement,World} from './engine';
 import {traitProfile} from './family';
 import {MATERIALS,prepareInfrastructure,type Material,type Ore} from './construction';
 import {bridgeTiles,caravanPace,considerTradeBridge,findTradeRoute} from './transport';
+import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
+import {accordBetween} from './institutions';
 
 export const JOBS=['farmer','woodcutter','miner','builder','artisan','trader'] as const;
 export type Job=typeof JOBS[number];
@@ -25,10 +27,11 @@ export type TradeRelation={a:number;b:number;completed:number;failures:number;
 export type SettlementEconomy={food:number;tools:number;coins:number;
   jobs:Record<Job,number>;prices:Record<Good,number>;shortages:Good[];
   produced:number;consumed:number;imports:number;exports:number;
-  specialty?:Specialty};
+  specialty?:Specialty;seaExports?:number};
 export type Shipment={id:number;originId:number;destinationId:number;
   carrierId:number;good:Good;quantity:number;payment:number;started:number;
-  route:number[];progress:number;lastAdvance?:number};
+  route:number[];progress:number;lastAdvance?:number;
+  mode?:'land'|'sea';provisions?:number};
 
 const rounded=(v:number)=>Math.round(v*100)/100;
 const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
@@ -40,7 +43,7 @@ const prices=():Record<Good,number>=>({food:1,wood:1,stone:1,clay:1,
   coal:1,copper:1,iron:1,gold:1,tools:1});
 export function createEconomy():SettlementEconomy{
   return {food:18,tools:0,coins:70,jobs:emptyJobs(),prices:prices(),
-    shortages:[],produced:0,consumed:0,imports:0,exports:0};
+    shortages:[],produced:0,consumed:0,imports:0,exports:0,seaExports:0};
 }
 export function cloneEconomy(e:SettlementEconomy):SettlementEconomy{
   return {...e,jobs:{...e.jobs},prices:{...e.prices},shortages:[...e.shortages]};
@@ -150,13 +153,13 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
     miner:Math.max(1,Math.ceil(adults.length*.17)),
     artisan:buildings(s,'workshop')*2,
     trader:Math.min(4,Math.ceil(adults.length/8),
-      2+buildings(s,'market')*2),
+      2+buildings(s,'market')*2+buildings(s,'dock')),
   };
   const priorities:Record<Job,number>={
     farmer:scarce?17:10,builder:projects?16:publicWorks?12:0,
     woodcutter:stockOf(s,'wood')<18?15:8,
     miner:stockOf(s,'stone')<17?14:7,
-    artisan:stockOf(s,'tools')<3?13:8,trader:5,
+    artisan:stockOf(s,'tools')<3?13:8,trader:5+buildings(s,'dock')*2,
   };
   if(e.specialty==='agriculture')priorities.farmer+=1.5;
   if(e.specialty==='forestry')priorities.woodcutter+=1.5;
@@ -277,7 +280,8 @@ function record(w:World,message:string):void{
 /** Terraforming may sever a route. Cancel safely without corrupting saves. */
 export function reconcileTradeTerrain(w:World,index:number):void{
   if(w.tiles[index]?.biome!=='water')return;
-  const stranded=(w.shipments??[]).filter(t=>t.route.includes(index));
+  const stranded=(w.shipments??[]).filter(t=>t.mode!=='sea'&&
+    t.route.includes(index));
   if(!stranded.length)return;
   for(const t of stranded)relationFailure(w,t.originId,t.destinationId);
   const carriers=new Set(stranded.map(t=>t.carrierId));
@@ -307,6 +311,7 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
       if(destination)destination.economy!.coins=rounded(clamp(
         destination.economy!.coins+shipment.payment,0,10000));
       if(origin&&destination)relationFailure(w,origin.id,destination.id);
+      if(a){rescueSailor(w,a,occupied);a.work=undefined;}
       record(w,'A caravan failed to reach its destination; cargo was lost.');
       continue;
     }
@@ -315,8 +320,13 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
     // intermediate tile remains occupied in sequence, never teleported over.
     const here=a.y*w.width+a.x;
     const nextIdx=shipment.route[shipment.progress+1];
-    const pace=nextIdx===undefined?1:caravanPace(w,here,nextIdx);
-    for(let step=0;step<pace&&distance(a,destination)>2&&a.energy>=35&&
+    const pace=shipment.mode==='sea'&&nextIdx!==undefined&&
+      (w.tiles[here].biome==='water'||w.tiles[nextIdx].biome==='water')?3:
+      nextIdx===undefined?1:caravanPace(w,here,nextIdx);
+    const arrived=()=>distance(a,destination)<=2&&
+      (shipment.mode!=='sea'||(w.tiles[a.y*w.width+a.x].biome!=='water'&&
+        shipment.progress>=shipment.route.length-3));
+    for(let step=0;step<pace&&!arrived()&&a.energy>=35&&
       shipment.progress<shipment.route.length-1;step++){
       const idx=shipment.route[shipment.progress+1];
       const next={x:idx%w.width,y:Math.floor(idx/w.width)};
@@ -335,15 +345,17 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
       a.energy=rounded(Math.max(1,a.energy-.7));
       shipment.progress++;shipment.lastAdvance=w.year;
     }
-    if(distance(a,destination)<=2){
+    if(arrived()){
       setStock(destination,shipment.good,
         stockOf(destination,shipment.good)+shipment.quantity);
       origin.economy!.coins=rounded(clamp(origin.economy!.coins+
         shipment.payment,0,10000));
       origin.economy!.exports++;destination.economy!.imports++;
+      if(shipment.mode==='sea')origin.economy!.seaExports=
+        Math.min(100000,(origin.economy!.seaExports??0)+1);
       relationSuccess(w,origin,destination);
       record(w,origin.name+' delivered '+shipment.quantity+' '+shipment.good+
-        ' to '+destination.name+'.');
+        (shipment.mode==='sea'?' by ship':'')+' to '+destination.name+'.');
       a.work=undefined;travelling.delete(a.id);
     }else if(w.year-(shipment.lastAdvance??shipment.started)>14){
       // Dynamic traffic can strand a courier; never leave 16 stalled trades
@@ -355,6 +367,7 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
         stockOf(origin,shipment.good)+shipment.quantity);
       relationFailure(w,origin.id,destination.id);
       record(w,'A caravan from '+origin.name+' abandoned its delayed journey.');
+      if(shipment.mode==='sea')rescueSailor(w,a,occupied);
       a.work=undefined;travelling.delete(a.id);
     }else{
       a.work={job:'trader',settlementId:shipment.originId,tradeId:shipment.id};
@@ -379,6 +392,7 @@ function updatePrices(s:Settlement):void{
 function dispatchTrade(w:World):void{
   if(w.year%3!==0||w.shipments!.length>=16)return;
   const busy=new Set(w.shipments!.map(t=>t.carrierId));
+  const coastal=new Map(w.settlements.map(s=>[s.id,hasHarbor(w,s)]));
   let departures=0;
   for(const origin of [...w.settlements].sort((a,b)=>a.id-b.id)){
     if(departures>=3||w.shipments!.length>=16)break;
@@ -387,7 +401,10 @@ function dispatchTrade(w:World):void{
       distance(a,origin)<=3&&a.energy>=65&&a.health>=60);
     if(!candidates.length)continue;
     const destinations=w.settlements.filter(s=>s.id!==origin.id&&
-      distance(s,origin)<=35&&s.economy!.coins>=5&&
+      distance(s,origin)<=55&&
+      (s.economy!.coins>=5||(accordBetween(w,s.id,origin.id)?.kind==='aid'&&
+        s.economy!.food<targetStock(s,'food')*.3))&&
+      accordBetween(w,s.id,origin.id)?.kind!=='embargo'&&
       (relationBetween(w,s.id,origin.id)?.disputeUntil??0)<=w.year)
       .sort((a,b)=>{
         const priority=(s:Settlement)=>distance(origin,s)-
@@ -404,6 +421,26 @@ function dispatchTrade(w:World):void{
       let onward=findTradeRoute(w,origin,target);
       if(!onward&&considerTradeBridge(w,origin,target))
         onward=findTradeRoute(w,origin,target);
+      let mode:'land'|'sea'='land';
+      const harbor=buildings(origin,'dock')>0;
+      const shipWood=harbor?5:7,shipTools=harbor?0.5:1;
+      const hasBoatGear=origin.economy!.tools>=shipTools||
+        harbor&&origin.infrastructure!.stock.stone>=2;
+      if(origin.infrastructure!.stock.wood>=shipWood&&
+        hasBoatGear&&origin.economy!.food>=12&&
+        origin.economy!.coins>=(harbor?3:5)&&
+        coastal.get(origin.id)&&coastal.get(target.id)&&
+        (!onward||harbor&&(buildings(target,'dock')>0||
+          origin.economy?.specialty==='commerce'))){
+        const passage=findSeaRoute(w,origin,target);
+        const seaYears=passage?.reduce((years,idx)=>years+
+          (w.tiles[idx].biome==='water'?1/3:1),0)??Infinity;
+        const favorablePorts=harbor&&buildings(target,'dock')>0;
+        if(passage&&(!onward||seaYears+2<onward.length*
+          (favorablePorts?0.95:0.8))){
+          onward=passage;mode='sea';
+        }
+      }
       if(!onward)continue;
       let trader:Agent|undefined,route:number[]|undefined;
       for(const person of candidates){
@@ -412,7 +449,8 @@ function dispatchTrade(w:World):void{
         const pickup=findTradeRoute(w,person,origin);
         if(!pickup||pickup.length>7)continue;
         const journey=[...pickup,...onward.slice(1)];
-        if(journey.length>91||person.age+journey.length*1.4>=
+        if(journey.length>(mode==='sea'?150:91)||
+          person.age+journey.length*(mode==='sea'?.6:1.4)>=
           traitProfile(person.ancestry).lifespan*1.1)continue;
         trader=person;route=journey;break;
       }
@@ -420,22 +458,40 @@ function dispatchTrade(w:World):void{
       const surplus=stockOf(origin,good)-targetStock(origin,good)*1.25;
       const deficit=targetStock(target,good)-stockOf(target,good);
       const partner=activePartnership(relationBetween(w,origin.id,target.id),w.year);
-      const unitPrice=rounded(target.economy!.prices[good]*(partner?0.9:1)*
+      const accord=accordBetween(w,origin.id,target.id);
+      const famineAid=accord?.kind==='aid'&&good==='food'&&
+        target.economy!.food<targetStock(target,'food')*.3&&
+        origin.economy!.food>targetStock(origin,'food')*1.5;
+      const unitPrice=famineAid?0:rounded(target.economy!.prices[good]*
+        (accord?.kind==='trade'||accord?.kind==='aid'?0.85:partner?0.9:1)*
         (buildings(target,'market')?0.96:1));
       const quantity=Math.floor(Math.min(12,surplus,deficit,
         capacity(target,good)-stockOf(target,good),
-        target.economy!.coins/unitPrice));
+        famineAid?12:target.economy!.coins/unitPrice));
       if(quantity<2)continue;
       const payment=rounded(quantity*unitPrice);
+      const provisions=mode==='sea'?Math.min(24,
+        rounded(Math.max(9,route.length*.2))):undefined;
+      if(mode==='sea'){
+        if(origin.economy!.food<provisions!+3)continue;
+        origin.infrastructure!.stock.wood=rounded(origin.infrastructure!.stock.wood-shipWood);
+        if(origin.economy!.tools>=shipTools)
+          origin.economy!.tools=rounded(origin.economy!.tools-shipTools);
+        else origin.infrastructure!.stock.stone=rounded(origin.infrastructure!.stock.stone-2);
+        origin.economy!.food=rounded(origin.economy!.food-provisions!);
+        origin.economy!.coins=rounded(origin.economy!.coins-(harbor?3:5));
+      }
       setStock(origin,good,stockOf(origin,good)-quantity);
       target.economy!.coins=rounded(target.economy!.coins-payment);
       const shipment:Shipment={id:w.nextShipmentId!++,originId:origin.id,
         destinationId:target.id,carrierId:trader.id,good,quantity,payment,
-        started:w.year,route,progress:0,lastAdvance:w.year};
+        started:w.year,route,progress:0,lastAdvance:w.year,mode,provisions};
       w.shipments!.push(shipment);busy.add(trader.id);
       ensureRelation(w,origin.id,target.id);
       trader.work={job:'trader',settlementId:origin.id,tradeId:shipment.id};
-      record(w,origin.name+' sent '+quantity+' '+good+' toward '+target.name+'.');
+      record(w,origin.name+' sent '+quantity+' '+good+
+        (famineAid?' as emergency aid':'')+
+        (mode==='sea'?' by sea':' over land')+' toward '+target.name+'.');
       dispatched=true;departures++;break;
     }
     if(dispatched)continue;
@@ -498,9 +554,14 @@ export function validEconomy(w:World):boolean{
         !Number.isInteger(t.started)||t.started<0||t.started>w.year||
         (t.lastAdvance!==undefined&&(!Number.isInteger(t.lastAdvance)||
           t.lastAdvance<t.started||t.lastAdvance>w.year))||
-        !Array.isArray(t.route)||t.route.length<2||t.route.length>91||
+        (t.mode!==undefined&&!['land','sea'].includes(t.mode))||
+        (t.mode==='sea'&&(!Number.isFinite(t.provisions)||
+          t.provisions!<0||t.provisions!>30))||
+        (t.mode!=='sea'&&t.provisions!==undefined)||
+        !Array.isArray(t.route)||t.route.length<2||
+        t.route.length>(t.mode==='sea'?150:91)||
         !t.route.every(n=>Number.isInteger(n)&&n>=0&&n<w.tiles.length&&
-          (w.tiles[n].biome!=='water'||bridgeTiles(w).has(n)))||
+          (t.mode==='sea'||w.tiles[n].biome!=='water'||bridgeTiles(w).has(n)))||
         !Number.isInteger(t.progress)||
         t.progress<0||t.progress>=t.route.length||
         distance({x:t.route[0]%w.width,y:Math.floor(t.route[0]/w.width)},origin)>3||
@@ -523,6 +584,8 @@ export function validEconomy(w:World):boolean{
       e.shortages.length>GOODS.length||
       !e.shortages.every(g=>GOODS.includes(g))||
       (e.specialty!==undefined&&!SPECIALTIES.includes(e.specialty))||
+      (e.seaExports!==undefined&&(!Number.isInteger(e.seaExports)||
+        e.seaExports<0||e.seaExports>100000))||
       ![e.produced,e.consumed,e.imports,e.exports].every(v=>
         Number.isFinite(v)&&v>=0&&v<=100000))return false;
   }

@@ -4,6 +4,7 @@
  */
 import {advanceWorld,createWorld,isWorld,population} from './engine';
 import {readSavedWorld,compactWorld} from './storage';
+import {hasHarbor} from './shipping';
 
 function check(condition:boolean,explanation:string):void{
   if(!condition)throw Error('Long-run regression: '+explanation);
@@ -37,6 +38,8 @@ async function run(){
   const farms=structures.filter(b=>b.type==='farm').length;
   const houses=structures.filter(b=>b.type==='house').length;
   const communal=structures.filter(b=>b.type==='communal').length;
+  const docks=structures.filter(b=>b.type==='dock').length;
+  const coastal=populated.settlements.filter(s=>hasHarbor(populated,s)).length;
   const exports=populated.settlements.reduce((n,s)=>n+(s.economy?.exports??0),0);
   const food=populated.settlements.reduce((n,s)=>n+(s.economy?.food??0),0);
   const workers=populated.settlements.reduce((n,s)=>n+
@@ -47,6 +50,10 @@ async function run(){
     !!s.economy?.specialty).length;
   const partnerships=(populated.tradeRelations??[]).filter(r=>
     r.completed>=3&&r.trust>=47).length;
+  const guilds=populated.institutions?.guilds.length??0;
+  const accords=populated.institutions?.accords.length??0;
+  const seaExports=populated.settlements.reduce((n,s)=>n+
+    (s.economy?.seaExports??0),0);
   check(populated.agents.length>850,'populations may rise above the former limit');
   check(isWorld(populated),'populated world is valid at year 250');
   check(houses>0&&communal>0,'construction diversifies beyond farms');
@@ -56,6 +63,7 @@ async function run(){
   check(exports>0,'caravans complete at least one genuine inter-settlement delivery');
   check(specializations>0,'places develop specialties from local work and resources');
   check(roads>0,'inhabitants invest in paved infrastructure as traffic grows');
+  check(guilds>0,'workers establish enduring voluntary guilds in populated towns');
   check(readSavedWorld(compactWorld(populated))!==null,
     'uncapped world can be exported and imported');
   console.log('250-year uncapped stress test passed:',JSON.stringify({
@@ -63,6 +71,9 @@ async function run(){
     settlements:populated.settlements.length,farms,houses,communal,
     employed:workers,storedFood:Math.round(food),completedExports:exports,
     travelling:populated.shipments?.length??0,roads,bridges,
-    specializedSettlements:specializations,tradePartnerships:partnerships}));
+    specializedSettlements:specializations,tradePartnerships:partnerships,
+    guilds,accords,docks,coastalSettlements:coastal,
+    shipsAtSea:populated.shipments?.filter(t=>t.mode==='sea').length??0,
+    completedSeaExports:seaExports}));
 }
 await run();

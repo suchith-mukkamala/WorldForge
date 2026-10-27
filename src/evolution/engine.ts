@@ -22,6 +22,8 @@ import {advanceEconomy,cloneEconomy,reconcileTradeTerrain,validEconomy,
   type SettlementEconomy,type Shipment,type WorkAssignment,type TradeRelation} from './economy';
 import {advanceTransport,bridgeTiles,cloneTransport,reconcileTransportTerrain,validTransport,
   type TransportNetwork} from './transport';
+import {advanceInstitutions,cloneInstitutions,validInstitutions,
+  type Institutions} from './institutions';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -56,7 +58,8 @@ export type Settlement={id:number;species:Species;name:string;x:number;y:number;
   founded:number;population:number;stores:number;emptyYears:number;
   infrastructure?:SettlementInfrastructure;economy?:SettlementEconomy};
 export type WorldEvent={id:number;year:number;
-  type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|'trade';
+  type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|
+    'trade'|'guild'|'diplomacy';
   message:string};
 export type DeathCause='old_age'|'starvation'|'exposure'|'ill_health';
 export const DEATH_CAUSES:DeathCause[]=['old_age','starvation','exposure','ill_health'];
@@ -81,7 +84,8 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   households?:Household[];nextHouseholdId?:number;divine?:DivineState;
   ruins?:RuinSite[];trails?:Trail[];deposits?:ResourceDeposit[];
   shipments?:Shipment[];nextShipmentId?:number;
-  transport?:TransportNetwork;tradeRelations?:TradeRelation[]};
+  transport?:TransportNetwork;tradeRelations?:TradeRelation[];
+  institutions?:Institutions};
 export const SPECIES:Species[]=['human','elf','dwarf','demon'];
 export const BIOMES:Biome[]=['plains','forest','mountain','cave','wasteland','volcanic','water'];
 export const SPECIES_INFO:Record<Species,{name:string;symbol:string;color:string;
@@ -226,7 +230,8 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
     codex:{favoritePeople:[],favoriteSettlements:[],settlements:[]},divine:divineState(),
     ruins:[],trails:[],deposits:[],shipments:[],nextShipmentId:1,
-    transport:{roads:[],bridges:[]},tradeRelations:[]};
+    transport:{roads:[],bridges:[]},tradeRelations:[],
+    institutions:{guilds:[],nextGuildId:1,accords:[]}};
   world.deposits=createDeposits(world);
   const occupied=new Set<number>();
   for(const s of SPECIES){
@@ -325,7 +330,8 @@ export function stepWorld(previous:World):World{
     shipments:previous.shipments?.map(t=>({...t,route:[...t.route]}))??[],
     nextShipmentId:previous.nextShipmentId??1,
     transport:previous.transport?cloneTransport(previous.transport):undefined,
-    tradeRelations:previous.tradeRelations?.map(r=>({...r}))??[]};
+    tradeRelations:previous.tradeRelations?.map(r=>({...r}))??[],
+    institutions:previous.institutions?cloneInstitutions(previous.institutions):undefined};
   prepareDevelopment(world);
   regrowDeposits(world);
   for(const s of world.settlements){
@@ -362,6 +368,8 @@ export function stepWorld(previous:World):World{
     [shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];
   }
   const survivors:Agent[]=[];
+  const sailors=new Map((world.shipments??[]).filter(t=>t.mode==='sea')
+    .map(t=>[t.carrierId,t]));
   const careOutcomes=new Map<number,CareOutcome>();
   let deaths=0;
   for(const a of shuffled){
@@ -444,9 +452,12 @@ export function stepWorld(previous:World):World{
     const dailyCost=info.metabolism*(stage==='infant'?.50:
       stage==='child'?.62:stage==='adolescent'?.82:1)*
       (comfortable?.86:1.12)*(atHome?.94:1);
+    const voyage=current.biome==='water'?sailors.get(a.id):undefined;
+    const ration=voyage?Math.min(.8,voyage.provisions??0):0;
+    if(voyage)voyage.provisions=round(Math.max(0,(voyage.provisions??0)-ration));
     const nourishment=gathered*(comfortable?13.4:10.5)*
       (1+(divineFactor(a,'luck',world.year)-1)*.18);
-    a.energy=round(clamp(a.energy+nourishment-dailyCost-
+    a.energy=round(clamp(a.energy+nourishment+ration*15-dailyCost-
       Math.max(0,a.age/info.lifespan-.7)*1.3,0,100));
     const care=helpDependent(world,a,occupied,partnerPositions);
     if(juvenile)careOutcomes.set(a.id,care);
@@ -556,6 +567,7 @@ export function stepWorld(previous:World):World{
   });
   // Labor competes across farming, extraction, crafts, trade and construction.
   advanceEconomy(world,movementSteps);
+  advanceInstitutions(world);
   // Construction is a world-tick system. Map zoom and open UI tabs never enter it.
   advanceConstruction(world,movementSteps);
   for(const crossing of advanceTransport(world))
@@ -662,6 +674,8 @@ export function isWorld(value:unknown):value is World{
     t.food>=0&&t.food<=20))return false;
   const ids=new Set<number>(),positions=new Set<number>();
   const traversableBridges=bridgeTiles(w as World);
+  const captains=new Map((w.shipments??[]).filter(t=>t.mode==='sea')
+    .map(t=>[t.carrierId,t]));
   const checkGenes=(g:Genes)=>!!g&&
     (['vigor','curiosity','fertility','social'] as const).every(k=>
       Number.isFinite(g[k])&&g[k]>=.5&&g[k]<=1.5);
@@ -721,8 +735,10 @@ export function isWorld(value:unknown):value is World{
         (a.mind.lastGoodFood!==undefined&&!checkMemory(a.mind.lastGoodFood))))||
       (a.development!==undefined&&!checkDevelopment(a.development)))return false;
     const index=offset(width,a.x,a.y);
+    const voyage=captains.get(a.id);
+    const aboard=voyage&&voyage.route[voyage.progress]===index;
     if(positions.has(index)||(w.tiles[index].biome==='water'&&
-      !traversableBridges.has(index)))return false;
+      !traversableBridges.has(index)&&!aboard))return false;
     ids.add(a.id);positions.add(index);
   }
   const settlementIds=new Set<number>();
@@ -834,7 +850,8 @@ export function isWorld(value:unknown):value is World{
       householdIds.has(a.development.householdId)))return false;
   }
   if(!w.agents.every(a=>records.has(a.id))||!validDivinity(w as World)||
-    !validConstruction(w as World)||!validDeposits(w as World))return false;
+    !validConstruction(w as World)||!validDeposits(w as World)||
+    !validInstitutions(w as World))return false;
   if(!w.history.every(p=>{
     const valid=Number.isInteger(p.year)&&p.year>=0&&
       Number.isInteger(p.total)&&p.total>=0&&
@@ -859,7 +876,8 @@ export function isWorld(value:unknown):value is World{
   if(!validEconomy(w as World)||!validTransport(w as World))return false;
   if(!w.events.every(e=>Number.isSafeInteger(e.id)&&
     Number.isInteger(e.year)&&e.year>=0&&
-    ['world','birth','death','settlement','collapse','milestone','bond','hybrid','trade']
+    ['world','birth','death','settlement','collapse','milestone','bond','hybrid',
+      'trade','guild','diplomacy']
       .includes(e.type)&&typeof e.message==='string'&&e.message.length<500))
     return false;
   return true;

@@ -5,9 +5,10 @@ import type {Agent,Settlement,Species,World} from './engine';
 import {traitProfile} from './family';
 import {harvestDeposit,type ResourceDeposit,
   type ResourceKind} from './resources';
+import {hasHarbor} from './shipping';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
-  'workshop','market','communal'] as const;
+  'workshop','market','dock','communal'] as const;
 export type BuildingType=typeof BUILDING_TYPES[number];
 export type BuildingStage='foundation'|'frame'|'finishing'|'complete'|
   'abandoned'|'ruin';
@@ -38,12 +39,14 @@ export const COSTS:Record<BuildingType,{materials:MaterialStock;labor:number}>={
   well:{materials:{wood:4,stone:10,clay:5},labor:17},
   workshop:{materials:{wood:12,stone:11,clay:6},labor:22},
   market:{materials:{wood:11,stone:8,clay:7},labor:19},
+  dock:{materials:{wood:14,stone:5,clay:4},labor:18},
   communal:{materials:{wood:11,stone:9,clay:9},labor:21},
 };
 export const BUILDING_LABELS:Record<BuildingType,string>={
   shelter:'Shelter',house:'Residence',farm:'Farm',storage:'Storehouse',
   well:'Well',workshop:'Workshop',communal:'Communal hall',
   market:'Marketplace',
+  dock:'Harbor dock',
 };
 export const ARCHITECTURE:Record<Species,{name:string;wall:string;
   roof:string;trim:string}>={
@@ -140,9 +143,19 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
     market:adultCount>=8&&(s.population>=18||
       (s.economy?.imports??0)+(s.economy?.exports??0)>=3)&&
       count('market')<Math.max(1,Math.ceil(s.population/65))?8.5:0,
+    dock:adultCount>=5&&hasHarbor(w,s)&&
+      count('dock')<Math.max(1,Math.ceil(s.population/120))?9.2:0,
     communal:residents.length>=6&&count('communal')<
       Math.max(1,Math.ceil(s.population/45))?8+Math.max(-2,Math.min(2,votes)):0,
   };
+  // Worker guilds can advocate for public needs, never directly place sites.
+  for(const g of w.institutions?.guilds??[]){
+    if(g.settlementId!==s.id||g.members.length<3)continue;
+    if(g.job==='farmer'&&unmet.farm>0)unmet.farm+=1.3;
+    if(g.job==='artisan'&&unmet.workshop>0)unmet.workshop+=1.4;
+    if(g.job==='trader'&&unmet.market>0)unmet.market+=1.6;
+    if(g.job==='trader'&&unmet.dock>0)unmet.dock+=1.2;
+  }
   // A preference is a vote, not a player-placed blueprint.
   for(const a of residents){
     const d=a.development;
@@ -168,6 +181,9 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
     if(used.has(id))continue;
     const x=id%w.width,y=Math.floor(id/w.width),tile=w.tiles[id];
     if(tile.biome==='water')continue;
+    if(type==='dock'&&![-1,0,1].some(dx=>[-1,0,1].some(dy=>
+      (dx||dy)&&inWorld(w,x+dx,y+dy)&&
+      w.tiles[position(w,x+dx,y+dy)].biome==='water')))continue;
     const near=distance({x,y},s),hazard=tile.biome==='volcanic'?4:
       tile.biome==='wasteland'?2:0;
     const nearbyRoad=[id-1,id+1,id-w.width,id+w.width].some(n=>roads.has(n));
