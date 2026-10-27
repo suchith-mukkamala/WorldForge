@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {SPECIES,SPECIES_INFO,type LineageRecord,type Species,type World} from './engine';
 import {ancestryLabel} from './family';
 import {GOAL_LABELS} from './mind';
+import {JOB_LABELS} from './economy';
 import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
@@ -226,6 +227,9 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 <span><small>LIFE STAGE</small><strong>{lifeStage(alive)}</strong></span>
                 <span><small>PATH</small><strong>{development.career?
                   CAREER_LABELS[development.career]:'Still discovering'}</strong></span>
+                <span><small>CURRENT WORK</small><strong>{alive.work?
+                  JOB_LABELS[alive.work.job]+' · #'+alive.work.settlementId:
+                  'Choosing freely'}</strong></span>
                 <span><small>HOUSEHOLD</small><strong>{household?
                   '#'+household.id+' · '+household.members.length+' residents':'Unassigned'}</strong></span>
               </div>

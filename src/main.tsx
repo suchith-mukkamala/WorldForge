@@ -11,6 +11,7 @@ import './evolution-v04.css';
 import './evolution-v05.css';
 import './evolution-v06.css';
 import './evolution-v07.css';
+import './evolution-v08.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><WorldforgeApp /></React.StrictMode>,

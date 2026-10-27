@@ -5,9 +5,9 @@ export default defineConfig({
   plugins: [react()],
   base: '/',
   test: {
-    // Ecology regressions simulate hundreds of years, so allow realistic
-    // budgets on shared CI runners without scheduling excessive workers.
+    // Long ecological histories are CPU-heavy. Run one file at a time so
+    // independent 30-second simulation tests do not starve each other in CI.
     testTimeout: 45000,
-    maxWorkers: 2,
+    maxWorkers: 1,
   },
 });

@@ -6,7 +6,8 @@ import type {Agent,Ancestry,Biome,World} from './engine';
 import {divineFactor,mortalWhisper} from './divine';
 
 export type MindGoal='forage'|'seek_safety'|'seek_family'|'seek_partner'|
-  'stay_together'|'explore'|'venture'|'vocation'|'build'|'return_home';
+  'stay_together'|'explore'|'venture'|'vocation'|'build'|'return_home'|
+  'work'|'trade';
 export type PlaceMemory={x:number;y:number;year:number};
 export type AgentMind={goal:MindGoal;reason:string;since:number;
   target?:{x:number;y:number};targetPersonId?:number;lastScarcity?:PlaceMemory;
@@ -14,7 +15,7 @@ export type AgentMind={goal:MindGoal;reason:string;since:number;
 
 export const MIND_GOALS:MindGoal[]=[
   'forage','seek_safety','seek_family','seek_partner','stay_together','explore',
-  'venture','vocation','build','return_home',
+  'venture','vocation','build','return_home','work','trade',
 ];
 export const GOAL_LABELS:Record<MindGoal,string>={
   forage:'Gather food',seek_safety:'Find safer ground',
@@ -24,6 +25,7 @@ export const GOAL_LABELS:Record<MindGoal,string>={
   vocation:'Pursue a vocation',
   build:'Help construct a settlement',
   return_home:'Return to a permanent home',
+  work:'Work for the community',trade:'Transport goods between settlements',
 };
 export const initialMind=(year:number):AgentMind=>({goal:'explore',
   reason:'Discovering a new world.',since:year});
@@ -118,6 +120,8 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number>,
   const safe=suitability(a.ancestry,w.tiles[index(w,a.x,a.y)].biome);
   const adult=a.age>=maturity&&a.age<lifespan*.76;
   const whisper=mortalWhisper(a,w.year);
+  const shipment=a.work?.tradeId?w.shipments?.find(t=>t.id===a.work?.tradeId):undefined;
+  const employer=a.work?w.settlements.find(s=>s.id===a.work?.settlementId):undefined;
   let goal:MindGoal='explore',reason='Healthy and curious about the surroundings.';
   let target:AgentMind['target'],targetPersonId:number|undefined;
   const expeditionReady=a.age>=maturity*.85&&a.age<lifespan*.76&&
@@ -140,7 +144,13 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number>,
     w.households?.find(h=>h.id===a.development?.householdId&&h.residence)?.home;
   const wantsHome=adult&&residence&&distance(a,residence)>4&&
     (a.energy<73||(w.year+a.id)%11===0);
-  if(a.energy<57||foodAround(w,a.x,a.y)<4){
+  if(shipment&&a.energy>=44&&a.health>=40){
+    // Caravans are real commitments. Workers can still interrupt the journey
+    // for serious hunger or illness, but do not abandon it for ordinary forage.
+    const waypoint=shipment.route[Math.min(shipment.progress+2,shipment.route.length-1)];
+    goal='trade';reason='Carrying '+shipment.good+' to another community.';
+    target={x:waypoint%w.width,y:Math.floor(waypoint/w.width)};
+  }else if(a.energy<57||foodAround(w,a.x,a.y)<4){
     goal='forage';reason='Food or stored energy is running low.';
     target=bestHabitat(w,a,goal,suitability);
   }else if((safe<.45||a.health<52)&&a.energy>=57&&!continuing){
@@ -169,6 +179,13 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number>,
   }else if(construction?.project){
     goal='build';reason='Contributing labor to a locally chosen building project.';
     target={x:construction.project.x,y:construction.project.y};
+  }else if(adult&&employer&&a.work&&(w.year+a.id)%3===0){
+    goal='work';reason='Serving as a '+a.work.job+' for '+employer.name+'.';
+    const role=a.work.job;
+    const site=employer.infrastructure?.buildings.find(b=>
+      b.stage==='complete'&&(role==='farmer'?b.type==='farm':
+        role==='artisan'?b.type==='workshop':false));
+    target=site?{x:site.x,y:site.y}:{x:employer.x,y:employer.y};
   }else if(wantsHome){
     goal='return_home';reason='Returning to a permanent household residence.';
     target={...residence};
@@ -227,7 +244,8 @@ export function movementIntent(a:Agent,x:number,y:number,year:number):number{
   const urgency=m.goal==='forage'||m.goal==='seek_safety'?7:
     m.goal==='stay_together'?10:m.goal==='seek_partner'?8:
     m.goal==='seek_family'?7:m.goal==='venture'?55:
-    m.goal==='vocation'?5:m.goal==='build'?13:m.goal==='return_home'?14:0;
+    m.goal==='vocation'?5:m.goal==='build'?13:m.goal==='return_home'?14:
+    m.goal==='work'?9:m.goal==='trade'?72:0;
   const bad=m.lastScarcity;
   return progress*urgency-
     (bad&&year-bad.year<12&&distance(candidate,bad)<=1?6:0);
