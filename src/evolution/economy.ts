@@ -331,11 +331,13 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
       const idx=shipment.route[shipment.progress+1];
       const next={x:idx%w.width,y:Math.floor(idx/w.width)};
       const other=occupied.get(idx);
+      const old=a.y*w.width+a.x;
       const yields=other&&other.id!==a.id&&!other.work?.tradeId&&
         other.age>=traitProfile(other.ancestry).maturity&&
-        (other.development?.values.community??50)>=43;
+        (other.development?.values.community??50)>=43&&
+        // A disembarking captain must not swap a pedestrian into open sea.
+        w.tiles[old].biome!=='water';
       if(distance(a,next)!==1||other&&!yields)break;
-      const old=a.y*w.width+a.x;
       if(other){
         other.x=a.x;other.y=a.y;occupied.set(old,other);
         moved.push(old);

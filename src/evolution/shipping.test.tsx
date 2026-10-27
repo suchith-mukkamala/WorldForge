@@ -132,6 +132,29 @@ describe('WorldForge v1.0 — actual sea navigation and shipping',()=>{
     expect(isWorld(next)).toBe(true);
   });
 
+  it('never pushes a shoreline resident into water when a ship lands',()=>{
+    const {w}=coastalWorld();advanceEconomy(w);
+    const ship=w.shipments!.find(t=>t.mode==='sea')!;
+    const sailor=w.agents.find(a=>a.id===ship.carrierId)!;
+    let lastWater=-1;
+    for(let i=0;i<ship.route.length;i++)
+      if(w.tiles[ship.route[i]].biome==='water')lastWater=i;
+    const landing=ship.route[lastWater+1];
+    expect(landing).toBeDefined();
+    expect(w.tiles[landing].biome).not.toBe('water');
+    sailor.x=ship.route[lastWater]%w.width;
+    sailor.y=Math.floor(ship.route[lastWater]/w.width);
+    ship.progress=lastWater;
+    const resident=w.agents.find(a=>a.id!==sailor.id)!;
+    resident.x=landing%w.width;resident.y=Math.floor(landing/w.width);
+    resident.development!.values.community=90;
+    resident.work=undefined;
+    w.year++;
+    advanceEconomy(w);
+    expect(w.tiles[resident.y*w.width+resident.x].biome).not.toBe('water');
+    expect(new Set(w.agents.map(a=>a.y*w.width+a.x)).size).toBe(w.agents.length);
+  });
+
   it('completes a voyage through real yearly survival and settlement simulation',()=>{
     const scenario=coastalWorld();
     let {w}=scenario;
