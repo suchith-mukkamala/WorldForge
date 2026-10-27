@@ -1,0 +1,67 @@
+/* Evolution Lab v0.2.1 — diagnostic readouts */
+.evo-pop-diagnostics{margin:0 0 15px;border-top:2px solid #76bfa6}
+.evo-diagnostic-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  background:#14223a;border-bottom:1px solid #334e61}
+.evo-diagnostic-overview>div{padding:15px 19px;border-right:1px solid #334558;
+  display:flex;flex-direction:column;gap:8px;min-width:0}
+.evo-diagnostic-overview>div:last-child{border-right:0}
+.evo-diagnostic-overview small{color:#90b1bc;
+  font:9px/1.6 'Space Mono',monospace}
+.evo-diagnostic-overview strong{color:#f4dab0;font:26px/1.2 'Space Mono',monospace}
+.evo-diagnostic-columns{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr)}
+.evo-diagnostic-columns>div{min-width:0}
+.evo-diagnostic-columns>div:first-child{border-right:1px solid #354a60}
+.evo-diagnostic-title{font:9px/1.7 var(--pixel);letter-spacing:.5px;color:#c9e8d9;
+  padding:17px 16px 11px}
+.evo-diagnostic-table-scroll{overflow-x:auto}
+.evo-diagnostic-species table{border-collapse:collapse;width:100%;min-width:545px;
+  color:#d9e6e5;font:11px/1.7 'Space Mono',monospace}
+.evo-diagnostic-species th,.evo-diagnostic-species td{padding:11px 9px;
+  text-align:right;border-bottom:1px solid #2d4256;white-space:nowrap}
+.evo-diagnostic-species thead th{font-size:9px;color:#7e9eae;font-weight:400}
+.evo-diagnostic-species th:first-child,.evo-diagnostic-species td:first-child{
+  text-align:left;padding-left:17px}
+.evo-diagnostic-species tbody th{font-size:11px;font-weight:600}
+.evo-diagnostic-species tbody th i{display:inline-block;width:10px;height:10px;
+  margin-right:9px;vertical-align:middle}
+.evo-diagnostic-species tbody th small{display:block;margin-left:20px;
+  color:#a5c3ae;font:9px/1.7 'Space Mono',monospace}
+.evo-diagnostic-species tbody th small.at-risk{color:#f5b0a7}
+.evo-diagnostic-species tbody td{color:#deecd9}
+.evo-diagnostic-note{padding:11px 17px 18px;margin:0;color:#849eae;
+  font:10px/1.85 'Space Mono',monospace}
+.evo-diagnostic-mortality{background:#142036}
+.evo-diagnostic-cause{padding:9px 16px}
+.evo-diagnostic-cause-heading{display:flex;justify-content:space-between;
+  gap:10px;font:11px/1.6 'Space Mono',monospace;
+  color:#aebfcb;margin-bottom:7px}
+.evo-diagnostic-cause-heading b{color:#e4d5b6}
+.evo-diagnostic-bar{height:7px;border:1px solid #435267;
+  background:#26364d;overflow:hidden;border-radius:2px}
+.evo-diagnostic-bar>div{background:#b8ad9c;height:100%;
+  transition:width .2s ease}
+.evo-diagnostic-cause:nth-child(3) .evo-diagnostic-bar>div{background:#e8a79f}
+.evo-diagnostic-cause:nth-child(4) .evo-diagnostic-bar>div{background:#c68b9e}
+.evo-diagnostic-cause:nth-child(5) .evo-diagnostic-bar>div{background:#a2acc1}
+.evo-diagnostic-extra{display:flex;justify-content:space-between;gap:12px;
+  padding:12px 17px;border-top:1px solid #33475b;margin-top:11px;
+  color:#a9bbbc;font:10px/1.6 'Space Mono',monospace}
+.evo-diagnostic-extra strong{color:#f7d5b3}
+.evo-diagnostic-legend{border-top:1px solid #364e64;padding:13px 16px;
+  color:#96b2ad;background:#1c2a39;font:10px/1.8 'Space Mono',monospace}
+.evo-diagnostic-legend i{display:inline-block;width:7px;height:7px;
+  margin-right:6px;background:#8cd6b1;border-radius:50%}
+@media(max-width:1100px){
+  .evo-diagnostic-columns{grid-template-columns:1fr}
+  .evo-diagnostic-columns>div:first-child{border-right:0;
+    border-bottom:1px solid #394c64}
+}
+@media(max-width:550px){
+  .evo-diagnostic-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-diagnostic-overview>div{padding:11px}
+  .evo-diagnostic-overview strong{font-size:21px}
+  .evo-diagnostic-title{font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .evo-diagnostic-bar>div{transition:none}
+}

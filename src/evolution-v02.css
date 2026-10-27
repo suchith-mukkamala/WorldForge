@@ -1,0 +1,156 @@
+/* Evolution Lab v0.2 — broad worlds, tiny inhabitants, family histories */
+.evo-lab-tabs button{padding:10px clamp(7px,1.2vw,15px)}
+.evo-stats{grid-template-columns:repeat(6,minmax(0,1fr))}
+.evo-playground-layout{grid-template-columns:minmax(0,1fr) 320px}
+.evo-map-scroll{max-height:min(72vh,850px);min-height:420px;
+  background:#101827;
+  background-image:linear-gradient(90deg,#ffffff04 1px,transparent 1px),
+    linear-gradient(#ffffff04 1px,transparent 1px);
+  background-size:32px 32px}
+.evo-world-canvas{image-rendering:pixelated;image-rendering:crisp-edges}
+.evo-map-heading strong:after{content:" · WIDE WORLD";font:8px 'Space Mono',monospace;
+  margin-left:9px;color:#8cdeb9}
+.evo-inspector-heritage{padding:11px 0 13px;border-top:1px solid #334e60;
+  color:#c5e8dc;font:10px/1.8 'Space Mono',monospace}
+.evo-inspector-heritage strong{display:block;margin-bottom:8px}
+.evo-inspector-heritage small{display:block;color:#efcfa0;margin-top:7px}
+.evo-ancestry-bar{display:flex;height:12px;width:100%;
+  overflow:hidden;background:#273348;border:1px solid #576c75;box-sizing:border-box}
+.evo-ancestry-bar>*{display:block;flex-shrink:0;min-width:0;height:100%}
+.evo-ancestry-open{cursor:pointer;display:block;width:100%;
+  margin:0 0 14px;padding:12px 8px;border:1px solid #b18ea7;
+  color:#f8d9e8;background:#4a3044;font:bold 10px/1.8 'Space Mono',monospace}
+.evo-ancestry-open:hover{background:#68465b}
+.evo-hybrid-toggle{display:flex!important;flex-direction:row!important;
+  align-items:flex-start;gap:13px;padding:12px;border:1px solid #665f78;
+  background:#24263b}
+.evo-hybrid-toggle input{margin:3px 0 0;accent-color:#bf8bdb;flex:0 0 auto;
+  width:17px;height:17px}
+.evo-hybrid-toggle span{display:flex;flex-direction:column;gap:7px}
+.evo-hybrid-toggle b{font-size:10px;color:#f1d4e9}
+.evo-hybrid-toggle small{font:10px/1.8 'Space Mono',monospace;color:#aeb0c9}
+.evo-family-page{max-width:1710px;margin:auto;
+  padding:clamp(13px,2vw,30px);min-height:calc(100vh - 150px)}
+.evo-family-summary{display:flex;gap:8px;flex-wrap:wrap}
+.evo-family-summary span{padding:10px;border:1px solid #495c70;
+  color:#aab6c6;background:#172438;font:10px/1.7 'Space Mono',monospace}
+.evo-family-summary b{color:#efcea7;font-size:15px;margin-right:4px}
+.evo-family-layout{display:grid;grid-template-columns:minmax(220px,285px) minmax(0,1fr);
+  gap:14px;align-items:start}
+.evo-family-chooser{position:sticky;top:10px}
+.evo-family-detail{display:flex;flex-direction:column;gap:14px;min-width:0}
+.evo-family-search{display:flex;flex-direction:column;gap:8px;padding:16px;
+  color:#9cbfcb;font:10px/1.6 'Space Mono',monospace}
+.evo-family-search input{min-width:0;width:100%;box-sizing:border-box;
+  background:#0b182c;border:1px solid #52667e;color:#f3efdf;
+  padding:11px;font:11px/1.6 'Space Mono',monospace}
+.evo-family-results{max-height:min(63vh,620px);overflow:auto;padding:0 10px 12px}
+.evo-family-person{display:flex;text-align:left;align-items:center;gap:9px;
+  min-width:0;min-height:65px;width:100%;background:#1a2a3e;
+  color:#dbe2e5;border:1px solid #41566d;padding:9px;
+  cursor:pointer;transition:border-color .12s,background .12s}
+.evo-family-person:hover{background:#294051;border-color:#cdb28f}
+.evo-family-person.selected{background:#25443f;border-color:#96e4bf;
+  box-shadow:inset 0 0 0 1px #96e4bf69}
+.evo-family-person.compact{min-height:55px;padding:7px}
+.evo-family-person.missing{cursor:default;display:flex;flex-direction:column;
+  gap:4px;justify-content:center;color:#6d849c;background:#111c2d;
+  border-style:dashed;font:11px/1.5 'Space Mono',monospace}
+.evo-family-person.missing span{font-size:18px}
+.evo-family-person.missing small{font-size:9px}
+.evo-family-avatar{display:block;width:11px;height:11px;
+  border:2px solid #0e2032;box-shadow:0 0 9px currentColor;flex:0 0 auto}
+.evo-family-person-text{display:flex;flex-direction:column;gap:5px;min-width:0}
+.evo-family-person-text strong{overflow-wrap:anywhere;color:#d9eadc;
+  font:10px/1.5 'Space Mono',monospace}
+.evo-family-person-text small{color:#96aebe;
+  font:9px/1.7 'Space Mono',monospace}
+.evo-family-help,.evo-family-note{color:#859fb2;font:10px/1.9 'Space Mono',monospace;
+  margin:0;padding:13px 11px}
+.evo-family-note{border-top:1px solid #31465d;color:#8097ae;background:#152139}
+.evo-family-headline{display:flex;align-items:center;gap:19px;flex-wrap:wrap;
+  padding:22px 23px;border-bottom:1px solid #334a61}
+.evo-family-emblem{width:75px;height:75px;flex:0 0 auto;display:grid;
+  place-items:center;border:2px solid currentColor;background:#263242;
+  box-shadow:5px 5px 0 #090f1b;font:bold 39px/1 monospace;
+  text-shadow:0 0 14px currentColor}
+.evo-family-headline>div{flex:1;min-width:180px}
+.evo-family-headline h3{font:clamp(12px,1.3vw,17px)/1.8 var(--pixel);
+  color:#f1ecdb;margin:7px 0}
+.evo-family-headline p{margin:0;color:#9dacbd;
+  font:11px/1.8 'Space Mono',monospace}
+.evo-family-map-link{cursor:pointer;padding:13px 14px;
+  border:1px solid #66a49d;background:#1b3b42;color:#d9ffee;
+  font:bold 10px/1.6 'Space Mono',monospace}
+.evo-family-map-link:hover{background:#2b6266}
+.evo-family-traits{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  padding:17px 19px;gap:8px}
+.evo-family-traits>div{display:flex;flex-direction:column;gap:8px;
+  padding:13px;background:#17273c;border:1px solid #3a5264}
+.evo-family-traits small{color:#92aeb7;font:9px/1.7 'Space Mono',monospace}
+.evo-family-traits strong{color:#fae4b7;font:20px/1 monospace}
+.evo-ancestry-heading{display:flex;justify-content:space-between;gap:8px;
+  padding:6px 20px 12px;font:10px/1.6 'Space Mono',monospace;color:#c9ddd9}
+.evo-ancestry-heading span{color:#ecd2a5}
+.evo-family-highlight>.evo-ancestry-bar{width:calc(100% - 40px);
+  margin:0 20px;height:20px}
+.evo-ancestry-legend{display:flex;gap:17px;flex-wrap:wrap;padding:13px 20px 22px}
+.evo-ancestry-legend span{display:flex;align-items:center;gap:6px;
+  color:#9cb5c2;font:10px/1.7 'Space Mono',monospace}
+.evo-ancestry-legend i{width:9px;height:9px;display:inline-block}
+.evo-ancestry-legend b{color:#e9edeb}
+.evo-family-tree{padding:23px 19px 29px}
+.evo-family-tree-level{display:grid;gap:10px;justify-content:center}
+.evo-family-tree-level.grandparents{grid-template-columns:repeat(4,minmax(0,1fr))}
+.evo-family-tree-level.parents{grid-template-columns:repeat(2,minmax(0,270px))}
+.evo-family-tree-level.center{grid-template-columns:minmax(0,340px)}
+.evo-family-tree-level.children{grid-template-columns:repeat(3,minmax(0,1fr))}
+.evo-family-tree-line{display:block;color:#bd9e91;text-align:center;
+  font:24px/1.5 monospace;padding:7px}
+.evo-family-more{display:block;margin:16px auto 0;padding:10px;
+  border:1px solid #7682a0;background:#263448;color:#e6e3dc;
+  cursor:pointer;font:10px/1.6 'Space Mono',monospace}
+.evo-family-secondary{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.evo-family-bond{display:flex;align-items:center;gap:9px;
+  padding:10px;border-bottom:1px solid #304658}
+.evo-family-bond>span{color:#f3adce;font:26px monospace}
+.evo-family-bond>div{flex:1;min-width:0}
+.evo-family-bond .evo-family-person{width:100%}
+.evo-family-bond small{display:block;padding:6px 0;color:#9ba9b8;
+  font:9px/1.8 'Space Mono',monospace}
+.evo-family-secondary .evo-section-card>.evo-family-person{margin:6px 0}
+@media(max-width:1340px){
+  .evo-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .evo-playground-layout{grid-template-columns:minmax(0,1fr) 285px}
+  .evo-family-layout{grid-template-columns:minmax(200px,245px) minmax(0,1fr)}
+  .evo-family-tree-level.grandparents{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:1040px){
+  .evo-playground-layout{grid-template-columns:1fr}
+  .evo-family-layout{grid-template-columns:1fr}
+  .evo-family-chooser{position:static}
+  .evo-family-results{max-height:190px}
+  .evo-family-secondary{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:770px){
+  .evo-lab-tabs{overflow-x:auto;justify-content:flex-start}
+  .evo-lab-tabs button{flex:0 0 auto;white-space:nowrap}
+  .evo-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-family-traits{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-family-secondary{grid-template-columns:1fr}
+  .evo-family-tree-level.children{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-family-tree-level.grandparents{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-family-headline{padding:15px}
+}
+@media(max-width:480px){
+  .evo-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-family-page{padding:12px 8px}
+  .evo-family-traits{gap:5px;padding:10px}
+  .evo-family-traits>div{padding:10px}
+  .evo-family-tree{padding:13px 7px}
+  .evo-family-tree-level.parents,.evo-family-tree-level.grandparents,
+  .evo-family-tree-level.children{grid-template-columns:1fr 1fr}
+  .evo-family-person{padding:6px}
+  .evo-family-person-text small{font-size:8px}
+  .evo-family-person-text strong{font-size:9px}
+}

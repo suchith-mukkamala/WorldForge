@@ -1,0 +1,50 @@
+/* Lab 04 v0.6: powers deliberately use the same visual language as People. */
+.evo-divine-page{max-width:1420px;margin:0 auto;padding:26px 24px 50px;color:var(--evo-text,#e5e8f4)}
+.evo-divine-mode{display:flex;flex-direction:column;align-items:flex-end;gap:7px;padding:14px 16px;
+  color:#ecd6a1;background:#57462c22;border:1px solid #c9a76655;border-radius:12px}
+.evo-divine-mode strong{letter-spacing:.09em;font-size:.79rem}
+.evo-divine-mode span{font-size:.76rem;opacity:.78}
+.evo-divine-target,.evo-divine-chronicle{margin-top:18px}
+.evo-divine-target>label,.evo-divine-panel>label{display:block;margin:13px 0 6px;
+  font-size:.71rem;letter-spacing:.08em;color:#a8b2d1;font-weight:750}
+.evo-divine-inline{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.evo-divine-inline select{flex:1 1 300px;min-width:150px}
+.evo-divine-inline button{white-space:nowrap}
+.evo-divine-page :is(select,input,textarea){border:1px solid #65739888;border-radius:8px;
+  padding:10px 11px;background:#151d32;color:#f0f2ff;max-width:100%;font:inherit}
+.evo-divine-page button{border:1px solid #7b8bbb66;border-radius:9px;padding:10px 13px;
+  color:#e9efff;background:#2b3551;cursor:pointer}
+.evo-divine-page button:disabled{opacity:.43;cursor:not-allowed}
+.evo-divine-page button:not(:disabled):hover{border-color:#b7c4ef}
+.evo-divine-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}
+.evo-divine-panel{display:flex;flex-direction:column;min-width:0}
+.evo-divine-panel p,.evo-divine-chronicle>p{color:#acb9d0;font-size:.85rem;line-height:1.65}
+.evo-divine-panel>select,.evo-divine-panel>textarea,.evo-divine-panel>input{width:100%}
+.evo-divine-panel>textarea{resize:vertical;min-height:80px}
+.evo-divine-panel .evo-divine-submit{width:100%;margin-top:auto;transform:translateY(12px);
+  color:#211f32;background:linear-gradient(125deg,#f0d39a,#caa7f1);font-weight:850;
+  letter-spacing:.055em;border-color:#e2caf2}
+.evo-divine-coordinates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.evo-divine-coordinates label{display:flex;align-items:center;gap:8px;font-size:.75rem}
+.evo-divine-coordinates input{width:100%;min-width:0}
+.evo-divine-caption{font-size:.8rem;color:#aebcdb;margin:9px 0 0}
+.evo-divine-chronicle-list{max-height:500px;overflow-y:auto;display:grid;gap:8px}
+.evo-divine-entry{border:1px solid #7784a340;border-radius:10px;overflow:hidden}
+.evo-divine-entry>button{width:100%;text-align:left;display:flex;flex-direction:column;align-items:start;
+  gap:5px;background:#182338;border:none;border-radius:0}
+.evo-divine-entry>button span{color:#f3cf93;font-size:.72rem;letter-spacing:.065em}
+.evo-divine-entry>button strong{font-weight:600}
+.evo-divine-entry>button small{color:#a8b8d6;font-size:.7rem}
+.evo-divine-cultures{background:#1f2d45;padding:12px 16px}
+.evo-divine-cultures p{margin:6px 0;color:#c3cfe1;font-size:.79rem;line-height:1.55}
+.evo-divine-cultures b{color:#f0d9b2}
+.evo-divine-cultures button{margin-top:9px}
+.evo-divine-profile{display:flex;flex-wrap:wrap;gap:8px;padding:14px}
+.evo-divine-profile>span{padding:7px 9px;border-radius:8px;background:#8463ab22;
+  color:#e7cbff;border:1px solid #a27ac355;font-size:.79rem}
+.evo-divine-profile-history{padding:0 15px 13px;color:#c6d0e4;font-size:.78rem}
+.evo-divine-profile-history p{margin:6px 0}
+@media(max-width:1000px){.evo-divine-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){.evo-divine-page{padding:16px 10px}.evo-divine-grid{grid-template-columns:1fr}
+  .evo-divine-mode{align-items:flex-start}.evo-divine-inline{flex-direction:column;align-items:stretch}
+  .evo-divine-inline select{flex-basis:auto;width:100%}}

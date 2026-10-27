@@ -1,0 +1,19 @@
+/* Evolution Lab v0.4 — readable decisions and remembered experiences. */
+.evo-mind-status{padding:12px 13px;margin:8px 0 14px;
+  border:1px solid #557c76;background:#162e32;
+  display:flex;flex-direction:column;gap:5px}
+.evo-mind-status small{font:8px/1.7 var(--pixel);color:#88b9af}
+.evo-mind-status strong{font:12px/1.6 'Space Mono',monospace;color:#d0efbc}
+.evo-mind-status p{margin:0;color:#9abdbb;
+  font:10px/1.7 'Space Mono',monospace}
+.evo-mind-profile-body{padding:18px 20px;display:flex;
+  flex-direction:column;gap:9px}
+.evo-mind-profile-body h3{font:16px/1.6 'Space Mono',monospace;
+  color:#ccecb9;margin:0}
+.evo-mind-profile-body p{margin:0;color:#c9d7ce;
+  font:11px/1.8 'Space Mono',monospace}
+.evo-mind-profile-body small{color:#96b1ad;
+  font:10px/1.75 'Space Mono',monospace}
+.evo-pop-cap-note{margin:10px 16px 15px;padding:12px;
+  border:1px solid #806c4c;background:#332a24;color:#decfa7;
+  font:10px/1.8 'Space Mono',monospace}

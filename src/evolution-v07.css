@@ -1,0 +1,70 @@
+/* Evolution Lab 0.7 — settlements are viewed, never simulated, by this UI. */
+.evo-app { min-height: 100vh; }
+.evo-settlement-page{max-width:1510px;padding:24px;margin:0 auto;color:#e3e9f7}
+.evo-city-header-stat{background:#d0a76618;border:1px solid #d0a7665c;
+  padding:14px 20px;border-radius:13px;display:flex;align-items:center;gap:10px}
+.evo-city-header-stat b{font-size:1.6rem;color:#efcc90}
+.evo-city-header-stat span{font-size:.75rem;color:#bdc8dd}
+.evo-city-header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.evo-city-header-actions button{background:#374461;color:#f0e9d8;border:1px solid #8993aa;
+  border-radius:8px;padding:10px;cursor:pointer}
+.evo-city-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px;margin-top:18px}
+.evo-city-list{align-self:start;min-width:0}
+.evo-city-list-scroll{max-height:700px;overflow:auto;display:grid;gap:5px}
+.evo-city-list-scroll button{border:1px solid #6b789333;background:#202a40;color:#e3e9f7;
+  padding:12px;display:grid;grid-template-columns:26px 1fr;gap:3px 9px;text-align:left;
+  border-radius:9px;cursor:pointer}
+.evo-city-list-scroll button span{grid-row:span 2;font-size:1.4rem;color:#f2c882}
+.evo-city-list-scroll button small{font-size:.69rem;color:#9aaac9}
+.evo-city-list-scroll button.selected{border-color:#efd39b;background:#4a4350}
+.evo-city-detail{min-width:0}
+.evo-city-intro{display:flex;align-items:center;gap:12px;margin:15px 0}
+.evo-city-intro h3{margin:0 0 4px;font-size:1.12rem}
+.evo-city-intro p{margin:0;color:#a3b0c7;font-size:.78rem}
+.evo-city-intro button{margin-left:auto;flex-shrink:0}
+.evo-city-culture{display:grid;place-items:center;color:#e8daf0;font-size:1.3rem;
+  width:51px;height:51px;border-radius:12px;border:1px solid #e2cfb355}
+.evo-city-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0}
+.evo-city-metrics div{background:#1d293e;border:1px solid #64738f48;
+  border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.evo-city-metrics small{font-size:.61rem;color:#a6b3ca;letter-spacing:.075em}
+.evo-city-metrics strong{font-size:1.3rem;color:#f0d59e}
+.evo-city-map-top{display:flex;align-items:center;justify-content:space-between;
+  gap:14px;flex-wrap:wrap;margin:18px 0 8px;font-size:.74rem;letter-spacing:.06em}
+.evo-city-map-top label{display:flex;gap:10px;align-items:center;color:#b7c3d8}
+.evo-city-map-scroll{overflow:auto;max-height:620px;max-width:100%;border-radius:12px;
+  border:1px solid #7688a365;background:#111a2a}
+.evo-city-map-scroll svg{display:block;height:auto;image-rendering:pixelated}
+.evo-city-legend{display:flex;flex-wrap:wrap;gap:14px;padding:11px 2px;
+  font-size:.69rem;color:#b8c8dc}
+.evo-city-stock{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:13px 15px;
+  border:1px solid #7e866e55;border-radius:9px;background:#292f3922;font-size:.76rem}
+.evo-city-stock>strong{color:#ebcd8b;margin-right:8px}
+.evo-city-stock span{color:#aebed6}.evo-city-stock b{color:#f3e8cd}
+.evo-city-buildings{margin-top:20px;border-top:1px solid #64738f55;padding-top:12px}
+.evo-city-buildings h3{font-size:.82rem;letter-spacing:.075em;color:#e2d7ab}
+.evo-city-type-counts{display:flex;gap:7px;flex-wrap:wrap}
+.evo-city-type-counts span{padding:6px 9px;border-radius:16px;border:1px solid #737e9666;
+  background:#26334d;color:#cbd4e6;font-size:.71rem}
+.evo-city-type-counts b{color:#f9d7a4;margin-left:3px}
+.evo-city-building-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px;
+  max-height:360px;overflow:auto}
+.evo-city-building-list button{display:grid;grid-template-columns:1fr auto;gap:6px;
+  text-align:left;border:1px solid #7584a65c;color:#dfe7f8;border-radius:8px;
+  background:#1e293f;padding:10px;cursor:pointer}
+.evo-city-building-list small{color:#a8b5cf;font-size:.68rem}
+.evo-city-building-list progress{grid-column:span 2;width:100%;height:5px;accent-color:#e4b778}
+.evo-city-building-detail{border:1px solid #e2ba715c;background:#483f3530;
+  border-radius:10px;padding:13px;margin-top:14px;font-size:.76rem;color:#cfdaea}
+.evo-city-building-detail strong{font-size:.84rem;color:#f6d798}
+.evo-city-building-detail p{margin:6px 0}
+.evo-city-disclaimer{margin-top:17px;font-size:.75rem;line-height:1.6;color:#99a9c4}
+@media(max-width:900px){.evo-city-layout{grid-template-columns:1fr}
+  .evo-city-list-scroll{max-height:180px;grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.evo-settlement-page{padding:12px 8px}
+  .evo-city-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evo-city-building-list,.evo-city-list-scroll{grid-template-columns:1fr}
+  .evo-city-intro{flex-wrap:wrap}.evo-city-intro button{margin-left:0}}
+.evo-loading-world{display:grid;place-items:center;min-height:55vh;
+  color:#d9c99d;font:13px 'Space Mono',monospace;letter-spacing:.08em}
+.evo-nav-status small{font-size:10px;color:#9ddab9;letter-spacing:0}
