@@ -3,6 +3,7 @@ import {BIOME_INFO,SPECIES_INFO,type Settlement,type World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
   settlementStage,type Building,type RuinSite} from './construction';
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
+import {GOODS,JOBS,JOB_LABELS,stockOf} from './economy';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
   playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
@@ -69,6 +70,11 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
   const buildings=settlement?.infrastructure?.buildings??ruin?.buildings??[];
   const roads=new Set(settlement?.infrastructure?.roads??ruin?.roads??[]);
   const land=new Set(settlement?.infrastructure?.land??[]);
+  const caravans=(world.shipments??[]).flatMap(t=>{
+    const driver=world.agents.find(a=>a.id===t.carrierId);
+    return driver&&Math.abs(driver.x-place.x)<=HALF&&
+      Math.abs(driver.y-place.y)<=HALF?[{shipment:t,driver}]:[];
+  });
   const deposits=new Map((world.deposits??[]).map(d=>[d.index,d]));
   const originX=place.x-HALF,originY=place.y-HALF;
   const allTiles=[];
@@ -106,6 +112,16 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
         Math.abs(b.y-place.y)<=HALF).map(b=><Structure key={b.id} b={b}
         x={(b.x-originX)*CELL} y={(b.y-originY)*CELL}
         selected={chosen===b.id} onSelect={()=>onChoose(b.id)}/>)}
+      {caravans.map(({shipment,driver})=><g key={'caravan-'+shipment.id}
+        transform={`translate(${(driver.x-originX)*CELL+13} ${(driver.y-originY)*CELL+13})`}>
+        <title>{'Caravan #'+shipment.id+' carrying '+shipment.quantity+' '+
+          shipment.good}</title>
+        <rect x={-8} y={-6} width={16} height={12} rx={2}
+          fill="#d9b57d" stroke="#352f3a" strokeWidth={1.7}/>
+        <circle cx={-5} cy={7} r={2.7} fill="#414253"/>
+        <circle cx={5} cy={7} r={2.7} fill="#414253"/>
+        <path d="M-4 -3h8" stroke="#fff1ba" strokeWidth={2}/>
+      </g>)}
     </svg>
   </div>;
 }
@@ -132,12 +148,14 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
   const residents=place?world.agents.filter(a=>Math.max(Math.abs(a.x-place.x),
     Math.abs(a.y-place.y))<=7):[];
   const homes=world.households?.filter(h=>h.residence?.settlementId===place?.id).length??0;
+  const localShipments=(world.shipments??[]).filter(t=>
+    t.originId===place?.id||t.destinationId===place?.id);
   return <main className="evo-settlement-page">
     <header className="evo-section-header">
       <div><span className="evo-overline">WORLDFORGE / BUILT BY THE PEOPLE</span>
         <h2>Living Settlements</h2>
-        <p>Watch inhabitants gather materials, choose sites, build homes, and
-          leave roads or ruins behind. Every year advances off-screen.</p></div>
+        <p>Watch people choose work, grow food, trade scarce goods, build homes,
+          and leave roads or ruins behind. Every year advances off-screen.</p></div>
       <div className="evo-city-header-actions">
         <div className="evo-city-header-stat"><b>{world.settlements.length}</b>
           <span>living settlements</span></div>
@@ -187,6 +205,39 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
               ruin?.roads.length??0}</strong></div>
             <div><small>OWNED LAND TILES</small><strong>{place?.infrastructure?.land.length??0}</strong></div>
           </div>
+          {place?.economy&&<section className="evo-economy-panel" aria-label="Settlement economy">
+            <div className="evo-economy-heading"><h3>WORK, PROVISIONS & TRADE</h3>
+              <span>Economy advances with the world, even off-screen.</span></div>
+            <div className="evo-economy-metrics">
+              <div><small>STORED FOOD</small><strong>{place.economy.food.toFixed(1)}</strong></div>
+              <div><small>TOOLS</small><strong>{place.economy.tools.toFixed(1)}</strong></div>
+              <div><small>COMMUNITY COINS</small><strong>{place.economy.coins.toFixed(1)}</strong></div>
+              <div><small>GROWN / EATEN</small><strong>{place.economy.produced.toFixed(1)} /
+                {place.economy.consumed.toFixed(1)}</strong></div>
+              <div><small>IMPORTS / EXPORTS</small><strong>{place.economy.imports} /
+                {place.economy.exports}</strong></div>
+            </div>
+            <div className="evo-economy-workers"><strong>WORKFORCE</strong>
+              {JOBS.map(job=><span key={job}>{JOB_LABELS[job]} <b>
+                {place.economy!.jobs[job]}</b></span>)}
+            </div>
+            <div className="evo-economy-scarcity"><strong>MARKET & SHORTAGES</strong>
+              {place.economy.shortages.length?<p>Scarce:
+                {' '+place.economy.shortages.join(', ')}</p>:
+                <p>No acute shortages reported.</p>}
+              <div>{GOODS.map(g=><span key={g} className={place.economy!.shortages.includes(g)?
+                'scarce':''}>{g.toUpperCase()} <b>{stockOf(place,g).toFixed(1)}</b>
+                <small> · {place.economy!.prices[g].toFixed(2)} coins</small></span>)}</div>
+            </div>
+            <div className="evo-economy-caravans"><strong>CARAVANS IN TRANSIT</strong>
+              {localShipments.length?localShipments.map(t=><p key={t.id}>
+                #{t.id} · {t.quantity} {t.good} ·
+                {world.settlements.find(s=>s.id===t.originId)?.name??'Lost settlement'} →
+                {world.settlements.find(s=>s.id===t.destinationId)?.name??'Lost settlement'}
+                {' · '+Math.round(t.progress/Math.max(1,t.route.length-1)*100)+'% of route'}
+              </p>):<p>No active caravans.</p>}
+            </div>
+          </section>}
           <div className="evo-city-map-top"><strong>LOCAL VIEW · REAL BUILDING LOCATIONS</strong>
             <label htmlFor="evo-city-zoom">MAP ZOOM <input id="evo-city-zoom"
               type="range" min={1} max={2.5} step={.25} value={zoom}
@@ -195,7 +246,8 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
             chosen={chosenBuilding} onChoose={setChosenBuilding} zoom={zoom}/>
           <div className="evo-city-legend"><span>▧ Owned land</span>
             <span>━ Worn paths</span><span>▤ Buildings</span>
-            <span>⚒ Scaffolding / progress</span><span>● Trees & minerals</span></div>
+            <span>⚒ Scaffolding / progress</span><span>● Trees & minerals</span>
+            <span>▣ Traveling caravans</span></div>
           {place?.infrastructure&&<div className="evo-city-stock">
             <strong>COLLECTED MATERIALS & ORES</strong>
             {(['wood','stone','clay'] as const).map(m=><span key={m}>

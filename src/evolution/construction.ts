@@ -107,9 +107,10 @@ export function prepareInfrastructure(w:World):void{
 function willingBuilders(w:World,s:Settlement,residents:Agent[]):Agent[]{
   return residents.filter(a=>a.age>=traitProfile(a.ancestry).maturity&&
     a.energy>=58&&a.health>=48&&
+    (s.economy?a.work?.job==='builder'&&a.work.settlementId===s.id:
     (a.mind?.goal==='build'||a.development?.career==='artisan'||
       ((a.id*13+w.year)%7===0&&
-        (a.development?.values.community??50)>=43))); 
+        (a.development?.values.community??50)>=43))));
 }
 
 /** Population needs and the preferences of actual residents select projects. */
@@ -129,7 +130,8 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
     shelter:count('shelter')+count('house')===0?18:0,
     house:homeNeed?Math.min(22,6+homeNeed*2.1):0,
     farm:count('farm')<farmTarget?
-      Math.min(16,5+(farmTarget-count('farm'))*2+(s.stores<25?3:0)):0,
+      Math.min(20,5+(farmTarget-count('farm'))*2+
+        (s.economy?.shortages.includes('food')?8:s.stores<25?3:0)):0,
     storage:count('storage')<Math.max(1,Math.ceil(s.population/55))?8:0,
     well:count('well')<Math.max(1,Math.ceil(s.population/35))?10:0,
     workshop:adultCount>=5&&count('workshop')<Math.max(1,Math.ceil(adultCount/40))?9:0,
@@ -187,6 +189,9 @@ function beginProject(w:World,s:Settlement,residents:Agent[]):void{
   if(i.stock.wood+i.stock.stone+i.stock.clay<3)return;
   const type=chooseProject(w,s,residents);
   if(!type)return;
+  // Severe food shortages draw available labor toward survival, not luxuries.
+  if(s.economy?.shortages.includes('food')&&
+    !['farm','shelter','house','well'].includes(type)&&s.economy.food<4)return;
   const at=chooseLocation(w,s,type);
   if(!at)return;
   const b:Building={id:i.nextBuildingId++,type,x:at.x,y:at.y,
@@ -209,9 +214,11 @@ function gather(w:World,s:Settlement,residents:Agent[],
     complete(b)&&b.type==='storage').length*55);
   const workers=residents.filter(a=>
     a.age>=traitProfile(a.ancestry).maturity&&a.energy>=54&&
+    (s.economy? a.work?.settlementId===s.id&&
+      (a.work.job==='woodcutter'||a.work.job==='miner'):
     (['forager','scout','artisan'].includes(a.development?.career??'')||
       (a.development?.values.community??50)>55&&
-        (a.id*11+w.year)%5===0))
+        (a.id*11+w.year)%5===0)))
     .sort((a,b)=>((a.id+w.year*13)%997)-((b.id+w.year*13)%997))
     .slice(0,Math.min(48,16+i.buildings.filter(b=>complete(b)&&
       b.type==='storage').length*8));
@@ -219,6 +226,10 @@ function gather(w:World,s:Settlement,residents:Agent[],
     let best:ResourceDeposit|undefined,bestScore=-Infinity;
     for(const d of candidates){
       if(d.amount<=.05)continue;
+      if(s.economy&&a.work?.job==='woodcutter'&&
+        !['tree','clay'].includes(d.kind))continue;
+      if(s.economy&&a.work?.job==='miner'&&
+        ['tree','clay'].includes(d.kind))continue;
       const at={x:d.index%w.width,y:Math.floor(d.index/w.width)};
       const proximity=distance(a,at);
       if(proximity>5)continue;
@@ -259,7 +270,10 @@ function build(w:World,s:Settlement,residents:Agent[]):void{
     if(!crew.length)continue; // Nobody builds remotely from the town center.
     const laborPool=crew.reduce((total,a)=>total+
       (a.mind?.goal==='build'?1.65:.7)+
-      (a.development?.skills.craft??0)*.018,0)*(workshop?1.3:1);
+      (a.development?.skills.craft??0)*.018,0)*(workshop?1.3:1)*
+      ((s.economy?.tools??0)>=.1?1.18:1);
+    if(s.economy&&s.economy.tools>=.1)
+      s.economy.tools=round(Math.max(0,s.economy.tools-.12));
     for(const worker of crew){
       employed.add(worker.id);
       worker.energy=round(Math.max(1,worker.energy-

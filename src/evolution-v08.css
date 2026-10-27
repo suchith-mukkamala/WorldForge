@@ -1,0 +1,28 @@
+/* v0.8 — economic work is observable without changing the world simulation. */
+.evo-economy-panel{padding:18px;border:1px solid #6b9d8a65;
+  border-radius:12px;background:linear-gradient(135deg,#18323b,#1c233c);
+  margin:18px 0;color:#dce8e5}
+.evo-economy-heading{display:flex;justify-content:space-between;align-items:center;
+  gap:12px;flex-wrap:wrap;margin-bottom:15px}
+.evo-economy-heading h3{margin:0;font-size:.82rem;letter-spacing:.09em;color:#f2d9aa}
+.evo-economy-heading span{font-size:.69rem;color:#a4bfb7}
+.evo-economy-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.evo-economy-metrics div{min-width:0;padding:11px;background:#121f30;border:1px solid #58737f55;
+  border-radius:8px;display:flex;flex-direction:column;gap:8px}
+.evo-economy-metrics small{color:#9fbcb7;font-size:.62rem}
+.evo-economy-metrics strong{font-size:1.1rem;color:#d5edc5;overflow-wrap:anywhere}
+.evo-economy-workers,.evo-economy-scarcity,.evo-economy-caravans{
+  margin-top:14px;padding-top:13px;border-top:1px solid #719c9550;font-size:.72rem}
+.evo-economy-workers{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.evo-economy-workers>strong,.evo-economy-scarcity>strong,
+.evo-economy-caravans>strong{color:#f4d8a5;font-size:.7rem;letter-spacing:.06em}
+.evo-economy-workers span,.evo-economy-scarcity span{padding:6px 9px;
+  background:#273e4b;border:1px solid #6c8b8d60;border-radius:6px;color:#cfdbdc}
+.evo-economy-workers b,.evo-economy-scarcity b{color:#dff3c0}
+.evo-economy-scarcity p,.evo-economy-caravans p{margin:9px 0;
+  color:#b8c9d1;line-height:1.7}
+.evo-economy-scarcity>div{display:flex;gap:7px;flex-wrap:wrap}
+.evo-economy-scarcity span.scarce{border-color:#d49a7d;background:#58363b;color:#ffe0c8}
+.evo-economy-scarcity small{color:#acbebf}
+@media(max-width:1000px){.evo-economy-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.evo-economy-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}

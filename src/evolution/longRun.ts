@@ -37,14 +37,23 @@ async function run(){
   const farms=structures.filter(b=>b.type==='farm').length;
   const houses=structures.filter(b=>b.type==='house').length;
   const communal=structures.filter(b=>b.type==='communal').length;
+  const exports=populated.settlements.reduce((n,s)=>n+(s.economy?.exports??0),0);
+  const food=populated.settlements.reduce((n,s)=>n+(s.economy?.food??0),0);
+  const workers=populated.settlements.reduce((n,s)=>n+
+    Object.values(s.economy?.jobs??{}).reduce((a,b)=>a+b,0),0);
   check(populated.agents.length>850,'populations may rise above the former limit');
   check(isWorld(populated),'populated world is valid at year 250');
   check(houses>0&&communal>0,'construction diversifies beyond farms');
   check(farms<houses*4+10,'farm overproduction stays controlled');
+  check(workers>0,'inhabitants continue participating in useful work');
+  check(food>0,'economic food stock exists after sustained farming');
+  check(exports>0,'caravans complete at least one genuine inter-settlement delivery');
   check(readSavedWorld(compactWorld(populated))!==null,
     'uncapped world can be exported and imported');
   console.log('250-year uncapped stress test passed:',JSON.stringify({
     people:populated.agents.length,species:population(populated),
-    settlements:populated.settlements.length,farms,houses,communal}));
+    settlements:populated.settlements.length,farms,houses,communal,
+    employed:workers,storedFood:Math.round(food),completedExports:exports,
+    travelling:populated.shipments?.length??0}));
 }
 await run();

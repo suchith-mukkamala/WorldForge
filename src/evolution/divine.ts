@@ -7,6 +7,7 @@ import {appendLifeMoment,makeLifeRecord} from './identity';
 import {initialDevelopment} from './development';
 import {initialMind} from './mind';
 import {editDeposit} from './resources';
+import {reconcileTradeTerrain} from './economy';
 
 export const DIVINE_ASPECTS=['health','lifespan','intelligence','fertility',
   'skill_growth','luck','courage','social'] as const;
@@ -214,6 +215,7 @@ export function intervene(previous:World,action:DivineAction):World{
     if(food===undefined)throw Error('Unknown terrain type.');
     w.tiles[idx]={biome:action.biome,food:food*w.settings.resourceLevel};
     editDeposit(w,idx);
+    reconcileTradeTerrain(w,idx);
     record(w,id,'terrain','Transformed terrain at '+action.x+', '+action.y+
       ' into '+action.biome+'.');
   }
