@@ -3,10 +3,11 @@ import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
+import {paintBuilding,paintDeposit,paintPerson,paintTerrain,spriteKey,
+  PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
-const hex=(n:number)=>Math.abs(Math.imul(n,16807))>>>0;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,
@@ -16,32 +17,17 @@ export function WorldCanvas({
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;zoom?:number;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
+  const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
     const W=world.width,H=world.height;
     ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.imageSmoothingEnabled=false;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
-      const px=x*CELL,py=y*CELL,h=hex((x+5)*73+(y+11)*317+world.settings.seed);
-      ctx.fillStyle=biome.color;ctx.fillRect(px,py,CELL,CELL);
-      // Small textures preserve geographic scale even in 320×208 worlds.
-      if(tile.biome==='forest'){
-        ctx.fillStyle=h%3===0?'#43836b':'#32705c';
-        ctx.fillRect(px+(h%3)+1,py+((h>>>4)%3)+1,2,2);
-      }else if(tile.biome==='mountain'){
-        ctx.fillStyle='#a2a8bb';ctx.fillRect(px+1+(h%2),py+1,3,1);
-      }else if(tile.biome==='cave'){
-        ctx.fillStyle='#111829';ctx.fillRect(px+2,py+2,3,3);
-      }else if(tile.biome==='water'){
-        ctx.fillStyle='#377698';ctx.fillRect(px+(h%3),py+3,3,1);
-      }else if(tile.biome==='volcanic'){
-        ctx.fillStyle='#d68170';ctx.fillRect(px+2,py+2,2,2);
-      }else if(tile.biome==='plains'){
-        ctx.fillStyle='#86a07c';ctx.fillRect(px+(h%4),py+1,1,1);
-      }else if(tile.biome==='wasteland'){
-        ctx.fillStyle='#a97882';ctx.fillRect(px+(h%4),py+4,2,1);
-      }
+      const px=x*CELL,py=y*CELL;
+      paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
       if(overlay==='resources'&&tile.biome!=='water'){
         const fullness=Math.min(1,tile.food/Math.max(1,biome.food*world.settings.resourceLevel));
         ctx.fillStyle=fullness>.66?'rgba(117,255,176,.34)':
@@ -53,12 +39,7 @@ export function WorldCanvas({
       for(const d of world.deposits??[]){
         const x=d.index%W,y=Math.floor(d.index/W),px=x*CELL,py=y*CELL;
         if(d.amount<.1)continue;
-        ctx.fillStyle=RESOURCE_COLORS[d.kind];
-        if(d.kind==='tree'){
-          ctx.fillRect(px+2,py,2,5);ctx.fillRect(px+1,py+2,4,2);
-        }else{
-          ctx.fillRect(px+1,py+3,4,2);ctx.fillRect(px+2,py+1,2,2);
-        }
+        paintDeposit(ctx,d.kind,x,y,d.amount,d.capacity);
         if(overlay==='deposits'){
           ctx.fillStyle='rgba(8,14,27,.8)';
           ctx.fillRect(px,py+5,6,1);
@@ -95,45 +76,67 @@ export function WorldCanvas({
       ctx.fillRect(x*CELL+4,y*CELL+2,1,3);
     }
     for(const ruin of world.ruins??[]){
-      ctx.fillStyle='#b5a4ae';ctx.fillRect(ruin.x*CELL-1,ruin.y*CELL-2,8,6);
-      ctx.fillStyle='#272b3e';ctx.fillRect(ruin.x*CELL+2,ruin.y*CELL-1,4,4);
+      const x=ruin.x*CELL,y=ruin.y*CELL;
+      ctx.fillStyle='#343648';ctx.fillRect(x-2,y+2,10,4);
+      ctx.fillStyle='#ad9b9c';ctx.fillRect(x-1,y,3,4);
+      ctx.fillRect(x+4,y+1,3,3);ctx.fillStyle='#605969';
+      ctx.fillRect(x+1,y+4,4,2);
     }
     for(const s of world.settlements){
       const px=s.x*CELL,py=s.y*CELL;
       const stage=settlementStage(s),size={encampment:8,hamlet:10,
         village:12,town:14,city:16}[stage];
-      ctx.fillStyle='#f6d7a5';ctx.fillRect(px-2,py-3,size,size);
-      ctx.fillStyle=ARCHITECTURE[s.species].roof;
-      ctx.fillRect(px-1,py-2,size-2,size-2);
+      const roof=ARCHITECTURE[s.species].roof;
+      ctx.fillStyle='#222b3c';ctx.fillRect(px-3,py-3,size+2,size+2);
+      ctx.fillStyle='#e2c598';ctx.fillRect(px-2,py-2,size,size);
+      ctx.fillStyle=roof;ctx.fillRect(px-2,py-4,size,4);
+      ctx.fillStyle=ARCHITECTURE[s.species].wall;
+      ctx.fillRect(px,py,Math.max(3,size-4),Math.max(3,size-4));
+      ctx.fillStyle='#342e40';ctx.fillRect(px+2,py+size-6,3,4);
       ctx.fillStyle=SPECIES_INFO[s.species].color;
-      ctx.fillRect(px+2,py+1,Math.max(2,size-7),Math.max(2,size-7));
-      ctx.fillStyle='#f7dea1';ctx.fillRect(px,py-4,size-3,2);
+      ctx.fillRect(px+size-5,py+1,2,2);
+      if(stage==='village'||stage==='town'||stage==='city'){
+        ctx.fillStyle='#f5e0b1';ctx.fillRect(px,py-5,size-3,1);
+        ctx.fillStyle='#d3b78a';ctx.fillRect(px+size-6,py-7,3,5);
+      }
       if(stage==='town'||stage==='city'){
-        ctx.fillStyle='#f5e5bb';ctx.fillRect(px+size-5,py-7,3,5);
+        ctx.fillStyle='#f5e5bb';ctx.fillRect(px+size-6,py-9,3,3);
+        if(stage==='city'){
+          ctx.fillStyle=roof;ctx.fillRect(px-3,py-8,4,6);
+          ctx.fillRect(px+size-1,py-8,4,6);
+        }
       }
     }
     if(zoom>=2.5){
       for(const s of world.settlements)for(const b of s.infrastructure?.buildings??[]){
-        const x=b.x*CELL,y=b.y*CELL,style=ARCHITECTURE[b.culture];
-        ctx.fillStyle=b.stage==='ruin'?'#676577':
-          b.stage==='abandoned'?'#6f5965':style.wall;
-        ctx.fillRect(x+1,y+1,5,5);
-        ctx.fillStyle=b.stage==='complete'?style.roof:'#e5c48a';
-        ctx.fillRect(x,y,5,2);
-        if(['foundation','frame','finishing'].includes(b.stage)){
-          ctx.fillStyle='#e2c78e';ctx.fillRect(x,y+5,Math.max(1,b.progress/20),1);
-        }
+        paintBuilding(ctx,b);
       }
     }
-    for(const a of world.agents){
+    const detailed=zoom>=3;
+    if(spriteCache.current.size>6500)spriteCache.current.clear();
+    for(const a of [...world.agents].sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id)){
       const px=a.x*CELL,py=a.y*CELL;
-      ctx.fillStyle='#081323';ctx.fillRect(px+1,py+1,4,4);
-      ctx.fillStyle=SPECIES_INFO[a.species].color;
-      // Two pixels versus the old 7-pixel sprites: people look like small
-      // inhabitants of a broad landscape rather than occupying whole tiles.
-      ctx.fillRect(px+2,py+2,2,2);
-      if(a.partnerId!==undefined){
-        ctx.fillStyle='#ffe7b8';ctx.fillRect(px+4,py+1,1,1);
+      if(!detailed){
+        ctx.fillStyle='#081323';ctx.fillRect(px+1,py+1,4,4);
+        ctx.fillStyle=SPECIES_INFO[a.species].color;
+        ctx.fillRect(px+2,py+2,2,2);
+      }else{
+        const key=spriteKey(a);
+        let sprite=spriteCache.current.get(key);
+        if(!sprite){
+          sprite=document.createElement('canvas');
+          sprite.width=PERSON_SPRITE_WIDTH;sprite.height=PERSON_SPRITE_HEIGHT;
+          const painter=sprite.getContext('2d');
+          if(painter)paintPerson(painter,a);
+          spriteCache.current.set(key,sprite);
+        }
+        const focus=selected?.x===a.x&&selected?.y===a.y;
+        const width=focus&&zoom>=5?16:zoom>=5?12:9;
+        const height=focus&&zoom>=5?22:zoom>=5?17:13;
+        ctx.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
+        if(a.partnerId!==undefined){
+          ctx.fillStyle='#ffe1b3';ctx.fillRect(px+6,py-8,2,2);
+        }
       }
     }
     if(zoom>=1.5){
@@ -141,16 +144,20 @@ export function WorldCanvas({
       for(const shipment of world.shipments??[]){
         const a=drivers.get(shipment.carrierId);if(!a)continue;
         const px=a.x*CELL,py=a.y*CELL;
-        ctx.fillStyle='#201b2b';ctx.fillRect(px,py,6,5);
         if(shipment.mode==='sea'){
-          ctx.fillStyle='#f3eddb';ctx.fillRect(px+3,py-3,1,6);
-          ctx.fillRect(px+1,py-2,2,3);
-          ctx.fillStyle='#af804e';ctx.fillRect(px+1,py+3,4,2);
+          ctx.fillStyle='#332f3b';ctx.fillRect(px-3,py+3,12,2);
+          ctx.fillStyle='#c0925c';ctx.fillRect(px-2,py+1,10,3);
+          ctx.fillStyle='#f5e8c5';ctx.fillRect(px+2,py-8,1,10);
+          ctx.fillRect(px-1,py-7,3,6);
+          ctx.fillStyle='#d3dbea';ctx.fillRect(px+3,py-5,3,5);
+          ctx.fillStyle='#825e50';ctx.fillRect(px+5,py+2,2,1);
           continue;
         }
-        ctx.fillStyle='#f4bd76';ctx.fillRect(px+1,py,4,3);
-        ctx.fillStyle='#5b5c6a';ctx.fillRect(px+1,py+4,1,1);
-        ctx.fillRect(px+4,py+4,1,1);
+        ctx.fillStyle='#3d3340';ctx.fillRect(px-2,py+1,10,4);
+        ctx.fillStyle='#d4ae79';ctx.fillRect(px-1,py,8,4);
+        ctx.fillStyle='#b2835c';ctx.fillRect(px,py-2,5,2);
+        ctx.fillStyle='#242d39';ctx.fillRect(px,py+5,2,2);
+        ctx.fillRect(px+5,py+5,2,2);
       }
     }
     if(selected){

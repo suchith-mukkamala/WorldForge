@@ -4,6 +4,7 @@ import {ancestryLabel} from './family';
 import {GOAL_LABELS} from './mind';
 import {JOB_LABELS} from './economy';
 import {guildOf} from './institutions';
+import {PixelPortrait} from './PixelPortrait';
 import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
@@ -141,9 +142,9 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
             <div className="evo-card-heading"><strong>◈ INDIVIDUAL PROFILE</strong>
               <span>{alive?'● LIVING':'◌ ARCHIVED'}</span></div>
             <div className="evo-directory-identity">
-              <span className="evo-family-emblem"
-                style={{color:SPECIES_INFO[focused.species].color}}>
-                {SPECIES_INFO[focused.species].symbol}</span>
+              <PixelPortrait person={alive??{...focused,
+                age:focused.died!==undefined?focused.died-focused.born:undefined}}
+                name={personName(world,focused)}/>
               <div><span className="evo-overline">INDIVIDUAL #{focused.id}</span>
                 <h3>{personName(world,focused)}</h3>
                 <p>{ancestryLabel(focused.ancestry)} · Gen {focused.generation}</p>

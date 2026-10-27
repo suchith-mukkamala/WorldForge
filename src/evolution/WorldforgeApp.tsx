@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent} from 'react';
 import {WorldCanvas} from './WorldCanvas';
+import {PixelPortrait} from './PixelPortrait';
 import {WorldCreator} from './WorldCreator';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
@@ -420,7 +421,8 @@ export function WorldforgeApp(){
               </span>)}
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
-              'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'}</span>
+              'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
+              ZOOM 3×+ FOR CHARACTER SPRITES</span>
           </div>
           {notice&&<div className="evo-notice" role="status">{notice}</div>}
         </section>
@@ -451,10 +453,8 @@ export function WorldforgeApp(){
               </div>}
               {agent?<div className="evo-individual">
                 <div className="evo-individual-title">
-                  <span className="evo-species-avatar"
-                    style={{color:SPECIES_INFO[agent.species].color}}>
-                    {SPECIES_INFO[agent.species].symbol}
-                  </span>
+                  <PixelPortrait person={agent} compact
+                    name={personName(world,world.lineage.find(r=>r.id===agent.id)??agent)}/>
                   <div><strong>{personName(world,world.lineage.find(r=>r.id===agent.id)??agent)}</strong>
                     <small>#{agent.id} · {agent.age} years old · Born year {agent.born}
                       · Generation {agent.generation}</small></div>

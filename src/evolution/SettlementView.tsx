@@ -6,6 +6,8 @@ import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
 import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
 import {bridgeTiles,roadTiles} from './transport';
 import {accordBetween} from './institutions';
+import {pixelRectsFor} from './pixelArt';
+import {personName} from './identity';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
   playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
@@ -87,6 +89,10 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
     return driver&&Math.abs(driver.x-place.x)<=HALF&&
       Math.abs(driver.y-place.y)<=HALF?[{shipment:t,driver}]:[];
   });
+  const residents=world.agents.filter(a=>
+    Math.abs(a.x-place.x)<=HALF&&Math.abs(a.y-place.y)<=HALF)
+    .sort((a,b)=>a.y-b.y||a.id-b.id).slice(0,240);
+  const names=new Map(world.lineage.map(r=>[r.id,r]));
   const deposits=new Map((world.deposits??[]).map(d=>[d.index,d]));
   const originX=place.x-HALF,originY=place.y-HALF;
   const allTiles=[];
@@ -100,13 +106,32 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
       deposit:tile?deposits.get(y*world.width+x):undefined});
   }
   return <div className="evo-city-map-scroll">
-    <svg role="img" aria-label={'Local buildings and roads of '+place.name}
+    <svg role="img" aria-label={'Local buildings, roads and residents of '+place.name}
       viewBox={`0 0 ${VIEW*CELL} ${VIEW*CELL}`}
-      style={{width:(zoom*100)+'%',minWidth:'430px'}}>
+      shapeRendering="crispEdges"
+      style={{width:(zoom*100)+'%',minWidth:'430px',imageRendering:'pixelated'}}>
       {allTiles.map(p=><g key={p.id}>
         <rect x={p.x} y={p.y} width={CELL} height={CELL}
           fill={p.tile?BIOME_INFO[p.tile.biome].color:'#11192a'}
           stroke="#182539" strokeWidth={.65}/>
+        {p.tile?.biome==='forest'&&<>
+          <rect x={p.x+6} y={p.y+4} width={14} height={15} fill="#39795d"/>
+          <rect x={p.x+9} y={p.y+1} width={8} height={10} fill="#67a875"/>
+          <rect x={p.x+12} y={p.y+16} width={3} height={8} fill="#654f45"/>
+        </>}
+        {p.tile?.biome==='water'&&<>
+          <rect x={p.x+3} y={p.y+7} width={11} height={2} fill="#6faac0"/>
+          <rect x={p.x+12} y={p.y+17} width={11} height={2} fill="#3d7f9c"/>
+        </>}
+        {p.tile?.biome==='mountain'&&<>
+          <rect x={p.x+5} y={p.y+13} width={17} height={10} fill="#6e8296"/>
+          <rect x={p.x+9} y={p.y+7} width={9} height={9} fill="#aebdc8"/>
+          <rect x={p.x+12} y={p.y+5} width={3} height={5} fill="#e0e8e5"/>
+        </>}
+        {p.tile?.biome==='plains'&&<>
+          <rect x={p.x+4} y={p.y+5} width={2} height={7} fill="#88b081"/>
+          <rect x={p.x+17} y={p.y+15} width={4} height={2} fill="#cfca85"/>
+        </>}
         {p.owner&&<rect x={p.x+1} y={p.y+1} width={CELL-2} height={CELL-2}
           fill="#ffe4aa" fillOpacity={.10} stroke="#e0b976" strokeOpacity={.30}
           strokeDasharray="3 3"/>}
@@ -127,8 +152,17 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
           <path d={`M${p.x+4} ${p.y+13}h${CELL-8}`} stroke="#554b4a"
             strokeDasharray="4 3" strokeWidth={1.2}/>
         </>}
-        {p.deposit&&p.deposit.amount>.1&&<circle cx={p.x+5} cy={p.y+5}
-          r={3.2} fill={RESOURCE_COLORS[p.deposit.kind]}/>} 
+        {p.deposit&&p.deposit.amount>.1&&(p.deposit.kind==='tree'?<>
+          <rect x={p.x+12} y={p.y+11} width={3} height={12} fill="#56493e"/>
+          <rect x={p.x+5} y={p.y+7} width={17} height={10}
+            fill={RESOURCE_COLORS.tree}/>
+          <rect x={p.x+9} y={p.y+3} width={9} height={10} fill="#76b780"/>
+        </>:<>
+          <rect x={p.x+5} y={p.y+12} width={17} height={10} fill="#373c4b"/>
+          <rect x={p.x+8} y={p.y+8} width={12} height={11}
+            fill={RESOURCE_COLORS[p.deposit.kind]}/>
+          <rect x={p.x+11} y={p.y+10} width={3} height={3} fill="#d9d6be"/>
+        </>)}
       </g>)}
       <rect x={HALF*CELL+5} y={HALF*CELL+5} width={CELL-10} height={CELL-10}
         fill="none" stroke="#ffe7ae" strokeWidth={1.5} strokeDasharray="3 2"/>
@@ -136,6 +170,13 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
         Math.abs(b.y-place.y)<=HALF).map(b=><Structure key={b.id} b={b}
         x={(b.x-originX)*CELL} y={(b.y-originY)*CELL}
         selected={chosen===b.id} onSelect={()=>onChoose(b.id)}/>)}
+      {residents.map(a=><g key={'resident-'+a.id}
+        transform={`translate(${(a.x-originX)*CELL+5} ${(a.y-originY)*CELL+2})`}>
+        <title>{personName(world,names.get(a.id)??a)+' · '+a.species+
+          ' · age '+a.age}</title>
+        {pixelRectsFor(a).map((r,i)=><rect key={i} x={r.x} y={r.y}
+          width={r.width} height={r.height} fill={r.color}/>)}
+      </g>)}
       {caravans.map(({shipment,driver})=><g key={'caravan-'+shipment.id}
         transform={`translate(${(driver.x-originX)*CELL+13} ${(driver.y-originY)*CELL+13})`}>
         <title>{(shipment.mode==='sea'?'Ship':'Caravan')+' #'+shipment.id+
