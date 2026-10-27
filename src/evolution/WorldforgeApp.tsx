@@ -1,6 +1,7 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent} from 'react';
 import {WorldCanvas} from './WorldCanvas';
+import {cameraScrollTarget} from './motion';
 import {PixelPortrait} from './PixelPortrait';
 import {WorldCreator} from './WorldCreator';
 import {EvolutionHistory} from './EvolutionHistory';
@@ -95,6 +96,7 @@ export function WorldforgeApp(){
   const [zoom,setZoom]=useState(1);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
+  const [followId,setFollowId]=useState<number|null>(null);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
@@ -103,6 +105,15 @@ export function WorldforgeApp(){
   const fileRef=useRef<HTMLInputElement>(null);
   const currentWorld=useRef(world);
   currentWorld.current=world;
+  const centerCamera=useCallback((x:number,y:number)=>{
+    const viewport=mapScrollRef.current;
+    if(!viewport)return;
+    const w=currentWorld.current.width,h=currentWorld.current.height;
+    const target=cameraScrollTarget({x,y},{x:w,y:h},
+      {x:viewport.scrollWidth,y:viewport.scrollHeight},
+      {x:viewport.clientWidth,y:viewport.clientHeight});
+    viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
+  },[]);
   useEffect(()=>{
     let active=true;
     loadDatabaseSnapshot().then(restored=>{
@@ -154,6 +165,12 @@ export function WorldforgeApp(){
   const counts=useMemo(()=>population(world),[world]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
+  useEffect(()=>{
+    if(followId!==null&&!world.agents.some(a=>a.id===followId)){
+      setFollowId(null);
+      setNotice('The person you were following is no longer alive. Camera follow ended.');
+    }
+  },[followId,world.agents]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const resource=displayed?world.deposits?.find(d=>d.index===
@@ -182,6 +199,7 @@ export function WorldforgeApp(){
     const place=knownSettlements(world).find(s=>s.id===id);
     if(!place)return;
     setPlaying(false);
+    setFollowId(null);
     setSelected({x:place.x,y:place.y});setSelectedAgentId(null);
     setZoom(3);setTab('world');setMapFocus(-1);
   };
@@ -192,24 +210,24 @@ export function WorldforgeApp(){
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
-    setZoom(3);setTab('world');setMapFocus(id);
+    setZoom(4);setFollowId(id);setTab('world');setMapFocus(id);
   };
   useEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
     const target=mapFocus===-1?selected:
       world.agents.find(a=>a.id===mapFocus);
-    const viewport=mapScrollRef.current;
-    if(target&&viewport){
-      const scaledTile=viewport.scrollWidth/world.width;
-      viewport.scrollLeft=Math.max(0,(target.x+.5)*scaledTile-viewport.clientWidth/2);
-      viewport.scrollTop=Math.max(0,(target.y+.5)*scaledTile-viewport.clientHeight/2);
-    }
+    if(target)centerCamera(target.x,target.y);
     setMapFocus(null);
-  },[tab,mapFocus,zoom]);
+  },[tab,mapFocus,zoom,centerCamera]);
+  useEffect(()=>{
+    const target=followId===null?null:world.agents.find(a=>a.id===followId);
+    if(tab==='world'&&target)centerCamera(target.x,target.y);
+  },[followId,tab,zoom,world.settings.seed,centerCamera]);
   const chooseTile=(x:number,y:number)=>{
     setSelected({x,y});
     const individual=world.agents.find(a=>a.x===x&&a.y===y);
     setSelectedAgentId(individual?.id??null);
+    if(followId!==null)setFollowId(individual?.id??null);
   };
   const brushAt=(x:number,y:number)=>{
     const before=world;
@@ -218,6 +236,7 @@ export function WorldforgeApp(){
       setNotice('That tile cannot accept the selected brush. Water and occupied tiles have restrictions.');
     }else{
       setWorld(next);setNotice('');
+      setFollowId(null);
       setSelected({x,y});setSelectedAgentId(null);
     }
   };
@@ -225,6 +244,7 @@ export function WorldforgeApp(){
     if(!window.confirm('Generate a new world? This replaces your current simulation. '+
       'Use Export World JSON first to keep this timeline.'))return;
     setPlaying(false);setWorld(createWorld(settings));setTab('world');
+    setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
     setZoom(1);setNotice('New world created with seed '+settings.seed+'.');
   };
@@ -238,6 +258,7 @@ export function WorldforgeApp(){
     if(!window.confirm(note+'Restart from year 0 using seed '+world.settings.seed+
       '? Your current timeline will be replaced. Export World JSON first to keep it.'))return;
     setPlaying(false);setWorld(createWorld(world.settings));
+    setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
     setNotice('World replayed from the same starting seed.');
   };
@@ -253,6 +274,7 @@ export function WorldforgeApp(){
       const obj=readSavedWorld(await file.text());
       if(!obj)throw Error('Invalid or unsupported Worldforge world JSON.');
       setPlaying(false);setWorld(obj);setTab('world');
+      setFollowId(null);
       setSelected(null);setSelectedAgentId(null);setZoom(1);setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
@@ -377,6 +399,16 @@ export function WorldforgeApp(){
               <small>{world.width} × {world.height} TILES · {world.settings.size.toUpperCase()} WORLD</small>
             </div>
             <div className="evo-map-actions">
+              <button className={'evo-follow-camera'+(followId!==null?' is-on':'')}
+                aria-pressed={followId!==null} disabled={!agent}
+                title={followId!==null?'Stop following the selected person':
+                  'Follow the selected person while they travel'}
+                onClick={()=>{
+                  if(followId!==null){setFollowId(null);return;}
+                  if(!agent)return;
+                  setFollowId(agent.id);setZoom(v=>Math.max(3,v));
+                  setMapFocus(agent.id);
+                }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
               <button onClick={()=>setZoom(v=>Math.max(1,v-.5))}
                 disabled={zoom<=1} title="Zoom out">−</button>
               <button onClick={()=>setZoom(1)} title="Fit map to view">⌖ FIT</button>
@@ -411,6 +443,7 @@ export function WorldforgeApp(){
           </div>
           <div className="evo-map-scroll" ref={mapScrollRef}>
             <WorldCanvas world={world} brush={brush} overlay={overlay} zoom={zoom}
+              speed={speed} followId={followId} onFollowPosition={centerCamera}
               selected={displayed} onSelect={chooseTile} onEdit={brushAt}/>
           </div>
           <div className="evo-map-footer">
@@ -422,7 +455,7 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              ZOOM 3×+ FOR CHARACTER SPRITES</span>
+              ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
           </div>
           {notice&&<div className="evo-notice" role="status">{notice}</div>}
         </section>

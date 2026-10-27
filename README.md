@@ -19,6 +19,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - Follow voluntary worker guilds that elect leaders, train members, maintain treasuries, and advocate for local construction.
 - Watch communities negotiate trade accords and mutual-aid pacts from past cooperation and residents' social preferences, or impose embargoes after disputes. Emergency food aid still travels as real shipments.
 - Zoom into the pixel-art landscape to see individualized mortal sprites: species silhouettes, apparent age, outfits, work gear and inherited visual accents. The same appearance is shown in the person inspector, family archive, People directory and town close-ups.
+- Watch animated walkers face north, south, east or west and alternate their stride while moving between actual yearly positions. Choose a person and press **FOLLOW** to track their travels with a camera that moves with them; **TRACKING** turns it off.
 - Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
 - Inspect world history, species populations, settlements and individuals as the simulation advances independently of camera zoom.
 - Intervene with blessings, curses, divine whispers, direct changes and other godlike abilities while people retain agency over suggestions.
@@ -55,7 +56,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v1.1 — Pixel-Art World & Individual Portraits, following the verified v1.0 Navigation, Guilds & Early Diplomacy milestone.
+- **Current:** v1.2 — Directional Walking & Follow Camera, following the v1.1 pixel-art milestone.
 - **Next:** Expanded production chains, river ports and vessel fleets, formal governments, cultural exchange and deeper autonomous exploration.
 - **Future:** Optional mortal perspective with travel, interactions, choices and character progression. No mortal-play mode is implemented yet.
 
@@ -69,6 +70,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/shipping.ts`: connected-water shipping routes, embarkation, landings and sailor rescue.
 - `src/evolution/institutions.ts`: voluntary guild formation, worker training, treasury decisions and diplomatic accords.
 - `src/evolution/pixelArt.ts` and `PixelPortrait.tsx`: deterministic 16×22 character designs, landscape and structure art, and matching full-size portraits. Zoom never mutates the simulation.
+- `src/evolution/motion.ts`: visual-only directional movement, timed interpolation and camera centering. These animations and view positions are not saved into the world or used for agent decisions.
 - `src/evolution/divine.ts`: divine actions and their consequences.
 - `src/evolution/storage.ts`: browser persistence and world-file compatibility.
 - `src/evolution/WorldforgeApp.tsx`: the current god-perspective UI.
