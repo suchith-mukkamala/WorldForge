@@ -1,4 +1,4 @@
-# Worldforge
+# WorldForge
 
 **An autonomous fantasy-world simulator.** Watch societies emerge from the decisions of their inhabitants. Influence them as a god today; eventually, step into the world as a person, explore it, and make your own choices.
 
@@ -18,6 +18,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - See coastal communities build boats from real supplies and sail connected waterways. Captains carry provisions, physically cross water, and deliver goods only after disembarking.
 - Follow voluntary worker guilds that elect leaders, train members, maintain treasuries, and advocate for local construction.
 - Watch communities negotiate trade accords and mutual-aid pacts from past cooperation and residents' social preferences, or impose embargoes after disputes. Emergency food aid still travels as real shipments.
+- Zoom into the pixel-art landscape to see individualized mortal sprites: species silhouettes, apparent age, outfits, work gear and inherited visual accents. The same appearance is shown in full-size person portraits and town close-ups.
+- Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
 - Inspect world history, species populations, settlements and individuals as the simulation advances independently of camera zoom.
 - Intervene with blessings, curses, divine whispers, direct changes and other godlike abilities while people retain agency over suggestions.
 - Save automatically in the browser, or export and import a world as JSON.
@@ -53,7 +55,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v1.0 — Navigation, Guilds & Early Diplomacy, extending the v0.9 infrastructure and autonomous economy.
+- **Current:** v1.1 — Pixel-Art World & Individual Portraits, following the verified v1.0 Navigation, Guilds & Early Diplomacy milestone.
 - **Next:** Expanded production chains, river ports and vessel fleets, formal governments, cultural exchange and deeper autonomous exploration.
 - **Future:** Optional mortal perspective with travel, interactions, choices and character progression. No mortal-play mode is implemented yet.
 
@@ -66,6 +68,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/transport.ts`: settlement-funded roads and bridges, route planning, physical travel advantages and upkeep.
 - `src/evolution/shipping.ts`: connected-water shipping routes, embarkation, landings and sailor rescue.
 - `src/evolution/institutions.ts`: voluntary guild formation, worker training, treasury decisions and diplomatic accords.
+- `src/evolution/pixelArt.ts` and `PixelPortrait.tsx`: deterministic 16×22 character designs, landscape and structure art, and matching full-size portraits. Zoom never mutates the simulation.
 - `src/evolution/divine.ts`: divine actions and their consequences.
 - `src/evolution/storage.ts`: browser persistence and world-file compatibility.
 - `src/evolution/WorldforgeApp.tsx`: the current god-perspective UI.
