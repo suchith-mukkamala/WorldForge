@@ -216,7 +216,7 @@ describe('Worldforge v0.8 — autonomous economy, work and trade',()=>{
     expect(html).toContain('WORK, PROVISIONS &amp; TRADE');
     expect(html).toContain('WORKFORCE');
     expect(html).toContain('MARKET &amp; SHORTAGES');
-    expect(html).toContain('CARAVANS IN TRANSIT');
+    expect(html).toContain('MERCHANTS IN TRANSIT');
     expect(JSON.stringify(w)).toBe(snapshot);
   });
 });

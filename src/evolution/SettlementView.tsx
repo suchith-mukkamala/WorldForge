@@ -5,6 +5,7 @@ import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
 import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
 import {bridgeTiles,roadTiles} from './transport';
+import {accordBetween} from './institutions';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
   playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
@@ -45,7 +46,12 @@ function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
             {[8,13,18].map(px=><path key={px}
               d={`M${x+px} ${y+21}v-9m-3 3l3 2l3-2`}
               stroke="#a8d780" strokeWidth={2} fill="none"/>)}</>
-            :b.type==='market'?<>
+            :b.type==='dock'?<>
+              <path d={`M${x+5} ${y+12}H${x+21}M${x+8} ${y+12}v9m10-9v9`}
+                stroke="#806344" strokeWidth={3} fill="none"/>
+              <path d={`M${x+10} ${y+20}q4-5 8 0`} stroke="#65b8cf"
+                strokeWidth={1.5} fill="none"/>
+            </>:b.type==='market'?<>
               <path d={`M${x+4} ${y+12}h18l-3 5h-12Z`} fill="#f5c96d"/>
               <path d={`M${x+9} ${y+12}l-1 5m8-5l1 5`} stroke="#a95e54"
                 strokeWidth={2}/>
@@ -132,13 +138,21 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
         selected={chosen===b.id} onSelect={()=>onChoose(b.id)}/>)}
       {caravans.map(({shipment,driver})=><g key={'caravan-'+shipment.id}
         transform={`translate(${(driver.x-originX)*CELL+13} ${(driver.y-originY)*CELL+13})`}>
-        <title>{'Caravan #'+shipment.id+' carrying '+shipment.quantity+' '+
+        <title>{(shipment.mode==='sea'?'Ship':'Caravan')+' #'+shipment.id+
+          ' carrying '+shipment.quantity+' '+
           shipment.good}</title>
-        <rect x={-8} y={-6} width={16} height={12} rx={2}
-          fill="#d9b57d" stroke="#352f3a" strokeWidth={1.7}/>
-        <circle cx={-5} cy={7} r={2.7} fill="#414253"/>
-        <circle cx={5} cy={7} r={2.7} fill="#414253"/>
-        <path d="M-4 -3h8" stroke="#fff1ba" strokeWidth={2}/>
+        {shipment.mode==='sea'?<>
+          <path d="M-10 3H10L5 9H-5Z" fill="#a57950" stroke="#413944"
+            strokeWidth={1.4}/>
+          <path d="M0 -12V4L8 1Z" fill="#f2ebda" stroke="#6c8191"
+            strokeWidth={1}/>
+        </>:<>
+          <rect x={-8} y={-6} width={16} height={12} rx={2}
+            fill="#d9b57d" stroke="#352f3a" strokeWidth={1.7}/>
+          <circle cx={-5} cy={7} r={2.7} fill="#414253"/>
+          <circle cx={5} cy={7} r={2.7} fill="#414253"/>
+          <path d="M-4 -3h8" stroke="#fff1ba" strokeWidth={2}/>
+        </>}
       </g>)}
     </svg>
   </div>;
@@ -170,6 +184,7 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
     t.originId===place?.id||t.destinationId===place?.id);
   const relationships=(world.tradeRelations??[]).filter(r=>
     r.a===place?.id||r.b===place?.id).sort((a,b)=>b.trust-a.trust||a.a-b.a);
+  const guilds=(world.institutions?.guilds??[]).filter(g=>g.settlementId===place?.id);
   const localTransport=[...(world.transport?.roads??[]),
     ...(world.transport?.bridges??[])].filter(t=>place&&
     Math.max(Math.abs(t.index%world.width-place.x),
@@ -245,6 +260,7 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
                 {place.economy.consumed.toFixed(1)}</strong></div>
               <div><small>IMPORTS / EXPORTS</small><strong>{place.economy.imports} /
                 {place.economy.exports}</strong></div>
+              <div><small>SEA DELIVERIES</small><strong>{place.economy.seaExports??0}</strong></div>
             </div>
             <div className="evo-economy-workers"><strong>WORKFORCE</strong>
               {JOBS.map(job=><span key={job}>{JOB_LABELS[job]} <b>
@@ -258,9 +274,9 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
                 'scarce':''}>{g.toUpperCase()} <b>{stockOf(place,g).toFixed(1)}</b>
                 <small> · {place.economy!.prices[g].toFixed(2)} coins</small></span>)}</div>
             </div>
-            <div className="evo-economy-caravans"><strong>CARAVANS IN TRANSIT</strong>
+            <div className="evo-economy-caravans"><strong>MERCHANTS IN TRANSIT</strong>
               {localShipments.length?localShipments.map(t=><p key={t.id}>
-                #{t.id} · {t.quantity} {t.good} ·
+                {t.mode==='sea'?'⛵ SHIP':'▣ CARAVAN'} #{t.id} · {t.quantity} {t.good} ·
                 {world.settlements.find(s=>s.id===t.originId)?.name??'Lost settlement'} →
                 {world.settlements.find(s=>s.id===t.destinationId)?.name??'Lost settlement'}
                 {' · '+Math.round(t.progress/Math.max(1,t.route.length-1)*100)+'% of route'}
@@ -272,10 +288,20 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
                   (r.a===place.id?r.b:r.a));
                 const status=(r.disputeUntil??0)>world.year?'Dispute until Y'+r.disputeUntil:
                   activePartnership(r,world.year)?'Trusted partner':'Developing ties';
+                const accord=accordBetween(world,r.a,r.b);
                 return <p key={r.a+'-'+r.b}><b>{other?.name??'Lost settlement'}</b>
                   {' · '+status+' · trust '+Math.round(r.trust)+'/100 · '+
-                    r.completed+' deliveries'}</p>;
+                    r.completed+' deliveries'}
+                  {accord&&<span className="evo-institution-chip">
+                    {' · '+accord.kind.toUpperCase()+' ACCORD'}</span>}</p>;
               }):<p>No established trade ties yet.</p>}
+            </div>
+            <div className="evo-guild-panel"><strong>WORKER GUILDS & APPRENTICESHIPS</strong>
+              {guilds.length?guilds.map(g=><p key={g.id}>
+                <b>{JOB_LABELS[g.job]} Guild</b> · {g.members.length} members ·
+                expertise {Math.round(g.expertise)}/100 · leader #{g.leaderId} ·
+                treasury {g.treasury.toFixed(1)} coins
+              </p>):<p>Local workers have not yet formed a guild.</p>}
             </div>
           </section>}
           <div className="evo-city-map-top"><strong>LOCAL VIEW · REAL BUILDING LOCATIONS</strong>
@@ -287,7 +313,7 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
           <div className="evo-city-legend"><span>▧ Owned land</span>
             <span>━ Worn paths</span><span>▤ Buildings</span>
             <span>⚒ Scaffolding / progress</span><span>● Trees & minerals</span>
-            <span>▣ Traveling caravans</span><span>═ Paved roads</span>
+            <span>▣ Caravans / ⛵ Ships</span><span>═ Paved roads</span>
             <span>▰ Bridges</span></div>
           {place?.infrastructure&&<div className="evo-city-stock">
             <strong>COLLECTED MATERIALS & ORES</strong>

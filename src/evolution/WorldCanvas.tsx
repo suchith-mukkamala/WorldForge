@@ -142,6 +142,12 @@ export function WorldCanvas({
         const a=drivers.get(shipment.carrierId);if(!a)continue;
         const px=a.x*CELL,py=a.y*CELL;
         ctx.fillStyle='#201b2b';ctx.fillRect(px,py,6,5);
+        if(shipment.mode==='sea'){
+          ctx.fillStyle='#f3eddb';ctx.fillRect(px+3,py-3,1,6);
+          ctx.fillRect(px+1,py-2,2,3);
+          ctx.fillStyle='#af804e';ctx.fillRect(px+1,py+3,4,2);
+          continue;
+        }
         ctx.fillStyle='#f4bd76';ctx.fillRect(px+1,py,4,3);
         ctx.fillStyle='#5b5c6a';ctx.fillRect(px+1,py+4,1,1);
         ctx.fillRect(px+4,py+4,1,1);

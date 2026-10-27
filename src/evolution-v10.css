@@ -1,0 +1,7 @@
+/* v1.0: visible guilds and diplomacy within the settlement inspector. */
+.evo-guild-panel{margin-top:14px;padding-top:13px;
+  border-top:1px solid #719c9550;font-size:.72rem}
+.evo-guild-panel>strong{color:#f4d8a5;font-size:.7rem;letter-spacing:.06em}
+.evo-guild-panel p{margin:8px 0;line-height:1.7;color:#bdcfcf}
+.evo-guild-panel b{color:#d7ecd6}
+.evo-institution-chip{color:#d8ce9d;font-size:.69rem;font-weight:600}
