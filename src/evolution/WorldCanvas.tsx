@@ -22,6 +22,7 @@ export function WorldCanvas({
   onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
+  const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
   const prior=useRef<{year:number;seed:number;positions:Map<number,Point>}|null>(null);
   const facing=useRef<Map<number,Facing>>(new Map());
@@ -29,8 +30,10 @@ export function WorldCanvas({
   useEffect(()=>{
     const canvas=canvasRef.current,visible=canvas?.getContext('2d');
     if(!canvas||!visible)return;
-    const background=document.createElement('canvas');
-    background.width=canvas.width;background.height=canvas.height;
+    const background=backgroundRef.current??document.createElement('canvas');
+    backgroundRef.current=background;
+    if(background.width!==canvas.width)background.width=canvas.width;
+    if(background.height!==canvas.height)background.height=canvas.height;
     const ctx=background.getContext('2d');if(!ctx)return;
     const W=world.width,H=world.height;
     ctx.clearRect(0,0,canvas.width,canvas.height);
