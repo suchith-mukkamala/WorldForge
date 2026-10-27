@@ -146,7 +146,7 @@ function rebuildHouseholds(w:World):void{
 }
 
 /** Real energy support and nearby shelter/protection for dependents. */
-export function helpDependent(w:World,a:Agent,occupied:Map<number,number>,
+export function helpDependent(w:World,a:Agent,occupied:Map<number,number|number[]>,
   people:Map<number,Agent>):CareOutcome{
   const stage=lifeStage(a),young=stage==='infant'||stage==='child'||stage==='adolescent';
   const shelter=w.settlements.some(s=>dist(s,a)<=5);
@@ -156,13 +156,17 @@ export function helpDependent(w:World,a:Agent,occupied:Map<number,number>,
   for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
     const x=a.x+dx,y=a.y+dy;
     if(x<0||y<0||x>=w.width||y>=w.height)continue;
-    const id=occupied.get(y*w.width+x),helper=id===undefined?undefined:people.get(id);
-    if(!helper||helper.id===a.id||!adult(helper)||helper.energy<58)continue;
-    const related=relatives.has(helper.id);
-    if(!related&&helper.genes.social*divineFactor(helper,'social',w.year)<.85)continue;
-    const score=(related?20:0)+(helper.development?.householdId===d.householdId?7:0)+
-      helper.genes.social*3-dist(helper,a)*2;
-    if(score>priority){priority=score;choice=helper;}
+    const ids=occupied.get(y*w.width+x);
+    for(const id of ids===undefined?[]:Array.isArray(ids)?ids:[ids]){
+      const helper=people.get(id);
+      if(!helper||helper.id===a.id||!adult(helper)||helper.energy<58)continue;
+      const related=relatives.has(helper.id);
+      if(!related&&helper.genes.social*divineFactor(helper,'social',w.year)<.85)continue;
+      const score=(related?20:0)+
+        (helper.development?.householdId===d.householdId?7:0)+
+        helper.genes.social*3-dist(helper,a)*2;
+      if(score>priority){priority=score;choice=helper;}
+    }
   }
   if(choice){
     const maxAid=stage==='infant'?10:stage==='child'?7:4;
@@ -216,8 +220,13 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
   const meetingPlaces=w.settlements.flatMap(s=>s.infrastructure?.buildings.filter(b=>
     b.type==='communal'&&b.stage==='complete')??[]);
   const byId=new Map(w.agents.map(a=>[a.id,a]));
+  const lifeRecords=new Map(w.lineage.map(r=>[r.id,r]));
   const houses=new Map(w.households!.map(h=>[h.id,h]));
-  const occupied=new Map(w.agents.map(a=>[a.y*w.width+a.x,a]));
+  const occupied=new Map<number,Agent[]>();
+  for(const a of w.agents){
+    const index=a.y*w.width+a.x,group=occupied.get(index);
+    if(group)group.push(a);else occupied.set(index,[a]);
+  }
   const deceased=new Set(w.lineage.filter(r=>r.died!==undefined).map(r=>r.id));
   for(const a of w.agents){
     const d=a.development!,stage=lifeStage(a);
@@ -269,7 +278,8 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
           d.values.tradition=round(clamp(d.values.tradition+4));
           remember(a,'adoption',w.year,'Welcomed into a new household.',provider.id);
           appendLifeMoment(w,a.id,{year:w.year,kind:'adoption',
-            text:'Was adopted by a member of another household.',relatedIds:[provider.id]});
+            text:'Was adopted by a member of another household.',relatedIds:[provider.id]},
+          lifeRecords);
           news(w,'A young person found an adoptive caregiver.');
         }
       }else if(a.born!==w.year){
@@ -290,16 +300,17 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
         for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
           const x=a.x+dx,y=a.y+dy;
           if(x<0||y<0||x>=w.width||y>=w.height)continue;
-          const b=occupied.get(y*w.width+x);
-          if(!b||b.id===a.id||!adult(b)||
-            b.genes.social*divineFactor(b,'social',w.year)<(community?.77:.87))continue;
-          if(!mentor||dist(a,b)<dist(a,mentor))mentor=b;
+          for(const b of occupied.get(y*w.width+x)??[]){
+            if(b.id===a.id||!adult(b)||
+              b.genes.social*divineFactor(b,'social',w.year)<(community?.77:.87))continue;
+            if(!mentor||dist(a,b)<dist(a,mentor))mentor=b;
+          }
         }
         if(mentor&&d.mentorId!==mentor.id){
           d.mentorId=mentor.id;
           remember(a,'mentorship',w.year,'Began learning from a local mentor.',mentor.id);
           appendLifeMoment(w,a.id,{year:w.year,kind:'mentorship',
-            text:'Began an apprenticeship.',relatedIds:[mentor.id]});
+            text:'Began an apprenticeship.',relatedIds:[mentor.id]},lifeRecords);
         }
       }
       if(mentor){
@@ -318,7 +329,8 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
         d.career=chooseCareer(d);
         remember(a,'career',w.year,'Chose the path of '+CAREER_LABELS[d.career]+'.');
         appendLifeMoment(w,a.id,{year:w.year,kind:'career',
-          text:'Began working as a '+CAREER_LABELS[d.career].toLowerCase()+'.'});
+          text:'Began working as a '+CAREER_LABELS[d.career].toLowerCase()+'.'},
+        lifeRecords);
       }
       const focus=CAREER_SKILLS[d.career];
       addSkill(d,focus[0],(a.mind?.goal==='vocation'?1.1:.52)*learning);
@@ -332,7 +344,7 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
         houses.set(home.id,home);d.householdId=home.id;d.leftHomeYear=w.year;
         remember(a,'independence',w.year,'Left the childhood household to build a life.');
         appendLifeMoment(w,a.id,{year:w.year,kind:'independence',
-          text:'Left the household in which they were raised.'});
+          text:'Left the household in which they were raised.'},lifeRecords);
       }
     }
   }
@@ -345,12 +357,13 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
     for(let dy=-2;dy<=2&&!peer;dy++)for(let dx=-2;dx<=2;dx++){
       const x=a.x+dx,y=a.y+dy;
       if(x<0||y<0||x>=w.width||y>=w.height)continue;
-      const b=occupied.get(y*w.width+x);
-      if(!b||b.id===a.id||d.friends.includes(b.id)||
-        b.development!.friends.length>=4||
-        Math.abs(b.age/traitProfile(b.ancestry).maturity-
-          a.age/traitProfile(a.ancestry).maturity)>1.2)continue;
-      peer=b;break;
+      for(const b of occupied.get(y*w.width+x)??[]){
+        if(b.id===a.id||d.friends.includes(b.id)||
+          b.development!.friends.length>=4||
+          Math.abs(b.age/traitProfile(b.ancestry).maturity-
+            a.age/traitProfile(a.ancestry).maturity)>1.2)continue;
+        peer=b;break;
+      }
     }
     if(!peer)continue;
     d.friends.push(peer.id);peer.development!.friends.push(a.id);

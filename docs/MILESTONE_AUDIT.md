@@ -1,4 +1,4 @@
-# WorldForge milestone audit (through v1.2)
+# WorldForge milestone audit (through v1.2.1)
 
 WorldForge is a *simulation* rather than a scripted city painter. This audit
 distinguishes implemented foundations from aspirational features.
@@ -16,6 +16,7 @@ distinguishes implemented foundations from aspirational features.
 | v1.0 | Navigable connected-water voyages with provisions and cargo; voluntary guilds and apprenticeships; trade, aid and embargo accords. |
 | v1.1 | Deterministic detailed pixel people, consistent portraits, textured world map, distinct structures and visible residents in local settlements. |
 | v1.2 | Four-direction sprites, two-frame walking motion between yearly positions and an optional camera following a living individual. |
+| v1.2.1 | Saved 365-day calendar, day/week/month/year playback and stepping, monthly pursuit of existing travel goals, physically bounded multi-person settlement tiles, map-size-scaled settlement count and demographic seed-sweep tooling. Annual reproduction, aging and economy are unchanged in frequency. |
 
 ## Validation
 
@@ -29,6 +30,11 @@ distinguishes implemented foundations from aspirational features.
 - v1.2: Motion and camera calculations are separately tested for direction,
   footfall timing, clamping and non-mutation. The renderer interpolates
   observed yearly positions; no new simulation state is introduced.
+- v1.2.1: Focused tests cover daily calendar rollover, annual life boundaries,
+  save/restore compatibility, deterministic outcomes across playback chunk sizes,
+  household-capacity boundaries, and ordered IndexedDB writes. Population
+  survival has a repeatable 12-seed sweep in `npm run test:population-sweep`
+  (120 years by default, with a longer horizon accepted as an argument).
 
 ## Honest limits and next work
 
@@ -36,11 +42,19 @@ distinguishes implemented foundations from aspirational features.
   language model generating unscripted dialogue. Agents can choose differently
   based on conditions but do not conduct free-form LLM conversations.
 - Survival and long-term coexistence are **not guaranteed** for every seed.
-  Geography, scarcity and population dynamics still cause failures.
+  Geography, scarcity and population dynamics still cause failures. A 12-seed
+  120-year baseline found no human or demon extinctions; longer horizons are
+  essential before treating lower fertility as a fix.
 - Sea voyages require connected navigable water, ports, supplies, people and
   trade needs. Not every generated world will show a completed sea delivery.
-- The world has no hard population cap, but free land and device resources are
-  practical limits. Larger worlds can become computationally expensive.
+- The world has no hard population cap, but developed settlement tiles have
+  bounded occupancy based on communal space, wilderness tiles remain
+  single-occupancy, and device resources are practical limits. Settlements are
+  bounded by a map-area safety limit rather than the former fixed 54.
+- The daily calendar allows weeks and months to pass slowly, with real local
+  movement on month boundaries. Aging, births, resources and the economy still
+  update annually. **Full day-by-day needs, work schedules, and conversations
+  remain future Mind Engine / Daily Life milestones.**
 - Sprite appearances and directional walking are implemented, but weather,
   day-night cycles, combat animation and a full character avatar editor remain
   future work. Rapid multi-tile travel uses an abbreviated onscreen path, not

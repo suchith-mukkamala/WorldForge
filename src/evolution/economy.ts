@@ -8,6 +8,7 @@ import {MATERIALS,prepareInfrastructure,type Material,type Ore} from './construc
 import {bridgeTiles,caravanPace,considerTradeBridge,findTradeRoute} from './transport';
 import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
 import {accordBetween} from './institutions';
+import {addResident,removeResident,residentIndex,tileCapacity} from './density';
 
 export const JOBS=['farmer','woodcutter','miner','builder','artisan','trader'] as const;
 export type Job=typeof JOBS[number];
@@ -302,7 +303,21 @@ export function reconcileTradeTerrain(w:World,index:number):void{
 function resolveShipments(w:World,moved:number[]):Set<number>{
   const travelling=new Set<number>(),byId=new Map(w.agents.map(a=>[a.id,a]));
   const byPlace=new Map(w.settlements.map(s=>[s.id,s]));
-  const occupied=new Map(w.agents.map(a=>[a.y*w.width+a.x,a]));
+  const residents=residentIndex(w.agents,w.width),capacity=tileCapacity(w);
+  const occupied=new Map<number,Agent>();
+  const refresh=(index:number)=>{
+    const id=residents.get(index)?.[0];
+    if(id===undefined)occupied.delete(index);
+    else occupied.set(index,byId.get(id)!);
+  };
+  for(const index of residents.keys())refresh(index);
+  const recover=(a:Agent)=>{
+    const old=a.y*w.width+a.x;
+    rescueSailor(w,a,occupied);
+    const next=a.y*w.width+a.x;
+    if(next!==old){removeResident(residents,old,a.id);
+      addResident(residents,next,a.id);refresh(old);refresh(next);}
+  };
   const active:Shipment[]=[];
   for(const shipment of w.shipments??[]){
     const a=byId.get(shipment.carrierId),origin=byPlace.get(shipment.originId),
@@ -311,7 +326,7 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
       if(destination)destination.economy!.coins=rounded(clamp(
         destination.economy!.coins+shipment.payment,0,10000));
       if(origin&&destination)relationFailure(w,origin.id,destination.id);
-      if(a){rescueSailor(w,a,occupied);a.work=undefined;}
+      if(a){recover(a);a.work=undefined;}
       record(w,'A caravan failed to reach its destination; cargo was lost.');
       continue;
     }
@@ -330,19 +345,25 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
       shipment.progress<shipment.route.length-1;step++){
       const idx=shipment.route[shipment.progress+1];
       const next={x:idx%w.width,y:Math.floor(idx/w.width)};
-      const other=occupied.get(idx);
+      const other=(residents.get(idx)??[]).map(id=>byId.get(id)!).find(b=>b.id!==a.id);
       const old=a.y*w.width+a.x;
       const yields=other&&other.id!==a.id&&!other.work?.tradeId&&
         other.age>=traitProfile(other.ancestry).maturity&&
         (other.development?.values.community??50)>=43&&
         // A disembarking captain must not swap a pedestrian into open sea.
-        w.tiles[old].biome!=='water';
-      if(distance(a,next)!==1||other&&!yields)break;
-      if(other){
-        other.x=a.x;other.y=a.y;occupied.set(old,other);
+        w.tiles[old].biome!=='water'&&
+        (residents.get(old)?.length??0)<=capacity[old];
+      const canShare=w.tiles[idx].biome!=='water'&&
+        (residents.get(idx)?.length??0)<capacity[idx];
+      if(distance(a,next)!==1||other&&!yields&&!canShare)break;
+      if(other&&yields){
+        removeResident(residents,idx,other.id);
+        other.x=a.x;other.y=a.y;addResident(residents,old,other.id);
         moved.push(old);
-      }else occupied.delete(old);
-      a.x=next.x;a.y=next.y;occupied.set(idx,a);
+      }
+      removeResident(residents,old,a.id);
+      a.x=next.x;a.y=next.y;addResident(residents,idx,a.id);
+      refresh(old);refresh(idx);
       moved.push(idx);
       a.energy=rounded(Math.max(1,a.energy-.7));
       shipment.progress++;shipment.lastAdvance=w.year;
@@ -369,7 +390,7 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
         stockOf(origin,shipment.good)+shipment.quantity);
       relationFailure(w,origin.id,destination.id);
       record(w,'A caravan from '+origin.name+' abandoned its delayed journey.');
-      if(shipment.mode==='sea')rescueSailor(w,a,occupied);
+      if(shipment.mode==='sea')recover(a);
       a.work=undefined;travelling.delete(a.id);
     }else{
       a.work={job:'trader',settlementId:shipment.originId,tradeId:shipment.id};

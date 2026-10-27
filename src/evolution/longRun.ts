@@ -31,7 +31,11 @@ async function run(){
   let populated=createWorld({size:'small',seed:104729});
   for(let year=0;year<250;year+=10){
     populated=advanceWorld(populated,10);
-    if(year%50===0)await new Promise<void>(resolve=>setTimeout(resolve,0));
+    if((year+10)%50===0){
+      console.log('Stress checkpoint: year '+populated.year+', people '+
+        populated.agents.length+', settlements '+populated.settlements.length);
+      await new Promise<void>(resolve=>setTimeout(resolve,0));
+    }
   }
   const structures=populated.settlements.flatMap(s=>s.infrastructure?.buildings??[])
     .filter(b=>b.stage==='complete');

@@ -1,6 +1,8 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent} from 'react';
 import {WorldCanvas} from './WorldCanvas';
+import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
+  type TimeRate} from './calendar';
 import {cameraScrollTarget} from './motion';
 import {PixelPortrait} from './PixelPortrait';
 import {WorldCreator} from './WorldCreator';
@@ -25,7 +27,7 @@ import {compactWorld,loadBrowserWorld,readSavedWorld,WORLD_STORAGE_KEY,
 export {readSavedWorld} from './storage';
 import {
   BIOME_INFO,BIOMES,DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,
-  advanceWorld,createWorld,editWorld,population,
+  createWorld,editWorld,population,
   type Brush,type World,type WorldSettings,type Biome,
 } from './engine';
 
@@ -90,7 +92,9 @@ export function WorldforgeApp(){
   const [storageReady,setStorageReady]=useState(typeof window==='undefined');
   const [tab,setTab]=useState<Tab>('world');
   const [playing,setPlaying]=useState(false);
-  const [speed,setSpeed]=useState(4);
+  const [timeRate,setTimeRate]=useState<TimeRate>('month');
+  const playback=TIME_RATES.find(rate=>rate.id===timeRate)??TIME_RATES[2];
+  const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<'terrain'|'resources'|'deposits'>('terrain');
   const [zoom,setZoom]=useState(1);
@@ -101,7 +105,7 @@ export function WorldforgeApp(){
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
   const [notice,setNotice]=useState('');
-  const [savedYear,setSavedYear]=useState<number|null>(null);
+  const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
   const fileRef=useRef<HTMLInputElement>(null);
   const currentWorld=useRef(world);
   currentWorld.current=world;
@@ -133,7 +137,7 @@ export function WorldforgeApp(){
     if(!storageReady)return;
     const save=()=>{
       const current=currentWorld.current;
-      void saveSnapshot(current).then(()=>setSavedYear(current.year))
+      void saveSnapshot(current).then(()=>setSavedDate(calendarDate(current)))
         .catch(()=>setNotice('Autosave failed. Export World JSON to keep your progress.'));
     };
     const timer=window.setInterval(save,10000);
@@ -143,7 +147,7 @@ export function WorldforgeApp(){
   useEffect(()=>{
     if(playing||!storageReady)return; // The periodic checkpoint handles play.
     const timer=window.setTimeout(()=>{
-      void saveSnapshot(world).then(()=>setSavedYear(world.year))
+      void saveSnapshot(world).then(()=>setSavedDate(calendarDate(world)))
         .catch(()=>setNotice('Autosave failed. Export World JSON to keep your progress.'));
     },500);
     return ()=>window.clearTimeout(timer);
@@ -154,11 +158,11 @@ export function WorldforgeApp(){
     const timer=window.setInterval(()=>{
       setWorld(w=>{
         if(!w.agents.length||w.year>=9999)return w;
-        return advanceWorld(w,1);
+        return advanceWorldDays(w,playback.days);
       });
-    },1000/speed);
+    },playback.interval);
     return ()=>window.clearInterval(timer);
-  },[playing,speed,tab]);
+  },[playing,playback.days,playback.interval,tab]);
   useEffect(()=>{
     if(playing&&(!world.agents.length||world.year>=9999))setPlaying(false);
   },[world.agents.length,world.year,playing]);
@@ -244,6 +248,7 @@ export function WorldforgeApp(){
     if(!window.confirm('Generate a new world? This replaces your current simulation. '+
       'Use Export World JSON first to keep this timeline.'))return;
     setPlaying(false);setWorld(createWorld(settings));setTab('world');
+    setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
     setZoom(1);setNotice('New world created with seed '+settings.seed+'.');
@@ -258,6 +263,7 @@ export function WorldforgeApp(){
     if(!window.confirm(note+'Restart from year 0 using seed '+world.settings.seed+
       '? Your current timeline will be replaced. Export World JSON first to keep it.'))return;
     setPlaying(false);setWorld(createWorld(world.settings));
+    setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
     setNotice('World replayed from the same starting seed.');
@@ -274,13 +280,14 @@ export function WorldforgeApp(){
       const obj=readSavedWorld(await file.text());
       if(!obj)throw Error('Invalid or unsupported Worldforge world JSON.');
       setPlaying(false);setWorld(obj);setTab('world');
+      setSavedDate(null);
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);setZoom(1);setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
-  const step=(years:number)=>{
-    setPlaying(false);setWorld(w=>advanceWorld(w,years));
+  const step=(days:number)=>{
+    setPlaying(false);setWorld(w=>advanceWorldDays(w,days));
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
@@ -330,7 +337,8 @@ export function WorldforgeApp(){
           ⚡ DIVINE POWERS</button>
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}
-        {savedYear!==null&&<small> · SAVED Y{savedYear}</small>}</div>
+        {savedDate&&<small> · SAVED Y{savedDate.year} {MONTH_NAMES[savedDate.month]}
+          {' '}{savedDate.day}</small>}</div>
     </header>
     {tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
       current={world.settings} onCreate={startWorld} onReturn={()=>navigate('world')}/>:
@@ -366,19 +374,24 @@ export function WorldforgeApp(){
           <button className={playing?'playing evo-play-main':'evo-play-main'}
             disabled={!world.agents.length||world.year>=9999}
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
-          <button onClick={()=>step(1)} title="Advance one year">+1 YEAR</button>
-          <button onClick={()=>step(10)} title="Advance ten years">+10</button>
-          <label htmlFor="evo-play-speed">SPEED
-            <select id="evo-play-speed" value={speed}
-              onChange={e=>setSpeed(Number(e.target.value))}>
-              {[1,2,4,8,16].map(v=><option value={v} key={v}>{v} yr/s</option>)}
+          <button onClick={()=>step(1)} title="Advance one simulated day">+DAY</button>
+          <button onClick={()=>step(7)} title="Advance one simulated week">+WEEK</button>
+          <button onClick={()=>step(30)} title="Advance thirty simulated days">+MONTH</button>
+          <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
+          <button onClick={()=>step(3650)} title="Advance ten simulated years">+10Y</button>
+          <label htmlFor="evo-play-speed">PACE
+            <select id="evo-play-speed" value={timeRate}
+              onChange={e=>setTimeRate(e.target.value as TimeRate)}>
+              {TIME_RATES.map(v=><option value={v.id} key={v.id}>{v.label}</option>)}
             </select>
           </label>
         </div>
       </header>
       <section className="evo-stats" aria-label="Live world statistics">
-        <div className="evo-stat big"><small>WORLD YEAR</small>
-          <strong>{world.year}</strong><span>Seed {world.settings.seed}</span></div>
+        <div className="evo-stat big"><small>WORLD DATE</small>
+          <strong>Year {world.year}</strong>
+          <span>{MONTH_NAMES[calendarDate(world).month]} {calendarDate(world).day}
+            {' · '}Seed {world.settings.seed}</span></div>
         <div className="evo-stat"><small>LIVING PEOPLE</small>
           <strong>{format(world.agents.length)}</strong>
           <span>{latest?.births??0} births · {latest?.deaths??0} deaths this year</span>
@@ -581,11 +594,10 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V0.7.1: RENEWABLE WORLDS</strong>
-        <span>Residents harvest renewable trees, stone and mineral ores, then
-          work at real building sites. Settlements grow according to community
-          needs, with no artificial population ceiling. Playback autosaves
-          even when no city is being viewed.</span>
+        <strong>V1.2.1: A SLOWER, LIVING WORLD</strong>
+        <span>Step through days, weeks or months; people follow real intentions
+          between yearly life events. Towns host growing households, populations
+          respond to local food, and playback saves your calendar date.</span>
       </div>
     </main>}
   </div>;

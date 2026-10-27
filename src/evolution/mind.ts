@@ -46,17 +46,20 @@ export function foodAround(w:World,x:number,y:number):number{
   return sum;
 }
 
-function nearestPerson(w:World,a:Agent,occupied:Map<number,number>,
+function nearestPerson(w:World,a:Agent,occupied:Map<number,number|number[]>,
   byId:Map<number,Agent>,eligible:(b:Agent)=>boolean,limit=6):Agent|undefined{
   let best:Agent|undefined,bestScore=Infinity;
   for(let dy=-limit;dy<=limit;dy++)for(let dx=-limit;dx<=limit;dx++){
     const x=a.x+dx,y=a.y+dy;
     if(!inBounds(w,x,y))continue;
-    const id=occupied.get(index(w,x,y)),person=id===undefined?undefined:byId.get(id);
-    if(!person||person.id===a.id||!eligible(person))continue;
-    const score=distance(a,person)+Math.abs(a.genes.social-person.genes.social)*.1;
-    if(score<bestScore||(score===bestScore&&person.id<(best?.id??Infinity))){
-      best=person;bestScore=score;
+    const id=occupied.get(index(w,x,y));
+    for(const candidate of id===undefined?[]:Array.isArray(id)?id:[id]){
+      const person=byId.get(candidate);
+      if(!person||person.id===a.id||!eligible(person))continue;
+      const score=distance(a,person)+Math.abs(a.genes.social-person.genes.social)*.1;
+      if(score<bestScore||(score===bestScore&&person.id<(best?.id??Infinity))){
+        best=person;bestScore=score;
+      }
     }
   }
   return best;
@@ -110,7 +113,7 @@ function expedition(w:World,a:Agent):{x:number;y:number}|undefined{
   return best>0?target:undefined;
 }
 
-export function planMind(w:World,a:Agent,occupied:Map<number,number>,
+export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
   byId:Map<number,Agent>,contacts:Map<number,number>,
   suitability:(ancestry:Ancestry,biome:Biome)=>number,
   traits:(ancestry:Ancestry)=>{maturity:number;lifespan:number},
