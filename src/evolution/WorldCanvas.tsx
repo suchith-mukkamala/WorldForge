@@ -5,22 +5,33 @@ import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
 import {paintBuilding,paintDeposit,paintPerson,paintTerrain,spriteKey,
   PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
+import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
+  type Facing,type Motion,type Point} from './motion';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
-  world,brush,overlay,selected,onSelect,onEdit,zoom=1,
+  world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
+  followId=null,onFollowPosition,
 }:{
   world:World;brush:Brush;overlay:'terrain'|'resources'|'deposits';
   selected:{x:number;y:number}|null;
-  onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;zoom?:number;
+  onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
+  zoom?:number;speed?:number;followId?:number|null;
+  onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
+  const prior=useRef<{year:number;seed:number;positions:Map<number,Point>}|null>(null);
+  const facing=useRef<Map<number,Facing>>(new Map());
+  const motions=useRef<Map<number,Motion>>(new Map());
   useEffect(()=>{
-    const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
-    if(!canvas||!ctx)return;
+    const canvas=canvasRef.current,visible=canvas?.getContext('2d');
+    if(!canvas||!visible)return;
+    const background=document.createElement('canvas');
+    background.width=canvas.width;background.height=canvas.height;
+    const ctx=background.getContext('2d');if(!ctx)return;
     const W=world.width,H=world.height;
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
@@ -112,60 +123,107 @@ export function WorldCanvas({
         paintBuilding(ctx,b);
       }
     }
-    const detailed=zoom>=3;
+    const current=new Map(world.agents.map(a=>[a.id,{x:a.x,y:a.y}]));
+    const previous=prior.current;
+    const now=performance.now();
+    if(!previous||previous.seed!==world.settings.seed||
+      world.year<previous.year||world.year-previous.year>1){
+      motions.current.clear();facing.current.clear();spriteCache.current.clear();
+    }else if(world.year>previous.year){
+      const duration=visualMotionDuration(speed);
+      const nextMotions=new Map<number,Motion>();
+      for(const [id,to] of current){
+        const from=previous.positions.get(id);if(!from)continue;
+        if(canAnimate(from,to)){
+          const direction=directionBetween(from,to,facing.current.get(id));
+          facing.current.set(id,direction);
+          nextMotions.set(id,{from,to,start:now,duration,facing:direction});
+        }
+      }
+      motions.current=nextMotions;
+    }
+    prior.current={year:world.year,seed:world.settings.seed,positions:current};
+    for(const id of [...facing.current.keys()])if(!current.has(id))facing.current.delete(id);
     if(spriteCache.current.size>6500)spriteCache.current.clear();
-    for(const a of [...world.agents].sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id)){
-      const px=a.x*CELL,py=a.y*CELL;
-      if(!detailed){
-        ctx.fillStyle='#081323';ctx.fillRect(px+1,py+1,4,4);
-        ctx.fillStyle=SPECIES_INFO[a.species].color;
-        ctx.fillRect(px+2,py+2,2,2);
-      }else{
-        const key=spriteKey(a);
+    const ordered=[...world.agents].sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id);
+    let handle=0,lastFrame=-Infinity;
+    const draw=(timestamp:number)=>{
+      // Animation is presentation-only and capped to limit large-world GPU work.
+      if(timestamp-lastFrame<1000/24){handle=requestAnimationFrame(draw);return;}
+      lastFrame=timestamp;
+      visible.clearRect(0,0,canvas.width,canvas.height);
+      visible.imageSmoothingEnabled=false;
+      visible.drawImage(background,0,0);
+      const positions=new Map<number,Point>();
+      let active=false;
+      for(const a of ordered){
+        const movement=motions.current.get(a.id);
+        const frame=movement?motionFrame(movement,timestamp):null;
+        const x=frame?.x??a.x,y=frame?.y??a.y;
+        positions.set(a.id,{x,y});
+        if(frame?.walking)active=true;
+        const px=x*CELL,py=y*CELL;
+        if(zoom<3){
+          visible.fillStyle='#081323';visible.fillRect(px+1,py+1,4,4);
+          visible.fillStyle=SPECIES_INFO[a.species].color;
+          visible.fillRect(px+2,py+2,2,2);
+          continue;
+        }
+        const direction=frame?.facing??facing.current.get(a.id)??'south';
+        const stride=frame?.stride??0;
+        const key=spriteKey(a)+':'+direction+':'+stride;
         let sprite=spriteCache.current.get(key);
         if(!sprite){
           sprite=document.createElement('canvas');
           sprite.width=PERSON_SPRITE_WIDTH;sprite.height=PERSON_SPRITE_HEIGHT;
           const painter=sprite.getContext('2d');
-          if(painter)paintPerson(painter,a);
+          if(painter)paintPerson(painter,a,0,0,direction,stride);
           spriteCache.current.set(key,sprite);
         }
         const focus=selected?.x===a.x&&selected?.y===a.y;
         const width=focus&&zoom>=5?16:zoom>=5?12:9;
         const height=focus&&zoom>=5?22:zoom>=5?17:13;
-        ctx.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
+        visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
         if(a.partnerId!==undefined){
-          ctx.fillStyle='#ffe1b3';ctx.fillRect(px+6,py-8,2,2);
+          visible.fillStyle='#ffe1b3';visible.fillRect(px+6,py-8,2,2);
         }
       }
-    }
-    if(zoom>=1.5){
-      const drivers=new Map(world.agents.map(a=>[a.id,a]));
-      for(const shipment of world.shipments??[]){
-        const a=drivers.get(shipment.carrierId);if(!a)continue;
-        const px=a.x*CELL,py=a.y*CELL;
+      if(zoom>=1.5)for(const shipment of world.shipments??[]){
+        const p=positions.get(shipment.carrierId);if(!p)continue;
+        const px=p.x*CELL,py=p.y*CELL;
         if(shipment.mode==='sea'){
-          ctx.fillStyle='#332f3b';ctx.fillRect(px-3,py+3,12,2);
-          ctx.fillStyle='#c0925c';ctx.fillRect(px-2,py+1,10,3);
-          ctx.fillStyle='#f5e8c5';ctx.fillRect(px+2,py-8,1,10);
-          ctx.fillRect(px-1,py-7,3,6);
-          ctx.fillStyle='#d3dbea';ctx.fillRect(px+3,py-5,3,5);
-          ctx.fillStyle='#825e50';ctx.fillRect(px+5,py+2,2,1);
-          continue;
+          visible.fillStyle='#332f3b';visible.fillRect(px-3,py+3,12,2);
+          visible.fillStyle='#c0925c';visible.fillRect(px-2,py+1,10,3);
+          visible.fillStyle='#f5e8c5';visible.fillRect(px+2,py-8,1,10);
+          visible.fillRect(px-1,py-7,3,6);
+          visible.fillStyle='#d3dbea';visible.fillRect(px+3,py-5,3,5);
+          visible.fillStyle='#825e50';visible.fillRect(px+5,py+2,2,1);
+        }else{
+          visible.fillStyle='#3d3340';visible.fillRect(px-2,py+1,10,4);
+          visible.fillStyle='#d4ae79';visible.fillRect(px-1,py,8,4);
+          visible.fillStyle='#b2835c';visible.fillRect(px,py-2,5,2);
+          visible.fillStyle='#242d39';visible.fillRect(px,py+5,2,2);
+          visible.fillRect(px+5,py+5,2,2);
         }
-        ctx.fillStyle='#3d3340';ctx.fillRect(px-2,py+1,10,4);
-        ctx.fillStyle='#d4ae79';ctx.fillRect(px-1,py,8,4);
-        ctx.fillStyle='#b2835c';ctx.fillRect(px,py-2,5,2);
-        ctx.fillStyle='#242d39';ctx.fillRect(px,py+5,2,2);
-        ctx.fillRect(px+5,py+5,2,2);
       }
-    }
-    if(selected){
-      const px=selected.x*CELL,py=selected.y*CELL;
-      ctx.strokeStyle='#fff3b4';ctx.lineWidth=2;ctx.strokeRect(px+.5,py+.5,CELL-1,CELL-1);
-      ctx.strokeStyle='#15192e';ctx.lineWidth=1;ctx.strokeRect(px-.5,py-.5,CELL+1,CELL+1);
-    }
-  },[world,overlay,selected,zoom]);
+      if(selected){
+        const marked=ordered.find(a=>a.x===selected.x&&a.y===selected.y);
+        const marker=marked?positions.get(marked.id):selected;
+        const px=(marker?.x??selected.x)*CELL,py=(marker?.y??selected.y)*CELL;
+        visible.strokeStyle='#fff3b4';visible.lineWidth=2;
+        visible.strokeRect(px+.5,py+.5,CELL-1,CELL-1);
+        visible.strokeStyle='#15192e';visible.lineWidth=1;
+        visible.strokeRect(px-.5,py-.5,CELL+1,CELL+1);
+      }
+      if(followId!==null){
+        const tracked=positions.get(followId);
+        if(tracked)onFollowPosition?.(tracked.x,tracked.y);
+      }
+      if(active)handle=requestAnimationFrame(draw);
+    };
+    draw(now);
+    return ()=>cancelAnimationFrame(handle);
+  },[world,overlay,selected,zoom,speed,followId,onFollowPosition]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);

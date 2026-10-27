@@ -5,6 +5,7 @@ import type {Agent,Species} from './engine';
 import {traitProfile} from './family';
 import {ARCHITECTURE,type Building} from './construction';
 import {RESOURCE_COLORS,type ResourceKind} from './resources';
+import type {Facing} from './motion';
 
 export const PERSON_SPRITE_WIDTH=16;
 export const PERSON_SPRITE_HEIGHT=22;
@@ -69,7 +70,7 @@ export function spriteKey(person:PixelPerson):string{
 
 /** Draw at native 16 × 22 pixel resolution; scale with nearest-neighbor only. */
 export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
-  ox=0,oy=0):void{
+  ox=0,oy=0,facing:Facing='south',stride:0|1=0):void{
   const c=appearanceFor(person),p=(color:string,x:number,y:number,w:number,h:number)=>{
     ctx.fillStyle=color;ctx.fillRect(ox+x,oy+y,w,h);
   };
@@ -128,16 +129,38 @@ export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
   }
   // A mixed-heritage accent is inherited visually, never re-rolled by zoom.
   if(c.secondary)p(c.accent,10,12,2,2);
+  if(facing==='north'){
+    // No eyes from behind: hairstyle, cloak and shoulder straps reveal the back.
+    p(ink,4,top+1,8,8);p(c.hair,5,top+1,6,7);
+    p('#374556',5,12,6,6-short);p(c.outfit,7,12,2,5-short);
+    p(c.trim,6,12,1,5-short);
+  }else if(facing==='east'||facing==='west'){
+    // A single visible eye and a side silhouette distinguish left and right.
+    const side=facing==='east'?1:-1;
+    p(skin,5,top+3,6,5);
+    p(c.hair,side===1?5:9,top+2,2,5);
+    p(c.eyes,side===1?9:6,top+5,1,1);
+    p('#a36f67',side===1?11:4,top+7,1,1);
+    p(c.trim,side===1?11:4,13,1,4-short);
+  }
+  if(stride===1){
+    // Two-frame alternating gait with subtle arm counter-swing.
+    p('#282d3a',4,18,4,3);p(c.boots,3,19,4,2);
+    p('#282d3a',9,17,4,3);p(c.boots,10,18,4,2);
+    p(skin,2,15-short,2,2);p(skin,12,17-short,2,2);
+  }
 }
 
 export type PixelRect={x:number;y:number;width:number;height:number;color:string};
 /** Native SVG can use the same sprite commands without bitmap upscaling. */
-export function pixelRectsFor(person:PixelPerson):PixelRect[]{
+export function pixelRectsFor(person:PixelPerson,facing:Facing='south',
+  stride:0|1=0):PixelRect[]{
   const pixels:PixelRect[]=[];
   const recorder={fillStyle:'',fillRect(x:number,y:number,width:number,height:number){
     pixels.push({x,y,width,height,color:recorder.fillStyle});
   }};
-  paintPerson(recorder as unknown as CanvasRenderingContext2D,person);
+  paintPerson(recorder as unknown as CanvasRenderingContext2D,
+    person,0,0,facing,stride);
   return pixels;
 }
 
