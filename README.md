@@ -18,7 +18,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - See coastal communities build boats from real supplies and sail connected waterways. Captains carry provisions, physically cross water, and deliver goods only after disembarking.
 - Follow voluntary worker guilds that elect leaders, train members, maintain treasuries, and advocate for local construction.
 - Watch communities negotiate trade accords and mutual-aid pacts from past cooperation and residents' social preferences, or impose embargoes after disputes. Emergency food aid still travels as real shipments.
-- Zoom into the pixel-art landscape to see individualized mortal sprites: species silhouettes, apparent age, outfits, work gear and inherited visual accents. The same appearance is shown in full-size person portraits and town close-ups.
+- Zoom into the pixel-art landscape to see individualized mortal sprites: species silhouettes, apparent age, outfits, work gear and inherited visual accents. The same appearance is shown in the person inspector, family archive, People directory and town close-ups.
 - Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
 - Inspect world history, species populations, settlements and individuals as the simulation advances independently of camera zoom.
 - Intervene with blessings, curses, divine whispers, direct changes and other godlike abilities while people retain agency over suggestions.

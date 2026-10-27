@@ -4,6 +4,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {createWorld,isWorld} from './engine';
 import {PixelPortrait} from './PixelPortrait';
 import {PeopleDirectory} from './PeopleDirectory';
+import {WorldFamily} from './WorldFamily';
 import {appearanceFor,paintBuilding,paintPerson,paintTerrain,spriteKey} from './pixelArt';
 import {BUILDING_TYPES,prepareInfrastructure} from './construction';
 
@@ -47,6 +48,10 @@ describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
       onFindOnMap:()=>{}}));
     expect(page).toContain('evo-pixel-portrait');
     expect(page).toContain('Pixel-art portrait');
+    const family=renderToStaticMarkup(createElement(WorldFamily,{world:w,
+      focusId:a.id,onChoose:()=>{},onShowOnMap:()=>{},onFavorite:()=>{},
+      onRename:()=>{}}));
+    expect(family).toContain('Pixel-art portrait');
   });
 
   it('draws unique detailed people, habitats and architecture without world writes',()=>{

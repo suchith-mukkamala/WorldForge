@@ -6,6 +6,7 @@ import {
   ancestryLabel,hybridFraction,traitProfile,
 } from './family';
 import {personName,isPersonFavorite,cleanIdentityName} from './identity';
+import {PixelPortrait} from './PixelPortrait';
 
 type Props={world:World;focusId:number|null;onChoose:(id:number)=>void;
   onShowOnMap:(id:number)=>void;onFavorite:(id:number)=>void;
@@ -117,9 +118,9 @@ export function WorldFamily({world,focusId,onChoose,onShowOnMap,
             <div className="evo-card-heading"><strong>SELECTED LINEAGE</strong>
               <span>{isLiving?'● ALIVE':'◌ DECEASED / ARCHIVED'}</span></div>
             <div className="evo-family-headline">
-              <span className="evo-family-emblem"
-                style={{color:SPECIES_INFO[current.species].color}}>
-                {SPECIES_INFO[current.species].symbol}</span>
+              <PixelPortrait person={person??{...current,
+                age:current.died!==undefined?current.died-current.born:undefined}}
+                name={personName(world,current)} compact/>
               <div>
                 <span className="evo-overline">GENERATION {current.generation} / ID #{current.id}</span>
                 <h3>{personName(world,current)}</h3>
