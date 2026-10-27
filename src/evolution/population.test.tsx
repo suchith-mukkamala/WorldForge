@@ -8,6 +8,7 @@ import {traitProfile} from './family';
 import {PopulationDiagnostics} from './PopulationDiagnostics';
 import {EvolutionHistory} from './EvolutionHistory';
 import {readSavedWorld,compactWorld} from './storage';
+import {tileCapacity} from './density';
 
 describe('Evolution Lab v0.2.1: honest population diagnostics',()=>{
   it('starts new worlds with zeroed mortality records and empty yearly vitals',()=>{
@@ -154,7 +155,8 @@ describe('Ecological survival smoke tests across seeded worlds',()=>{
         .toBeGreaterThanOrEqual(3);
     }
     for(const world of worlds){
-      expect(world.agents.length).toBeLessThanOrEqual(world.tiles.length);
+      expect(world.agents.length).toBeLessThanOrEqual(
+        tileCapacity(world).reduce((n,c)=>n+c,0));
       expect(isWorld(world)).toBe(true);
       expect(world.history.at(-1)?.total).toBe(world.agents.length);
     }

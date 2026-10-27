@@ -56,11 +56,13 @@ export function cleanIdentityName(value:string):string|null{
   if(cleaned.length<2||cleaned.length>64)return null;
   return /^[\p{L}\p{M}\p{N} .'\-]+$/u.test(cleaned)?cleaned:null;
 }
-export function makeLifeRecord(world:World,agent:Agent):LineageRecord{
+export function makeLifeRecord(world:World,agent:Agent,
+  known?:Map<number,LineageRecord>):LineageRecord{
   const record=livingRecord(agent);
   // Children normally inherit a parent's house, regardless of their
   // dominant species. New arrivals found an independent lineage.
-  const parent=agent.parents&&world.lineage.find(r=>r.id===agent.parents![0]);
+  const parent=agent.parents&&(known?.get(agent.parents[0])??
+    world.lineage.find(r=>r.id===agent.parents![0]));
   const house=parent?
     (parent.house??generatedHouse(world.settings.seed,parent.id,parent.species)):
     generatedHouse(world.settings.seed,agent.id,agent.species);
@@ -73,8 +75,9 @@ export function makeLifeRecord(world:World,agent:Agent):LineageRecord{
 }
 export function appendLifeMoment(
   world:Pick<World,'lineage'>,id:number,moment:LifeMoment,
+  known?:Map<number,LineageRecord>,
 ):void{
-  const record=world.lineage.find(r=>r.id===id);
+  const record=known?.get(id)??world.lineage.find(r=>r.id===id);
   if(!record)return;
   // Recent entries are retained. Favorites are about the person, not only
   // their most recent events; the core birth/arrival moment stays visible.

@@ -19,7 +19,9 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - Follow voluntary worker guilds that elect leaders, train members, maintain treasuries, and advocate for local construction.
 - Watch communities negotiate trade accords and mutual-aid pacts from past cooperation and residents' social preferences, or impose embargoes after disputes. Emergency food aid still travels as real shipments.
 - Zoom into the pixel-art landscape to see individualized mortal sprites: species silhouettes, apparent age, outfits, work gear and inherited visual accents. The same appearance is shown in the person inspector, family archive, People directory and town close-ups.
-- Watch animated walkers face north, south, east or west and alternate their stride while moving between actual yearly positions. Choose a person and press **FOLLOW** to track their travels with a camera that moves with them; **TRACKING** turns it off.
+- Watch animated walkers face north, south, east or west and alternate their stride between actual changes in position. Choose a person and press **FOLLOW** to track their travels with a camera that moves with them; **TRACKING** turns it off.
+- Set the world clock to days, weeks, months, seasons or years. Smaller intervals advance a genuine saved calendar and people pursue existing travel goals on monthly boundaries. Aging, births, yearly work and economic accounting still happen annually; full daily routines are a later milestone.
+- Observe natural crowding in settlements: neighborhoods can host bounded groups of inhabitants while wilderness remains more sparsely occupied. More spacious maps support more settlements without the former fixed 54-town limit. Physical crowding is independent of housing quality and household shelter needs.
 - Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
 - Inspect world history, species populations, settlements and individuals as the simulation advances independently of camera zoom.
 - Intervene with blessings, curses, divine whispers, direct changes and other godlike abilities while people retain agency over suggestions.
@@ -42,6 +44,9 @@ Open the local URL printed by Vite.
 npm run build
 npm test
 npm run test:long-simulation
+npm run test:population-sweep
+# Longer optional demographic survey (12 seeds × 250 years):
+npm run test:population-sweep -- 250
 ```
 
 The long-run simulation is intentionally more expensive than unit tests. The simulation has no artificial population ceiling, but your hardware and available world tiles still bound what can run efficiently.
@@ -56,8 +61,8 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v1.2 — Directional Walking & Follow Camera, following the v1.1 pixel-art milestone.
-- **Next:** Expanded production chains, river ports and vessel fleets, formal governments, cultural exchange and deeper autonomous exploration.
+- **Current:** v1.2.1 — Calendar Pacing, Population Density & Stability, following v1.2 directional walking and follow camera.
+- **Next:** v1.3 Knowledge & Discovery, with learned agriculture, education, specific knowledge and generational transmission; then ruins, religions, governments and deeper daily lives.
 - **Future:** Optional mortal perspective with travel, interactions, choices and character progression. No mortal-play mode is implemented yet.
 
 ## Architecture
@@ -71,8 +76,11 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/institutions.ts`: voluntary guild formation, worker training, treasury decisions and diplomatic accords.
 - `src/evolution/pixelArt.ts` and `PixelPortrait.tsx`: deterministic 16×22 character designs, landscape and structure art, and matching full-size portraits. Zoom never mutates the simulation.
 - `src/evolution/motion.ts`: visual-only directional movement, timed interpolation and camera centering. These animations and view positions are not saved into the world or used for agent decisions.
+- `src/evolution/calendar.ts`: canonical day/week/month/year stepping. Monthly travel changes real agent positions; annual life and economic events remain once per year.
+- `src/evolution/density.ts`: deterministic physical capacity for settlement neighborhoods and resident indexes; population scales with developed habitat instead of requiring every person to have a separate tile.
 - `src/evolution/divine.ts`: divine actions and their consequences.
 - `src/evolution/storage.ts`: browser persistence and world-file compatibility.
+- `src/evolution/populationSweep.ts`: multi-seed long-horizon demographic diagnostics to detect systematic species collapse.
 - `src/evolution/WorldforgeApp.tsx`: the current god-perspective UI.
 
 The `evolution` folder retains its historical internal name to keep the existing simulation modules and tests recognizable. It can be renamed in a future dedicated refactor.

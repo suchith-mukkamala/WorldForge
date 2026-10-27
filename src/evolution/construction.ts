@@ -393,7 +393,7 @@ function applyBenefits(w:World,s:Settlement):void{
       const t=w.tiles[position(w,x,y)];
       if(t.biome==='water')continue;
       const original={plains:7.5,forest:9.5,mountain:5,cave:4.5,
-        wasteland:4.2,volcanic:3.7}[t.biome];
+        wasteland:4.7,volcanic:4.1}[t.biome];
       // Cultivation speeds replenishment of harvested tiles without creating
       // food above the land's ecological carrying capacity.
       t.food=round(Math.min(original*w.settings.resourceLevel,t.food+.16));

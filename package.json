@@ -1,7 +1,7 @@
 {
   "name": "worldforge",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:long-simulation": "vite-node src/evolution/longRun.ts"
+    "test:long-simulation": "vite-node src/evolution/longRun.ts",
+    "test:population-sweep": "vite-node src/evolution/populationSweep.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

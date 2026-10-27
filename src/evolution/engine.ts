@@ -24,6 +24,8 @@ import {advanceTransport,bridgeTiles,cloneTransport,reconcileTransportTerrain,va
   type TransportNetwork} from './transport';
 import {advanceInstitutions,cloneInstitutions,validInstitutions,
   type Institutions} from './institutions';
+import {addResident,removeResident,residentIndex,settlementSafetyLimit,
+  tileCapacity} from './density';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -76,7 +78,7 @@ export type YearVital={births:Record<Species,number>;
 export type Sample={year:number;total:number;human:number;elf:number;dwarf:number;
   demon:number;births:number;deaths:number;settlements:number;vitals?:YearVital};
 export type World={version:2;settings:WorldSettings;width:number;height:number;
-  year:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
+  year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
   nextBondId:number;rngState:number;tiles:Tile[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -109,8 +111,10 @@ export const BIOME_INFO:Record<Biome,{name:string;color:string;food:number;growt
   forest:{name:'Forest',color:'#275c53',food:9.5,growth:2.2},
   mountain:{name:'Mountains',color:'#61657b',food:5,growth:1.15},
   cave:{name:'Caverns',color:'#35394f',food:4.5,growth:.95},
-  wasteland:{name:'Wasteland',color:'#74546a',food:4.2,growth:.85},
-  volcanic:{name:'Volcanic',color:'#87475f',food:3.7,growth:.73},
+  // Ashland ecosystems recover a little more reliably: low-food homelands
+  // previously gave demon families disproportionate starvation risk.
+  wasteland:{name:'Wasteland',color:'#74546a',food:4.7,growth:1.05},
+  volcanic:{name:'Volcanic',color:'#87475f',food:4.1,growth:.95},
   water:{name:'Water',color:'#1f4866',food:0,growth:0},
 };
 export const DEFAULT_SETTINGS:WorldSettings={
@@ -224,7 +228,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     const info=BIOME_INFO[biome];
     return {biome,food:round(info.food*settings.resourceLevel*(.75+.25*random(state)))};
   });
-  const world:World={version:2,settings,width,height,year:0,rngState:state.n,
+  const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
     tiles,agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
@@ -342,9 +346,15 @@ export function stepWorld(previous:World):World{
   }
   const state={n:prngState(previous.rngState)};
   const yearVitals=emptyVitalYear();
-  const occupied=new Map<number,number>();
+  const residents=residentIndex(world.agents,world.width);
+  const capacity=tileCapacity(world);
   const movementSteps:number[]=[];
-  for(const a of world.agents)occupied.set(offset(world.width,a.x,a.y),a.id);
+  const leave=(tile:number,id:number)=>{
+    removeResident(residents,tile,id);
+  };
+  const enter=(tile:number,id:number)=>{
+    addResident(residents,tile,id);
+  };
   // Biome-dependent regrowth and resource limits.
   for(const tile of world.tiles){
     const cfg=BIOME_INFO[tile.biome],limit=cfg.food*world.settings.resourceLevel;
@@ -352,6 +362,7 @@ export function stepWorld(previous:World):World{
       cfg.growth*world.settings.resourceLevel*(.48+.52*random(state)),0,limit));
   }
   const partnerPositions=new Map(world.agents.map(a=>[a.id,a]));
+  const lifeRecords=new Map(world.lineage.map(r=>[r.id,r]));
   const permanentHomes=new Map((world.households??[]).filter(h=>h.residence)
     .map(h=>[h.id,h.home]));
   const finishedWells=world.settlements.flatMap(s=>s.infrastructure?.buildings
@@ -377,7 +388,7 @@ export function stepWorld(previous:World):World{
       lifespan:traitProfile(a.ancestry).lifespan*divineFactor(a,'lifespan',world.year)};
     const tile=world.tiles[offset(world.width,a.x,a.y)];
     a.age++;
-    a.mind=planMind(world,a,occupied,partnerPositions,closeContacts,
+    a.mind=planMind(world,a,residents,partnerPositions,closeContacts,
       biomeSuitability,traitProfile,permanentHomes);
     const travel=clamp(info.wander*a.genes.curiosity*world.settings.wandering*
       divineFactor(a,'courage',world.year),0,.94);
@@ -392,7 +403,8 @@ export function stepWorld(previous:World):World{
         const x=a.x+dx,y=a.y+dy;
         if(!within(world.width,world.height,x,y))continue;
         const index=offset(world.width,x,y),candidate=world.tiles[index];
-        if(candidate.biome==='water'||(occupied.has(index)&&occupied.get(index)!==a.id))
+        if(candidate.biome==='water'||
+          (residents.get(index)?.filter(id=>id!==a.id).length??0)>=capacity[index])
           continue;
         const suitability=biomeSuitability(a.ancestry,candidate.biome);
         const preference=suitability*13;
@@ -413,9 +425,9 @@ export function stepWorld(previous:World):World{
       choices.sort((a,b)=>b.score-a.score);
       const chosen=choices[0];
       if(chosen&&(chosen.x!==a.x||chosen.y!==a.y)){
-        occupied.delete(offset(world.width,a.x,a.y));
+        leave(offset(world.width,a.x,a.y),a.id);
         a.x=chosen.x;a.y=chosen.y;
-        occupied.set(offset(world.width,a.x,a.y),a.id);
+        enter(offset(world.width,a.x,a.y),a.id);
         movementSteps.push(offset(world.width,a.x,a.y));
         a.energy-=1.5;
       }
@@ -459,7 +471,7 @@ export function stepWorld(previous:World):World{
       (1+(divineFactor(a,'luck',world.year)-1)*.18);
     a.energy=round(clamp(a.energy+nourishment+ration*15-dailyCost-
       Math.max(0,a.age/info.lifespan-.7)*1.3,0,100));
-    const care=helpDependent(world,a,occupied,partnerPositions);
+    const care=helpDependent(world,a,residents,partnerPositions);
     if(juvenile)careOutcomes.set(a.id,care);
     if(a.energy<32)a.health-=2.5+(32-a.energy)*.21;
     else{
@@ -481,7 +493,7 @@ export function stepWorld(previous:World):World{
       cause='old_age';
     }
     if(cause){
-      occupied.delete(offset(world.width,a.x,a.y));
+      leave(offset(world.width,a.x,a.y),a.id);
       deaths++;
       yearVitals.deaths[a.species]++;
       yearVitals.causes[cause]++;
@@ -490,7 +502,8 @@ export function stepWorld(previous:World):World{
       record.deaths++;record.causes[cause]++;
       record.ageAtDeathSum+=a.age;
       appendLifeMoment(world,a.id,{year:world.year,kind:'death',
-        text:'Died at age '+a.age+' ('+DEATH_LABELS[cause].toLowerCase()+').'});
+        text:'Died at age '+a.age+' ('+DEATH_LABELS[cause].toLowerCase()+').'},
+      lifeRecords);
       if(juvenile)record.juvenileDeaths++;
     }else{
       a.health=round(clamp(a.health,0,100));survivors.push(a);
@@ -502,9 +515,11 @@ export function stepWorld(previous:World):World{
   if(partnerships)log(world,'bond',partnerships+' partnership'+
     (partnerships===1?'':'s')+' formed this year.');
   const newborns=offspringFromBonds(world,()=>random(state),(parent,ancestry)=>{
-    const point=freeNearby(world,parent,2,new Set(occupied.keys()),
+    const full=new Set<number>();
+    for(const [index,ids] of residents)if(ids.length>=capacity[index])full.add(index);
+    const point=freeNearby(world,parent,2,full,
       t=>t.biome!=='water'&&biomeSuitability(ancestry,t.biome)>.34,state);
-    if(point)occupied.set(offset(world.width,point.x,point.y),-1);
+    if(point)enter(offset(world.width,point.x,point.y),-1);
     return point;
   });
   world.agents=[...survivors,...newborns].sort((a,b)=>a.id-b.id);
@@ -524,10 +539,14 @@ export function stepWorld(previous:World):World{
     (hybrids===1?'':'ren')+' born this year.');
   // Founders inspect the people actually nearby. Scanning every person for
   // every candidate would become quadratic now that there is no 850 cap.
-  const communityPositions=new Map<number,Agent>();
-  for(const a of world.agents)communityPositions.set(offset(world.width,a.x,a.y),a);
+  const communityPositions=new Map<number,Agent[]>();
   for(const a of world.agents){
-    if(!adult(a)||world.settlements.length>=54)continue;
+    const index=offset(world.width,a.x,a.y);
+    const group=communityPositions.get(index);
+    if(group)group.push(a);else communityPositions.set(index,[a]);
+  }
+  for(const a of world.agents){
+    if(!adult(a)||world.settlements.length>=settlementSafetyLimit(world))continue;
     const info=SPECIES_INFO[a.species];
     if(biomeSuitability(a.ancestry,world.tiles[offset(world.width,a.x,a.y)].biome)<.55)
       continue;
@@ -536,8 +555,8 @@ export function stepWorld(previous:World):World{
     for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
       const x=a.x+dx,y=a.y+dy;
       if(!within(world.width,world.height,x,y))continue;
-      const b=communityPositions.get(offset(world.width,x,y));
-      if(b&&b.species===a.species&&adult(b))nearby.push(b);
+      for(const b of communityPositions.get(offset(world.width,x,y))??[])
+        if(b.species===a.species&&adult(b))nearby.push(b);
     }
     if(nearby.length<4)continue;
     const id=world.nextSettlementId++;
@@ -599,7 +618,8 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
   if(!within(previous.width,previous.height,x,y)||brush.kind==='inspect')return previous;
   const index=offset(previous.width,x,y),tile=previous.tiles[index];
   if(brush.kind==='spawn'&&(tile.biome==='water'||
-    previous.agents.some(a=>a.x===x&&a.y===y)))return previous;
+    previous.agents.filter(a=>a.x===x&&a.y===y).length>=tileCapacity(previous)[index]))
+    return previous;
   if(brush.kind==='terrain'&&brush.biome==='water'&&
     previous.agents.some(a=>a.x===x&&a.y===y))return previous;
   const world:World={...previous,agents:[...previous.agents],
@@ -654,6 +674,8 @@ export function isWorld(value:unknown):value is World{
         [LEGACY_SIZES[settings.size as keyof typeof LEGACY_SIZES]]:[])]
       .some(([width,height])=>w.width===width&&w.height===height))||
     !Number.isInteger(w.year)||w.year===undefined||w.year<0||w.year>9999||
+    (w.dayOfYear!==undefined&&(!Number.isInteger(w.dayOfYear)||
+      w.dayOfYear<0||w.dayOfYear>=365))||
     !Number.isInteger(w.rngState)||w.rngState===undefined||
     w.rngState<0||w.rngState>4294967295||
     !Number.isSafeInteger(w.nextAgentId)||(w.nextAgentId as number)<1||
@@ -663,16 +685,17 @@ export function isWorld(value:unknown):value is World{
     !Number.isInteger(w.totalBirths)||(w.totalBirths as number)<0||
     !Number.isInteger(w.totalDeaths)||(w.totalDeaths as number)<0||
     !Array.isArray(w.tiles)||w.tiles.length!==w.width*w.height||
-    !Array.isArray(w.agents)||w.agents.length>w.tiles.length||
-    !Array.isArray(w.settlements)||w.settlements.length>54||
+    !Array.isArray(w.agents)||
+    !Array.isArray(w.settlements)||w.settlements.length>settlementSafetyLimit(w as World)||
     !Array.isArray(w.bonds)||w.bonds.length>6000||
-    !Array.isArray(w.lineage)||w.lineage.length>14000+w.tiles.length||
+    !Array.isArray(w.lineage)||w.lineage.length>
+      Math.max(14000+w.tiles.length,(w.totalBirths??0)+w.tiles.length)||
     !Array.isArray(w.events)||w.events.length>90||
     !Array.isArray(w.history)||w.history.length>400||w.history.length===0)return false;
   const width=w.width,height=w.height,year=w.year as number;
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
-  const ids=new Set<number>(),positions=new Set<number>();
+  const ids=new Set<number>(),positions=new Map<number,number>();
   const traversableBridges=bridgeTiles(w as World);
   const captains=new Map((w.shipments??[]).filter(t=>t.mode==='sea')
     .map(t=>[t.carrierId,t]));
@@ -737,9 +760,9 @@ export function isWorld(value:unknown):value is World{
     const index=offset(width,a.x,a.y);
     const voyage=captains.get(a.id);
     const aboard=voyage&&voyage.route[voyage.progress]===index;
-    if(positions.has(index)||(w.tiles[index].biome==='water'&&
+    if((w.tiles[index].biome==='water'&&
       !traversableBridges.has(index)&&!aboard))return false;
-    ids.add(a.id);positions.add(index);
+    ids.add(a.id);positions.set(index,(positions.get(index)??0)+1);
   }
   const settlementIds=new Set<number>();
   for(const v of w.settlements){
@@ -752,6 +775,8 @@ export function isWorld(value:unknown):value is World{
       !Number.isInteger(v.emptyYears)||v.emptyYears<0)return false;
     settlementIds.add(v.id);
   }
+  const capacities=tileCapacity(w as World);
+  for(const [index,count] of positions)if(count>capacities[index])return false;
   const bondIds=new Set<number>(),activeBondIds=new Set<number>();
   for(const b of w.bonds){
     if(!b||!Number.isSafeInteger(b.id)||bondIds.has(b.id)||
@@ -834,15 +859,17 @@ export function isWorld(value:unknown):value is World{
       return false;
   }
   if(w.households!==undefined){
-    if(!Array.isArray(w.households)||w.households.length>w.tiles.length||
+    if(!Array.isArray(w.households)||w.households.length>
+      Math.max(w.tiles.length,w.agents.length)||
       !Number.isSafeInteger(w.nextHouseholdId)||w.nextHouseholdId!<1)return false;
     const householdIds=new Set<number>();
     for(const h of w.households){
       if(!h||!Number.isSafeInteger(h.id)||h.id<1||
         householdIds.has(h.id)||!Number.isInteger(h.formed)||
         h.formed<0||h.formed>year||!checkPlace(h.home)||
-        !SPECIES.includes(h.culture)||!validIds(h.members,w.tiles.length)||
-        !validIds(h.caregivers,w.tiles.length)||
+        !SPECIES.includes(h.culture)||
+        !validIds(h.members,Math.max(w.tiles.length,w.agents.length))||
+        !validIds(h.caregivers,Math.max(w.tiles.length,w.agents.length))||
         !h.caregivers.every(id=>h.members.includes(id)))return false;
       householdIds.add(h.id);
     }

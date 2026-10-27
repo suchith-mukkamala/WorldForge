@@ -4,6 +4,7 @@ import {
   createWorld,stepWorld,advanceWorld,editWorld,isWorld,normalizeSettings,population,
   type World,
 } from './engine';
+import {tileCapacity} from './density';
 
 describe('Evolution Lab v0.1: reproducible fantasy worlds',()=>{
   it('generates identical terrain, agents, stats and timelines for the same seed',()=>{
@@ -103,11 +104,11 @@ describe('Evolution Lab v0.1: reproducible fantasy worlds',()=>{
     expect(after.events.some(e=>e.type==='collapse'&&e.message.includes('Empty Hollow')))
       .toBe(true);
   });
-  it('keeps all agents inside the world on habitable unique tiles over many years',()=>{
+  it('keeps all agents in habitable tiles within physical neighborhood capacity',()=>{
     const after=advanceWorld(createWorld({seed:1907,resourceLevel:1.4}),100);
     expect(after.year).toBe(100);
-    expect(after.agents.length).toBeLessThanOrEqual(after.tiles.length);
-    const occupied=new Set<number>();
+    const capacity=tileCapacity(after);
+    const occupied=new Map<number,number>();
     for(const agent of after.agents){
       expect(agent.x).toBeGreaterThanOrEqual(0);
       expect(agent.y).toBeGreaterThanOrEqual(0);
@@ -119,8 +120,8 @@ describe('Evolution Lab v0.1: reproducible fantasy worlds',()=>{
       expect(agent.health).toBeLessThanOrEqual(100);
       const index=agent.y*after.width+agent.x;
       expect(after.tiles[index].biome).not.toBe('water');
-      expect(occupied.has(index)).toBe(false);
-      occupied.add(index);
+      occupied.set(index,(occupied.get(index)??0)+1);
+      expect(occupied.get(index)).toBeLessThanOrEqual(capacity[index]);
     }
     for(const tile of after.tiles){
       expect(tile.food).toBeGreaterThanOrEqual(0);

@@ -7,12 +7,13 @@
  * This is a stochastic agent model, not actual neural learning.
  */
 import {
-  SPECIES,SPECIES_INFO,type Agent,type Ancestry,type Bond,type Genes,
+  BIOME_INFO,SPECIES,SPECIES_INFO,type Agent,type Ancestry,type Bond,type Genes,
   type LineageRecord,type Species,type World,
 } from './engine';
 import {appendLifeMoment,makeLifeRecord,personName} from './identity';
 import {initialMind} from './mind';
 import {divineFactor} from './divine';
+import {residentIndex} from './density';
 
 const clamp=(n:number,a:number,b:number)=>Math.min(b,Math.max(a,n));
 const round=(n:number)=>Math.round(n*1000)/1000;
@@ -83,6 +84,22 @@ export function livingRecord(a:Agent):LineageRecord{
 }
 const cheby=(a:{x:number;y:number},b:{x:number;y:number})=>
   Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
+/** Food-regrowth surplus per nearby household determines reproductive support.
+ * Unlike a headcount ceiling, this varies with the landscape and population.
+ */
+export function ecologicalBirthSupport(world:World,a:Agent,
+  residents:Map<number,number[]>):number{
+  let annualGrowth=0,neighbors=0;
+  for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+    const x=a.x+dx,y=a.y+dy;
+    if(x<0||y<0||x>=world.width||y>=world.height)continue;
+    const index=y*world.width+x,biome=world.tiles[index].biome;
+    if(biome==='water')continue;
+    annualGrowth+=BIOME_INFO[biome].growth*world.settings.resourceLevel;
+    neighbors+=residents.get(index)?.length??0;
+  }
+  return clamp(annualGrowth/(Math.max(1,neighbors)*2.3),.14,1);
+}
 export function isCloseFamily(world:Pick<World,'lineage'>,a:number,b:number,
   known?:Map<number,LineageRecord>):boolean{
   if(a===b)return true;
@@ -111,9 +128,9 @@ export function finalizeDeaths(world:World,survivors:Agent[],year:number):void{
     if(!alive.has(bond.a)||!alive.has(bond.b)){
       bond.stage='ended';bond.ended=year;
       for(const id of [bond.a,bond.b]){
-        appendLifeMoment(world,id,{year,kind:'separation',
+      appendLifeMoment(world,id,{year,kind:'separation',
           text:'Lost a partner after their death.',
-          relatedIds:[id===bond.a?bond.b:bond.a]});
+        relatedIds:[id===bond.a?bond.b:bond.a]},records);
         const rec=records.get(id);
         if(rec&&!rec.partnerIds.includes(id===bond.a?bond.b:bond.a))
           rec.partnerIds.push(id===bond.a?bond.b:bond.a);
@@ -143,10 +160,10 @@ export function growBonds(world:World,rand:()=>number):number{
       bond.stage='partner';a.partnerId=b.id;b.partnerId=a.id;partnerships++;
       appendLifeMoment(world,a.id,{year:world.year,kind:'partner',
         text:'Became partners with '+personName(world,
-          lineageIndex.get(b.id)??b)+'.',relatedIds:[b.id]});
+          lineageIndex.get(b.id)??b)+'.',relatedIds:[b.id]},lineageIndex);
       appendLifeMoment(world,b.id,{year:world.year,kind:'partner',
         text:'Became partners with '+personName(world,
-          lineageIndex.get(a.id)??a)+'.',relatedIds:[a.id]});
+          lineageIndex.get(a.id)??a)+'.',relatedIds:[a.id]},lineageIndex);
     }else if(bond.strength<=.20){
       bond.stage='ended';bond.ended=world.year;
       if(a.partnerId===b.id)a.partnerId=undefined;
@@ -162,20 +179,24 @@ export function growBonds(world:World,rand:()=>number):number{
     a.age<traitProfile(a.ancestry).lifespan*
       divineFactor(a,'lifespan',world.year)*.76&&a.health>55&&a.energy>45)
     .sort((a,b)=>a.id-b.id);
-  const pos=new Map<number,Agent>();
-  for(const a of available)pos.set(a.y*world.width+a.x,a);
+  const pos=new Map<number,Agent[]>();
+  for(const a of available){
+    const index=a.y*world.width+a.x,group=pos.get(index);
+    if(group)group.push(a);else pos.set(index,[a]);
+  }
   for(const a of available){
     if(bonded.has(a.id))continue;
     if(rand()>.42*a.genes.social*divineFactor(a,'social',world.year))continue;
     const candidates:Agent[]=[];
     for(let y=a.y-2;y<=a.y+2;y++)for(let x=a.x-2;x<=a.x+2;x++){
       if(x<0||y<0||x>=world.width||y>=world.height)continue;
-      const b=pos.get(y*world.width+x);
-      if(!b||b.id===a.id||bonded.has(b.id)||isCloseFamily(world,a.id,b.id,lineageIndex))
-        continue;
-      const comp=compatibility(a,b,world.settings.interbreeding);
-      if(comp<.34||rand()>comp*.9)continue;
-      candidates.push(b);
+      for(const b of pos.get(y*world.width+x)??[]){
+        if(b.id===a.id||bonded.has(b.id)||isCloseFamily(world,a.id,b.id,lineageIndex))
+          continue;
+        const comp=compatibility(a,b,world.settings.interbreeding);
+        if(comp<.34||rand()>comp*.9)continue;
+        candidates.push(b);
+      }
     }
     if(!candidates.length)continue;
     candidates.sort((x,y)=>compatibility(a,y,world.settings.interbreeding)-
@@ -186,10 +207,10 @@ export function growBonds(world:World,rand:()=>number):number{
     world.bonds.push(bond);
     appendLifeMoment(world,a.id,{year:world.year,kind:'courtship',
       text:'Met '+personName(world,lineageIndex.get(b.id)??b)+
-        ' and began courting.',relatedIds:[b.id]});
+        ' and began courting.',relatedIds:[b.id]},lineageIndex);
     appendLifeMoment(world,b.id,{year:world.year,kind:'courtship',
       text:'Met '+personName(world,lineageIndex.get(a.id)??a)+
-        ' and began courting.',relatedIds:[a.id]});
+        ' and began courting.',relatedIds:[a.id]},lineageIndex);
     bonded.add(a.id);bonded.add(b.id);
   }
   if(world.bonds.length>6000){
@@ -206,6 +227,18 @@ export function offspringFromBonds(
   findSpace:(parent:Agent,ancestry:Ancestry)=>{x:number;y:number}|null,
 ):Agent[]{
   const byId=new Map(world.agents.map(a=>[a.id,a]));
+  const lineageIndex=new Map(world.lineage.map(r=>[r.id,r]));
+  const residents=residentIndex(world.agents,world.width);
+  const supportCache=new Map<number,number>();
+  const localSupport=(a:Agent)=>{
+    const position=a.y*world.width+a.x,cached=supportCache.get(position);
+    if(cached!==undefined)return cached;
+    // Families need a local food surplus, not merely enough food to avoid
+    // starvation. This is ecological feedback, not a fixed population cap.
+    const support=ecologicalBirthSupport(world,a,residents);
+    supportCache.set(position,support);
+    return support;
+  };
   const populations={human:0,elf:0,dwarf:0,demon:0};
   for(const a of world.agents)populations[a.species]++;
   const newborns:Agent[]=[];
@@ -239,6 +272,7 @@ export function offspringFromBonds(
       b.species==='human'||b.species==='demon')&&
       Math.min(populations[a.species],populations[b.species])<65?1.25:1;
     const chance=clamp(fertility*1.65*comp*minorityBoost*
+      Math.min(localSupport(a),localSupport(b))*
       Math.min(a.genes.fertility,b.genes.fertility)*
       (divineFactor(a,'fertility',world.year)+
         divineFactor(b,'fertility',world.year))/2*
@@ -257,15 +291,14 @@ export function offspringFromBonds(
     bond.lastBirthYear=world.year;
     a.energy=Math.max(1,Math.round((a.energy-9)*100)/100);
     b.energy=Math.max(1,Math.round((b.energy-9)*100)/100);
-    const record=makeLifeRecord(world,baby);
-    world.lineage.push(record);
-    const index=new Map(world.lineage.map(r=>[r.id,r]));
+    const record=makeLifeRecord(world,baby,lineageIndex);
+    world.lineage.push(record);lineageIndex.set(record.id,record);
     for(const parent of [a,b]){
-      const parentRecord=index.get(parent.id);
+      const parentRecord=lineageIndex.get(parent.id);
       if(parentRecord)parentRecord.children.push(baby.id);
       appendLifeMoment(world,parent.id,{year:world.year,kind:'parenthood',
         text:'Welcomed '+personName(world,record)+' into the family.',
-        relatedIds:[baby.id]});
+        relatedIds:[baby.id]},lineageIndex);
     }
   }
   // Leave references intact when trimming; the UI gracefully shows "unknown"
@@ -278,7 +311,7 @@ export function offspringFromBonds(
     // Protect bookmarked people and immediate ancestors so a favorite's
     // family tree doesn't vanish when the archive reaches its retention cap.
     for(const id of [...pinned]){
-      const record=world.lineage.find(r=>r.id===id);
+      const record=lineageIndex.get(id);
       for(const p of record?.parents??[])pinned.add(p);
     }
     const keep=new Set([...live,...pinned]);

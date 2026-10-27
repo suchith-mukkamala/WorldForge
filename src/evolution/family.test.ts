@@ -5,14 +5,29 @@ import {
 } from './engine';
 import {
   pureAncestry,mixAncestry,traitProfile,dominantSpecies,hybridFraction,
-  ancestryLabel,compatibility,isCloseFamily,growBonds,
+  ancestryLabel,compatibility,isCloseFamily,growBonds,ecologicalBirthSupport,
 } from './family';
+import {residentIndex} from './density';
 import {
   compactWorld,readSavedWorld,migrateLegacyWorld,loadBrowserWorld,
   WORLD_STORAGE_KEY,LEGACY_STORAGE_KEY,
 } from './storage';
 
 describe('Evolution Lab v0.2 · genetics and compatibility',()=>{
+  it('reduces fertility pressure when people outgrow nearby food regeneration',()=>{
+    const w=createWorld({seed:73,size:'small'}),a=w.agents[0];
+    const sparse=residentIndex(w.agents,w.width);
+    const base=ecologicalBirthSupport(w,a,sparse);
+    const crowded=new Map([...sparse].map(([index,ids])=>[index,[...ids]]));
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+      const x=a.x+dx,y=a.y+dy;
+      if(x<0||y<0||x>=w.width||y>=w.height)continue;
+      const index=y*w.width+x;
+      if(w.tiles[index].biome==='water')continue;
+      crowded.set(index,[...(crowded.get(index)??[]),...Array(8).fill(-1)]);
+    }
+    expect(ecologicalBirthSupport(w,a,crowded)).toBeLessThan(base);
+  });
   it('blends four-species ancestry recursively without losing percentages',()=>{
     const h=pureAncestry('human'),e=pureAncestry('elf');
     const first=mixAncestry(h,e);

@@ -23,8 +23,15 @@ export function WorldCanvas({
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
+  const backgroundStamp=useRef<{
+    tiles:World['tiles'];settlements:World['settlements'];
+    ruins:World['ruins'];deposits:World['deposits'];
+    transport:World['transport'];zoom:number;overlay:string;seed:number;
+    width:number;height:number;
+  }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
-  const prior=useRef<{year:number;seed:number;positions:Map<number,Point>}|null>(null);
+  const prior=useRef<{year:number;day:number;seed:number;
+    positions:Map<number,Point>}|null>(null);
   const facing=useRef<Map<number,Facing>>(new Map());
   const motions=useRef<Map<number,Motion>>(new Map());
   useEffect(()=>{
@@ -36,6 +43,14 @@ export function WorldCanvas({
     if(background.height!==canvas.height)background.height=canvas.height;
     const ctx=background.getContext('2d');if(!ctx)return;
     const W=world.width,H=world.height;
+    const stamp=backgroundStamp.current;
+    const sceneryChanged=!stamp||stamp.tiles!==world.tiles||
+      stamp.settlements!==world.settlements||stamp.ruins!==world.ruins||
+      stamp.deposits!==world.deposits||stamp.transport!==world.transport||
+      stamp.zoom!==zoom||stamp.overlay!==overlay||
+      stamp.seed!==world.settings.seed||stamp.width!==canvas.width||
+      stamp.height!==canvas.height;
+    if(sceneryChanged){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -126,13 +141,19 @@ export function WorldCanvas({
         paintBuilding(ctx,b);
       }
     }
+    backgroundStamp.current={tiles:world.tiles,settlements:world.settlements,
+      ruins:world.ruins,deposits:world.deposits,transport:world.transport,
+      zoom,overlay,seed:world.settings.seed,width:canvas.width,height:canvas.height};
+    }
     const current=new Map(world.agents.map(a=>[a.id,{x:a.x,y:a.y}]));
     const previous=prior.current;
     const now=performance.now();
+    const day=world.dayOfYear??0;
     if(!previous||previous.seed!==world.settings.seed||
-      world.year<previous.year||world.year-previous.year>1){
+      world.year<previous.year||world.year-previous.year>1||
+      world.year===previous.year&&day<previous.day){
       motions.current.clear();facing.current.clear();spriteCache.current.clear();
-    }else if(world.year>previous.year){
+    }else if(world.year>previous.year||day!==previous.day){
       const duration=visualMotionDuration(speed);
       const nextMotions=new Map<number,Motion>();
       for(const [id,to] of current){
@@ -145,10 +166,19 @@ export function WorldCanvas({
       }
       motions.current=nextMotions;
     }
-    prior.current={year:world.year,seed:world.settings.seed,positions:current};
+    prior.current={year:world.year,day,seed:world.settings.seed,positions:current};
     for(const id of [...facing.current.keys()])if(!current.has(id))facing.current.delete(id);
     if(spriteCache.current.size>6500)spriteCache.current.clear();
     const ordered=[...world.agents].sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id);
+    const populationByTile=new Map<number,number>();
+    const visualSlot=new Map<number,number>();
+    for(const a of ordered){
+      const index=a.y*W+a.x;
+      visualSlot.set(a.id,populationByTile.get(index)??0);
+      populationByTile.set(index,(populationByTile.get(index)??0)+1);
+    }
+    const offsets=[[0,0],[-2,-2],[2,-2],[-2,2],[2,2],[-3,0],[3,0],
+      [0,-3]] as const;
     let handle=0,lastFrame=-Infinity;
     const draw=(timestamp:number)=>{
       // Animation is presentation-only and capped to limit large-world GPU work.
@@ -165,7 +195,8 @@ export function WorldCanvas({
         const x=frame?.x??a.x,y=frame?.y??a.y;
         positions.set(a.id,{x,y});
         if(frame?.walking)active=true;
-        const px=x*CELL,py=y*CELL;
+        const [ox,oy]=offsets[(visualSlot.get(a.id)??0)%offsets.length];
+        const px=x*CELL+ox,py=y*CELL+oy;
         if(zoom<3){
           visible.fillStyle='#081323';visible.fillRect(px+1,py+1,4,4);
           visible.fillStyle=SPECIES_INFO[a.species].color;
@@ -225,8 +256,11 @@ export function WorldCanvas({
       if(active)handle=requestAnimationFrame(draw);
     };
     draw(now);
+    // Calendar days that do not change the map reuse this composed frame.
     return ()=>cancelAnimationFrame(handle);
-  },[world,overlay,selected,zoom,speed,followId,onFollowPosition]);
+  },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
+    world.deposits,world.transport,world.shipments,world.settings.seed,
+    overlay,selected,zoom,speed,followId,onFollowPosition]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);

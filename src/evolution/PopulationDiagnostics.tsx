@@ -29,7 +29,11 @@ export function PopulationDiagnostics({world}:{world:World}){
     const ledger=world.demography?.bySpecies[species];
     const start=Math.max(0,world.history.length-26);
     const earlier=world.history[start];
+    const recent=world.history.slice(-25).filter(p=>p.vitals);
+    const recentBirths=recent.reduce((sum,p)=>sum+(p.vitals?.births[species]??0),0);
+    const recentDeaths=recent.reduce((sum,p)=>sum+(p.vitals?.deaths[species]??0),0);
     return {species,individuals,children,elders,ledger,
+      recentNet:recent.length?recentBirths-recentDeaths:null,
       status:status(individuals.length,earlier?.[species]??individuals.length)};
   }),[world]);
   const last=world.history.at(-1);
@@ -66,7 +70,8 @@ export function PopulationDiagnostics({world}:{world:World}){
           <table>
             <thead><tr><th scope="col">PEOPLE</th><th scope="col">ALIVE</th>
               <th scope="col">CHILDREN</th><th scope="col">BORN*</th>
-              <th scope="col">DIED*</th><th scope="col">AVG AGE†</th></tr></thead>
+              <th scope="col">DIED*</th><th scope="col">25Y NET</th>
+              <th scope="col">AVG AGE†</th></tr></thead>
             <tbody>{populations.map(p=><tr key={p.species}>
               <th scope="row"><i style={{background:SPECIES_INFO[p.species].color}}/>
                 {SPECIES_INFO[p.species].name}
@@ -78,6 +83,7 @@ export function PopulationDiagnostics({world}:{world:World}){
               <td>{fmt(p.children.length)}</td>
               <td>{p.ledger?fmt(p.ledger.births):'—'}</td>
               <td>{p.ledger?fmt(p.ledger.deaths):'—'}</td>
+              <td>{p.recentNet===null?'—':(p.recentNet>=0?'+':'')+fmt(p.recentNet)}</td>
               <td>{p.ledger?.deaths?Math.round(p.ledger.ageAtDeathSum/p.ledger.deaths)+
                 ' yr':'—'}</td>
             </tr>)}</tbody>
@@ -86,7 +92,8 @@ export function PopulationDiagnostics({world}:{world:World}){
         <p className="evo-diagnostic-note">
           * Births and deaths are recorded only since diagnostics began.
           † Average age includes all recorded deaths, including childhood losses.
-          Population status compares the available last 25 years, not a prediction.
+          The recent net compares recorded births and deaths in up to 25 yearly
+          snapshots. Population status compares available history, not a prediction.
         </p>
       </div>
       <div className="evo-diagnostic-mortality">
