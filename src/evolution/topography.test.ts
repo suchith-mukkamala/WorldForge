@@ -64,7 +64,7 @@ describe('WorldForge v1.9.1 — deterministic elevation and compatible art',()=>
   it('shades relief and heightmaps without mutating data',()=>{
     const pixels:{color:string;x:number;y:number}[]=[];
     const recorder={fillStyle:'',fillRect(x:number,y:number){
-      pixels.push({color:recorder.fillStyle,x,y});
+      pixels.push({color:String(recorder.fillStyle),x,y});
     }} as unknown as CanvasRenderingContext2D;
     const heights={north:75,east:95,south:66,west:65};
     paintRelief(recorder,2,3,110,heights,'mountain');
