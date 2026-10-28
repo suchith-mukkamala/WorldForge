@@ -11,6 +11,7 @@ import {governmentOf,GOVERNMENT_LABELS,POLICY_LABELS} from './culture';
 import {pixelRectsFor} from './pixelArt';
 import {personName} from './identity';
 import {topographyForWorld} from './topography';
+import {hydrologyForWorld} from './hydrology';
 import {populationScene,renderedPopulation} from './populationVisibility';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
@@ -103,6 +104,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
   const names=new Map(world.lineage.map(r=>[r.id,r]));
   const deposits=new Map((world.deposits??[]).map(d=>[d.index,d]));
   const heights=topographyForWorld(world).heights;
+  const hydrology=hydrologyForWorld(world);
   const altitudeAt=(x:number,y:number)=>x>=0&&y>=0&&
     x<world.width&&y<world.height?heights[y*world.width+x]:null;
   const originX=place.x-HALF,originY=place.y-HALF;
@@ -117,6 +119,8 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
     allTiles.push({id:dy*VIEW+dx,x:dx*CELL,y:dy*CELL,tile,
       elevation,dropN:difference(x,y-1),dropE:difference(x+1,y),
       dropS:difference(x,y+1),dropW:difference(x-1,y),
+      stream:tile?hydrology.channel[y*world.width+x]:0,
+      flowTo:tile?hydrology.flowTo[y*world.width+x]:-1,
       owner:tile&&land.has(y*world.width+x),route:tile&&roads.has(y*world.width+x),
       paved:tile&&paved.has(y*world.width+x),bridge:tile&&bridges.has(y*world.width+x),
       deposit:tile?deposits.get(y*world.width+x):undefined});
@@ -147,6 +151,21 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
               stroke="#e0d5ae" strokeWidth={1.5} fill="none"
               opacity={.65}/>}
         </>}
+      </g>)}
+      {allTiles.filter(p=>p.stream>0&&p.flowTo>=0).map(p=>{
+        const fromX=originX+p.x/CELL,fromY=originY+p.y/CELL;
+        const nextX=p.flowTo%world.width;
+        const nextY=Math.floor(p.flowTo/world.width);
+        return <g key={'stream-'+p.id}>
+          <title>{'Surface drainage · '+(p.stream===3?'river':
+            p.stream===2?'stream':'creek')}</title>
+          <path d={`M${p.x+13} ${p.y+13}L${p.x+13+(nextX-fromX)*CELL} ${p.y+13+(nextY-fromY)*CELL}`}
+            stroke="#2d536a" strokeWidth={p.stream+3} fill="none"/>
+          <path d={`M${p.x+13} ${p.y+13}L${p.x+13+(nextX-fromX)*CELL} ${p.y+13+(nextY-fromY)*CELL}`}
+            stroke="#55b4d3" strokeWidth={p.stream+1} fill="none"/>
+        </g>;
+      })}
+      {allTiles.map(p=><g key={'scenery-'+p.id}>
         {p.tile?.biome==='forest'&&<>
           <rect x={p.x+6} y={p.y+4} width={14} height={15} fill="#39795d"/>
           <rect x={p.x+9} y={p.y+1} width={8} height={10} fill="#67a875"/>

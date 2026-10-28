@@ -21,6 +21,7 @@ describe('Worldforge integration and first-time user experience',()=>{
     expect(markup).toContain('Demons');
     expect(markup).toContain('EXPORT WORLD JSON');
     expect(markup).toContain('evo-world-canvas');
+    expect(markup).toContain('Watersheds &amp; rivers');
     expect(markup).not.toContain('ASSEMBLE &');
   });
   it('has a world creator with population, seed, terrain and wander controls',()=>{

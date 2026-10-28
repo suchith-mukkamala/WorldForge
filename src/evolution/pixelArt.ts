@@ -301,6 +301,30 @@ export function paintRelief(ctx:CanvasRenderingContext2D,
     p('rgba(181,226,217,.64)',0,0,6,1);
 }
 
+/** Draw one continuous pixel-art stream segment, including the receiving
+ * cell's center. A stream is a graphical overlay, not a new water biome.
+ */
+export function paintHydrologyStream(ctx:CanvasRenderingContext2D,
+  x:number,y:number,toX:number,toY:number,tier:number,
+  watersheds=false):void{
+  if(tier<1||Math.abs(toX-x)>1||Math.abs(toY-y)>1)return;
+  const px=x*6+3,py=y*6+3,dx=(toX-x)*6,dy=(toY-y)*6;
+  const width=tier===3?3:tier===2?2:1;
+  const tint=watersheds?'#a2e9ee':'#4aadd0';
+  // Discrete positions keep the retro style crisp across diagonal turns.
+  for(let step=0;step<=6;step++){
+    const sx=Math.round(px+dx*step/6),sy=Math.round(py+dy*step/6);
+    if(tier>=2){
+      ctx.fillStyle=watersheds?'#315c75':'#204c64';
+      ctx.fillRect(sx-2,sy-2,width+2,width+2);
+    }
+    ctx.fillStyle=tint;
+    ctx.fillRect(sx-1,sy-1,width,width);
+  }
+  ctx.fillStyle='#c8eff0';
+  ctx.fillRect(px-1,py-1,1,1);
+}
+
 export function paintDeposit(ctx:CanvasRenderingContext2D,kind:ResourceKind,
   x:number,y:number,amount:number,capacity:number):void{
   if(amount<.1)return;
