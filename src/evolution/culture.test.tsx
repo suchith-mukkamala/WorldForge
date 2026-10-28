@@ -36,6 +36,15 @@ describe('WorldForge v1.5: emergent religions and civic choice',()=>{
     expect(isWorld(w)).toBe(true);
     expect(readSavedWorld(compactWorld(w))).toEqual(w);
   });
+  it('accepts v1.4 worlds without cultural data and begins tracking from then on',()=>{
+    const newWorld=createWorld({seed:67,size:'small'});
+    const {culture:_,...legacy}=newWorld;
+    expect(isWorld(legacy)).toBe(true);
+    expect(readSavedWorld(JSON.stringify(legacy))).toEqual(legacy);
+    const upgraded=stepWorld(legacy);
+    expect(upgraded.culture).toBeDefined();
+    expect(isWorld(upgraded)).toBe(true);
+  });
   it('lets an individual create a belief from life experience without forcing followers',()=>{
     const {w,humans}=townWorld();
     advanceCulture(w,()=>0);

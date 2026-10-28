@@ -282,9 +282,14 @@ function elect(w:World,s:Settlement,adults:Agent[],prior:Government|undefined):G
 function applyPolicy(w:World,s:Settlement,g:Government,adults:Agent[]):void{
   const treasury=s.economy;
   if(!treasury)return;
-  const participants=adults.slice(0,16),budget=treasury.coins;
+  // Rotate attendance so a few residents nearest one map edge don't receive
+  // every lesson and civic benefit throughout their entire lives.
+  const offset=(w.year+s.id)%adults.length;
+  const participants=[...adults.slice(offset),...adults.slice(0,offset)].slice(0,16);
+  const budget=treasury.coins;
   if(g.policy==='mutual_aid'&&budget>=.6&&treasury.food>=1){
-    const hungry=adults.find(a=>a.energy<80||a.health<75);
+    const hungry=adults.filter(a=>a.energy<80||a.health<75).sort((a,b)=>
+      (a.energy+a.health)-(b.energy+b.health))[0];
     if(hungry){treasury.coins=round(budget-.6);
       treasury.food=round(treasury.food-1);
       hungry.energy=clamp(hungry.energy+4);
