@@ -33,6 +33,7 @@ import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
+import {generateTopography,validTopography,type Topography} from './topography';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -89,7 +90,7 @@ export type Sample={year:number;total:number;human:number;elf:number;dwarf:numbe
   demon:number;births:number;deaths:number;settlements:number;vitals?:YearVital};
 export type World={version:2;settings:WorldSettings;width:number;height:number;
   year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
-  nextBondId:number;rngState:number;tiles:Tile[];agents:Agent[];
+  nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
   demography?:Demography;codex?:WorldCodex;
@@ -246,7 +247,8 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   });
   const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
-    tiles,agents:[],settlements:[],bonds:[],lineage:[],
+    tiles,topography:generateTopography(width,height,tiles,settings.seed),
+    agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
     codex:{favoritePeople:[],favoriteSettlements:[],settlements:[]},divine:divineState(),
     ruins:[],trails:[],deposits:[],shipments:[],nextShipmentId:1,
@@ -691,6 +693,9 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
   }else{
     world.tiles[index]={biome:brush.biome,food:round(
       BIOME_INFO[brush.biome].food*world.settings.resourceLevel)};
+    // Terrain edits also refresh elevation, without changing existing paths.
+    world.topography=generateTopography(world.width,world.height,
+      world.tiles,world.settings.seed);
     editDeposit(world,index);
     reconcileTradeTerrain(world,index);
     reconcileTransportTerrain(world,index);
@@ -739,6 +744,8 @@ export function isWorld(value:unknown):value is World{
     !Array.isArray(w.events)||w.events.length>90||
     !Array.isArray(w.history)||w.history.length>400||w.history.length===0)return false;
   const width=w.width,height=w.height,year=w.year as number;
+  if(w.topography!==undefined&&!validTopography(w.topography,width,height))
+    return false;
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();
