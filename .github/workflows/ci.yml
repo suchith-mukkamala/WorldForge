@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Avoid running expensive obsolete PR checks on every successive commit.
+concurrency:
+  group: build-and-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
