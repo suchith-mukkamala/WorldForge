@@ -26,6 +26,7 @@ export function WorldCanvas({
   const backgroundStamp=useRef<{
     tiles:World['tiles'];settlements:World['settlements'];
     ruins:World['ruins'];deposits:World['deposits'];
+    ancientSites:World['ancientSites'];
     transport:World['transport'];zoom:number;overlay:string;seed:number;
     width:number;height:number;
   }|null>(null);
@@ -46,6 +47,7 @@ export function WorldCanvas({
     const stamp=backgroundStamp.current;
     const sceneryChanged=!stamp||stamp.tiles!==world.tiles||
       stamp.settlements!==world.settlements||stamp.ruins!==world.ruins||
+      stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
       stamp.zoom!==zoom||stamp.overlay!==overlay||
       stamp.seed!==world.settings.seed||stamp.width!==canvas.width||
@@ -111,6 +113,15 @@ export function WorldCanvas({
       ctx.fillRect(x+4,y+1,3,3);ctx.fillStyle='#605969';
       ctx.fillRect(x+1,y+4,4,2);
     }
+    for(const site of world.ancientSites??[]){
+      const x=site.x*CELL,y=site.y*CELL;
+      const color=site.kind==='temple'?'#debd86':
+        site.kind==='archive'?'#9acac2':'#c19ee2';
+      ctx.fillStyle='#232238';ctx.fillRect(x-2,y-3,10,10);
+      ctx.fillStyle=color;ctx.fillRect(x-1,y-2,8,3);
+      ctx.fillRect(x,y+1,2,5);ctx.fillRect(x+4,y+1,2,5);
+      ctx.fillStyle='#42394b';ctx.fillRect(x+2,y+3,2,3);
+    }
     for(const s of world.settlements){
       const px=s.x*CELL,py=s.y*CELL;
       const stage=settlementStage(s),size={encampment:8,hamlet:10,
@@ -143,6 +154,7 @@ export function WorldCanvas({
     }
     backgroundStamp.current={tiles:world.tiles,settlements:world.settlements,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
+      ancientSites:world.ancientSites,
       zoom,overlay,seed:world.settings.seed,width:canvas.width,height:canvas.height};
     }
     const current=new Map(world.agents.map(a=>[a.id,{x:a.x,y:a.y}]));

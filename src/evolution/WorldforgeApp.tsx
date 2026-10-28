@@ -10,6 +10,8 @@ import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
+import {KnowledgeCodex} from './KnowledgeCodex';
+import {TOPIC_INFO} from './knowledge';
 import {DivinePowers} from './DivinePowers';
 import {SettlementView} from './SettlementView';
 import {settlementStage} from './construction';
@@ -40,7 +42,7 @@ function initialWorld():World{
   }
   return createWorld(DEFAULT_SETTINGS);
 }
-type Tab='world'|'creator'|'history'|'family'|'people'|'codex'|'powers'|
+type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements';
 const format=(n:number)=>n.toLocaleString('en-US');
 const brushValue=(b:Brush)=>b.kind==='inspect'?'inspect':
@@ -182,6 +184,8 @@ export function WorldforgeApp(){
   const settlement=displayed?world.settlements.find(s=>(s.x===displayed.x&&
     s.y===displayed.y)||s.infrastructure?.buildings.some(b=>b.x===displayed.x&&
     b.y===displayed.y))??null:null;
+  const ancientSite=displayed?world.ancientSites?.find(s=>
+    s.x===displayed.x&&s.y===displayed.y):undefined;
   const latest=world.history.at(-1);
   const hybrids=useMemo(()=>world.agents.filter(a=>hybridFraction(a.ancestry)>.01).length,
     [world.agents]);
@@ -215,6 +219,10 @@ export function WorldforgeApp(){
     if(!target)return;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
     setZoom(4);setFollowId(id);setTab('world');setMapFocus(id);
+  };
+  const findAncientSite=(x:number,y:number)=>{
+    setPlaying(false);setSelected({x,y});setSelectedAgentId(null);
+    setFollowId(null);setZoom(3);setTab('world');setMapFocus(-1);
   };
   useEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
@@ -326,6 +334,9 @@ export function WorldforgeApp(){
         <button role="tab" aria-selected={tab==='people'}
           className={tab==='people'?'active':''} onClick={()=>navigate('people')}>
           ◉ PEOPLE</button>
+        <button role="tab" aria-selected={tab==='knowledge'}
+          className={tab==='knowledge'?'active':''} onClick={()=>navigate('knowledge')}>
+          ✧ KNOWLEDGE</button>
         <button role="tab" aria-selected={tab==='family'}
           className={tab==='family'?'active':''} onClick={()=>navigate('family')}>
           ♡ FAMILIES</button>
@@ -354,6 +365,8 @@ export function WorldforgeApp(){
       onOpen={focusPerson} onFavorite={favoritePerson}
       onRename={giveName} onFindOnMap={findOnMap}
       onInvoke={id=>{setSelectedAgentId(id);navigate('powers');}}/>:
+    tab==='knowledge'?<KnowledgeCodex world={world} onFindOnMap={findAncientSite}
+      onOpenPerson={openPerson}/>:
     tab==='codex'?<DivineCodex world={world}
       onOpenPerson={focusPerson} onFavoritePerson={favoritePerson}
       onFavoriteSettlement={favoriteSettlement}
@@ -404,6 +417,10 @@ export function WorldforgeApp(){
           <strong>{partnerships}</strong><span>Active mutual bonds</span></div>
         <div className="evo-stat"><small>ON EXPEDITION</small>
           <strong>{explorers}</strong><span>Exploring beyond home biomes</span></div>
+        <div className="evo-stat"><small>KNOWN DISCOVERIES</small>
+          <strong>{world.knowledge?.firsts.length??0}</strong>
+          <span><button onClick={()=>navigate('knowledge')}>Explore the knowledge codex ↗</button></span>
+        </div>
       </section>
       <div className="evo-playground-layout">
         <section className="evo-map-card">
@@ -497,6 +514,14 @@ export function WorldforgeApp(){
                   <small>{resource.amount.toFixed(1)} / {resource.capacity.toFixed(1)}
                     {' units · renewable deposit'}</small></div>
               </div>}
+              {ancientSite&&<div className="evo-selected-settlement">
+                <strong>✧ ANCIENT {ancientSite.kind.toUpperCase()} #{ancientSite.id}</strong>
+                <span>Risk {ancientSite.danger}/100 ·
+                  {' '}{ancientSite.visitors.length} previous expeditions</span>
+                <span>Explorers may uncover forgotten wisdom or be injured.
+                  Knowledge is never guaranteed.</span>
+                <button onClick={()=>navigate('knowledge')}>✧ EXPLORE KNOWLEDGE CODEX ↗</button>
+              </div>}
               {agent?<div className="evo-individual">
                 <div className="evo-individual-title">
                   <PixelPortrait person={agent} compact
@@ -549,8 +574,14 @@ export function WorldforgeApp(){
                     {agent.development.knownBiomes.length} biomes</b></span>}
                   <span>Curiosity <b>{agent.genes.curiosity.toFixed(2)}×</b></span>
                   <span>Vigor <b>{agent.genes.vigor.toFixed(2)}×</b></span>
+                  <span>Physical strength <b>{traitProfile(agent.ancestry).strength.toFixed(2)}×</b></span>
+                  <span>Travel speed <b>{traitProfile(agent.ancestry).speed.toFixed(2)}×</b></span>
+                  <span>Learned discoveries <b>{agent.knowledge?.length??0}</b></span>
                   {agent.parents&&<span>Parent IDs <b>{agent.parents.join(' + ')}</b></span>}
                 </div>
+                {!!agent.knowledge?.length&&<p className="evo-family-help">
+                  Knowledge: {agent.knowledge.map(k=>TOPIC_INFO[k.topic].name).join(', ')}.
+                </p>}
               </div>:<div className="evo-inspector-empty small">
                 No individual currently occupies this tile.
               </div>}
@@ -594,10 +625,11 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V1.2.1: A SLOWER, LIVING WORLD</strong>
-        <span>Step through days, weeks or months; people follow real intentions
-          between yearly life events. Towns host growing households, populations
-          respond to local food, and playback saves your calendar date.</span>
+        <strong>V1.3: THE AGE OF KNOWLEDGE</strong>
+        <span>Experience, experimentation and teaching now shape what each mortal
+          actually knows. Visit the Knowledge Codex to trace discoveries,
+          ancient sites and preserved wisdom. Demons are exceptionally strong
+          and swift; their descendants inherit those traits.</span>
       </div>
     </main>}
   </div>;

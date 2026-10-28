@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {SPECIES,SPECIES_INFO,type LineageRecord,type Species,type World} from './engine';
-import {ancestryLabel} from './family';
+import {ancestryLabel,traitProfile} from './family';
+import {TOPIC_INFO} from './knowledge';
 import {GOAL_LABELS} from './mind';
 import {JOB_LABELS} from './economy';
 import {guildOf} from './institutions';
@@ -275,6 +276,18 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 </div>
               </div>
               <div className="evo-development-culture">
+                <h4>PHYSICAL PROFILE & INHERITED APTITUDES</h4>
+                <p>Strength {traitProfile(alive.ancestry).strength.toFixed(2)}× ·
+                  travel speed {traitProfile(alive.ancestry).speed.toFixed(2)}×.
+                  These advantages blend with ancestry; learned knowledge does not.</p>
+                <h4>DISCOVERIES PERSONALLY LEARNED</h4>
+                {alive.knowledge?.length?<p>{alive.knowledge.map(k=>
+                  TOPIC_INFO[k.topic].name+' (Y'+k.year+', '+k.source+
+                  (k.teacherId?' from #'+k.teacherId:'')+')').join(' · ')}</p>:
+                  <small>No specialized knowledge yet. Experience and teaching
+                    can change this person's future.</small>}
+              </div>
+              <div className="evo-development-culture">
                 <h4>EVOLVING GUIDING BELIEF</h4>
                 <p>{guidingBelief(development)}</p>
                 <h4>LANGUAGES & EXPOSURE</h4>
@@ -295,6 +308,22 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
               </div>
             </div>
           </section>}
+          <section className="evo-section-card evo-knowledge-profile">
+            <div className="evo-card-heading"><strong>✧ KNOWLEDGE ACQUIRED IN LIFE</strong>
+              <span>{focused.knownKnowledge?.length??alive?.knowledge?.length??0} SUBJECTS</span>
+            </div>
+            <div className="evo-knowledge-list">
+              {(focused.knownKnowledge??alive?.knowledge??[]).map(k=><p key={k.topic}>
+                <b>{TOPIC_INFO[k.topic].name}</b> · Learned in year {k.year}
+                {' '}through {k.source}
+                {k.teacherId&&<> · taught by <button onClick={()=>setActiveId(k.teacherId!)}>
+                  {nameFor(k.teacherId)}</button></>}
+                {k.siteId&&' · ancient site #'+k.siteId}
+              </p>)}
+              {!focused.knownKnowledge?.length&&!alive?.knowledge?.length&&
+                <p>No specialized knowledge was recorded for this individual.</p>}
+            </div>
+          </section>
           <section className="evo-section-card">
             <div className="evo-card-heading"><strong>◈ PERSONAL CHRONICLE</strong>
               <span>{focused.moments?.length??0} remembered milestones</span></div>
