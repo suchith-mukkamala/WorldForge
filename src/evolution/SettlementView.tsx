@@ -28,7 +28,11 @@ const num=(n:number)=>n.toLocaleString('en-US');
 function TerrainScenery({detail,x,y}:{detail:TerrainDetail;x:number;y:number}){
   const v=detail.variant,kind=detail.motif;
   if(kind==='none')return null;
+  const castsShadow=['oak','pine','boulder','scree','snowstone','stalagmite',
+    'basalt','embers'].includes(kind);
   return <g data-terrain-motif={kind}>
+    {castsShadow&&<rect x={x+5} y={y+22} width={18} height={3}
+      fill="#132d35" opacity={.42}/>}
     {kind==='oak'&&<>
       <rect x={x+4} y={y+21} width={20} height={3} fill="#243f3b"/>
       <rect x={x+12} y={y+12} width={4} height={12} fill="#715a46"/>

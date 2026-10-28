@@ -9,7 +9,8 @@ import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
-import {paintTerrainDetail,terrainDetailAt} from './terrainDetails';
+import {buildTerrainDetailAtlas,paintTerrainDetail,
+  paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
@@ -18,6 +19,9 @@ const CELL=WORLD_CELL_SIZE;
 export type MapOverlay='terrain'|'resources'|'deposits'|'elevation'|'watersheds';
 const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
   '#465766','#50545f','#3d605f','#505e54'];
+/** Only these zoom boundaries add scenic objects; fractional steps within a
+ * tier change CSS magnification but do not need a new terrain raster. */
+export const sceneryZoomTier=(zoom:number)=>zoom>=2.5?2:zoom>=2?1:0;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
@@ -32,11 +36,12 @@ export function WorldCanvas({
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
+  const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
   const backgroundStamp=useRef<{
     tiles:World['tiles'];topography:World['topography'];settlementKey:string;
     ruins:World['ruins'];deposits:World['deposits'];
     ancientSites:World['ancientSites'];
-    transport:World['transport'];zoom:number;overlay:string;seed:number;
+    transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     width:number;height:number;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
@@ -72,17 +77,23 @@ export function WorldCanvas({
     const landChanged=stamp?.tiles!==world.tiles&&
       (overlay==='resources'||!stamp||stamp.tiles.length!==world.tiles.length||
         stamp.tiles.some((tile,i)=>tile.biome!==world.tiles[i].biome));
+    const sceneryTier=sceneryZoomTier(zoom);
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
-      stamp.zoom!==zoom||stamp.overlay!==overlay||
+      stamp.sceneryTier!==sceneryTier||stamp.overlay!==overlay||
       stamp.seed!==world.settings.seed||stamp.width!==canvas.width||
       stamp.height!==canvas.height;
     if(sceneryChanged){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
+    if(overlay==='terrain'&&!terrainAtlasRef.current){
+      const atlas=document.createElement('canvas');
+      if(buildTerrainDetailAtlas(atlas))terrainAtlasRef.current=atlas;
+    }
+    const atlas=terrainAtlasRef.current;
     const heights=topographyForWorld(world).heights;
     const drainage=overlay==='terrain'||overlay==='watersheds'?
       hydrologyForWorld(world):null;
@@ -111,8 +122,9 @@ export function WorldCanvas({
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
           x>0&&(world.tiles[index-1].biome==='water')!==water||
           x<W-1&&(world.tiles[index+1].biome==='water')!==water;
-        paintTerrainDetail(ctx,terrainDetailAt(tile.biome,x,y,
-          world.settings.seed,h,shore),x,y);
+        const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore);
+        if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y);
+        else paintTerrainDetail(ctx,detail,x,y);
       }
       if(overlay==='resources'&&tile.biome!=='water'){
         const fullness=Math.min(1,tile.food/Math.max(1,biome.food*world.settings.resourceLevel));
@@ -217,7 +229,8 @@ export function WorldCanvas({
       topography:world.topography,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
-      zoom,overlay,seed:world.settings.seed,width:canvas.width,height:canvas.height};
+      sceneryTier,overlay,seed:world.settings.seed,
+      width:canvas.width,height:canvas.height};
     }
     else if(stamp)stamp.tiles=world.tiles;
     const current=new Map(world.agents.map(a=>[a.id,{x:a.x,y:a.y}]));

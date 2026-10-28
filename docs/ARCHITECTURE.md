@@ -28,6 +28,8 @@ Elevation fields are optional, validated v1.9 fields in new world data; older wo
 
 **v1.9.4 scenic contract:** `terrainDetails.ts` hashes seed, world coordinates, biome, elevation and shoreline transition to choose decorative motifs. `WorldCanvas.tsx` paints a 6-pixel sprite; `SettlementView.tsx` renders a larger hand-pixelled version of that same motif. Neither renderer changes or persists world state. Visual trees and rocks must not be mistaken for `ResourceDeposit` objects; those remain the only real harvestable resources. Pages deployment must publish Vite's compiled `dist` directory with the `/WorldForge/` base, never the repository source or Jekyll output.
 
+**v1.9.5 rendering contract:** The small world-map sprites in `terrainDetails.ts` are prepainted into a single 6px-high sprite sheet, with the original painter as a safe fallback when canvas creation fails. Atlas and settlement shadows are visual-only, not serialized. `sceneryZoomTier` invalidates the static terrain buffer only when the zoom crosses thresholds for deposits/roads or buildings; intermediate magnification keeps the same raster. Map-layer legends must describe real resources separately from decoration and clarify that heightmaps and drainage do not change navigation. The terrain regression suite checks identical atlas pixels, saved and legacy world compatibility, and unchanged deterministic outcomes.
+
 ## Future trait and species implementation
 
 Keep traits keyed by stable IDs rather than UI strings. Store rank separately from mastery; record origin events, inheritance, and evolution requirements explicitly. Extend `isWorld` validation and migrations before saving new schema fields. No future trait should rely on whether its owner is onscreen.
