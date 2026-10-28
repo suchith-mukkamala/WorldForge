@@ -63,7 +63,7 @@ describe('v1.9.5 — polished, economical, compatible rendering',()=>{
       .toEqual([0,0,0,1,1,2,2,2]);
   });
 
-  it('keeps map legends legible and faithful to the visual-only contracts',()=>{
+  it('keeps map legends legible and distinguishes terrain from navigable water',()=>{
     const labels:Record<MapOverlay,string>={
       terrain:'LIVING LANDSCAPE',resources:'FOOD AVAILABILITY',
       deposits:'HARVESTABLE DEPOSITS',
@@ -76,7 +76,7 @@ describe('v1.9.5 — polished, economical, compatible rendering',()=>{
       expect(html).toContain('role="note"');
     }
     expect(renderToStaticMarkup(createElement(MapLayerLegend,{overlay:'watersheds'})))
-      .toContain('routes stay unchanged');
+      .toContain('boats still use established water biomes');
   });
 
   it('does not alter saves, legacy elevation, hydrology or simulation results',()=>{

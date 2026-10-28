@@ -7,7 +7,7 @@ const KEYS:Record<MapOverlay,{title:string;items:readonly {
     {label:'Forest',color:'#548d68'},
     {label:'Highlands',color:'#778899'},
     {label:'Surface water',color:'#4aadd0'},
-  ],hint:'Decorative trees, rocks and streams do not block travel.'},
+  ],hint:'Decorative scenery is safe; steep slopes affect travel in v2.0 worlds.'},
   resources:{title:'FOOD AVAILABILITY',items:[
     {label:'Plentiful',color:'#75ffb0'},
     {label:'Moderate',color:'#e9ca63'},
@@ -27,7 +27,7 @@ const KEYS:Record<MapOverlay,{title:string;items:readonly {
     {label:'Catchment',color:'#465766'},
     {label:'Creek / river',color:'#a2e9ee'},
     {label:'Potential pool',color:'#4b8a98'},
-  ],hint:'Streams and potential pools are visual only; routes stay unchanged.'},
+  ],hint:'Creek tiles can benefit farms in v2.0 worlds; boats still use established water biomes.'},
 };
 
 export function MapLayerLegend({overlay}:{overlay:MapOverlay}){

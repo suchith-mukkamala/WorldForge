@@ -34,6 +34,7 @@ import {advanceCulture,cloneCulture,validCulture,
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,validTopography,type Topography} from './topography';
+import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -90,7 +91,8 @@ export type Sample={year:number;total:number;human:number;elf:number;dwarf:numbe
   demon:number;births:number;deaths:number;settlements:number;vitals?:YearVital};
 export type World={version:2;settings:WorldSettings;width:number;height:number;
   year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
-  nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;agents:Agent[];
+  nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;
+  terrainPhysics?:TerrainPhysics;agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
   demography?:Demography;codex?:WorldCodex;
@@ -248,6 +250,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
     tiles,topography:generateTopography(width,height,tiles,settings.seed),
+    terrainPhysics:{version:1},
     agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
     codex:{favoritePeople:[],favoriteSettlements:[],settlements:[]},divine:divineState(),
@@ -422,7 +425,8 @@ export function stepWorld(previous:World):World{
   for(const a of shuffled){
     const info={...traitProfile(a.ancestry),
       lifespan:traitProfile(a.ancestry).lifespan*divineFactor(a,'lifespan',world.year)};
-    const tile=world.tiles[offset(world.width,a.x,a.y)];
+    const startTile=offset(world.width,a.x,a.y);
+    const tile=world.tiles[startTile];
     a.age++;
     a.mind=planMind(world,a,residents,partnerPositions,closeContacts,
       biomeSuitability,traitProfile,permanentHomes);
@@ -454,10 +458,12 @@ export function stepWorld(previous:World):World{
         const toward=mate?
           Math.max(-20,Math.min(20,(distance(a,mate)-mateRange)*16))+
           (mateRange<=2?6:0):0;
+        const slopeCost=terrainStepEffort(world,startTile,index);
         choices.push({x,y,score:candidate.food*3+preference+suit+toward+
           movementIntent(a,x,y,world.year)+
           (a.mind.goal==='forage'?foodAround(world,x,y)*.12:0)+
-          random(state)*(3+info.wander*14*world.settings.wandering)+movement});
+          random(state)*(3+info.wander*14*world.settings.wandering)+movement-
+          (slopeCost-1)*10});
       }
       choices.sort((a,b)=>b.score-a.score);
       const chosen=choices[0];
@@ -466,7 +472,8 @@ export function stepWorld(previous:World):World{
         a.x=chosen.x;a.y=chosen.y;
         enter(offset(world.width,a.x,a.y),a.id);
         movementSteps.push(offset(world.width,a.x,a.y));
-        a.energy-=1.5/info.speed;
+        a.energy-=terrainStepEffort(world,startTile,
+          offset(world.width,a.x,a.y))*1.5/info.speed;
       }
     }
     const current=world.tiles[offset(world.width,a.x,a.y)];
@@ -746,6 +753,8 @@ export function isWorld(value:unknown):value is World{
   const width=w.width,height=w.height,year=w.year as number;
   if(w.topography!==undefined&&!validTopography(w.topography,width,height))
     return false;
+  if(w.terrainPhysics!==undefined&&(!w.terrainPhysics||
+    w.terrainPhysics.version!==1))return false;
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();

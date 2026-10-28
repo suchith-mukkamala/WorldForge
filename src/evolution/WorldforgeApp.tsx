@@ -3,7 +3,10 @@ import type {ChangeEvent,SetStateAction} from 'react';
 import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas,type MapOverlay} from './WorldCanvas';
+import {DepthCanvas} from './DepthCanvas';
 import {MapLayerLegend} from './MapLayerLegend';
+import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
+  terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
@@ -128,6 +131,7 @@ export function WorldforgeApp(){
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
+  const [mapView,setMapView]=useState<'overhead'|'depth'>('overhead');
   const [zoom,setZoom]=useState(1);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
@@ -330,7 +334,7 @@ export function WorldforgeApp(){
     setPlaying(false);
     setFollowId(null);
     setSelected({x:place.x,y:place.y});setSelectedAgentId(null);
-    setZoom(3);setTab('world');setMapFocus(-1);
+    setMapView('overhead');setZoom(3);setTab('world');setMapFocus(-1);
   };
   const openSettlement=(id:number)=>{
     setSelectedSettlementId(id);setTab('settlements');
@@ -339,11 +343,11 @@ export function WorldforgeApp(){
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
-    setZoom(4);setFollowId(id);setTab('world');setMapFocus(id);
+    setMapView('overhead');setZoom(4);setFollowId(id);setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
     setPlaying(false);setSelected({x,y});setSelectedAgentId(null);
-    setFollowId(null);setZoom(3);setTab('world');setMapFocus(-1);
+    setFollowId(null);setMapView('overhead');setZoom(3);setTab('world');setMapFocus(-1);
   };
   useEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
@@ -556,8 +560,9 @@ export function WorldforgeApp(){
             </div>
             <div className="evo-map-actions">
               <button className={'evo-follow-camera'+(followId!==null?' is-on':'')}
-                aria-pressed={followId!==null} disabled={!agent}
-                title={followId!==null?'Stop following the selected person':
+                aria-pressed={followId!==null} disabled={!agent||mapView==='depth'}
+                title={mapView==='depth'?'Follow camera uses the overhead map':
+                  followId!==null?'Stop following the selected person':
                   'Follow the selected person while they travel'}
                 onClick={()=>{
                   if(followId!==null){setFollowId(null);return;}
@@ -603,13 +608,39 @@ export function WorldforgeApp(){
               <option value="elevation">Elevation & contours</option>
               <option value="watersheds">Watersheds & rivers</option>
             </select>
+            <label htmlFor="evo-map-view">VIEW</label>
+            <select id="evo-map-view" value={mapView}
+              aria-label="Map perspective"
+              onChange={e=>{
+                const next=e.target.value as 'overhead'|'depth';
+                setMapView(next);setFollowId(null);setZoom(1);
+              }}>
+              <option value="overhead">Top-down · 2D</option>
+              <option value="depth">Raised terrain · 2.5D</option>
+            </select>
           </div>
           <MapLayerLegend overlay={overlay}/>
+          {!hasPhysicalTerrain(world)&&<div className="evo-terrain-upgrade" role="note">
+            <div><strong>CLASSIC TERRAIN RULES</strong>
+              <span>This older world keeps its original routes and farming.
+                Enable v2.0 slope and elevation effects whenever you’re ready.</span></div>
+            <button onClick={()=>{
+              if(!window.confirm('Enable v2.0 physical terrain for this world? '+
+                'Your saved people and history stay intact, but future travel, '+
+                'farming, and building decisions will respond to elevation.'))return;
+              setWorld(w=>enablePhysicalTerrain(w));
+              setNotice('Physical terrain enabled. Your existing world was preserved.');
+            }}>ENABLE PHYSICAL TERRAIN</button>
+          </div>}
           <div className="evo-map-scroll" ref={mapScrollRef}>
-            <WorldCanvas world={world} brush={brush} overlay={overlay} zoom={zoom}
+            {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
+              overlay={overlay} zoom={zoom}
               speed={speed} followId={followId} onFollowPosition={centerCamera}
               selected={displayed} onSelect={chooseTile} onEdit={brushAt}
-              onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>
+              onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
+              <DepthCanvas world={world} brush={brush} overlay={overlay}
+                zoom={zoom} selected={displayed} onSelect={chooseTile}
+                onEdit={brushAt}/>}
           </div>
           <div className="evo-map-footer">
             <div className="evo-species-legend">
@@ -620,7 +651,8 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
+              {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
+                'RAISED 2.5D TERRAIN · CLICK DIAMONDS TO INSPECT · ZOOM FOR DETAILS'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -659,6 +691,16 @@ export function WorldforgeApp(){
                   <small>Food available: {tile.food.toFixed(1)} units
                     {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
               </div>
+              {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
+                <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
+                <div><strong>PHYSICAL TERRAIN</strong>
+                  <small>Steepest adjacent rise/drop: {Math.round(terrainRuggedness(
+                    world,displayed.y*world.width+displayed.x))} height units</small>
+                  <small>Farm suitability: {Math.round(terrainFarmFactor(
+                    world,displayed.y*world.width+displayed.x)*100)}% · slopes
+                    affect travel, farming and building.</small>
+                </div>
+              </div>}
               {drainage&&<div className="evo-biome-info">
                 <span className="evo-biome-swatch" style={{background:'#4aadd0'}}/>
                 <div><strong>{tile.biome==='water'?'Existing water body':
@@ -668,7 +710,8 @@ export function WorldforgeApp(){
                     {' tiles · drains to '+(receiverIsWater?'existing water':'world edge')}
                     {drainage.pondDepth[drainageIndex]>=6?
                       ' · Potential depression':''}</small>
-                  <small>Derived visual hydrology; travel and biomes unchanged.</small>
+                  <small>Creek runoff can improve farm yields in v2.0 worlds.
+                    Ships still require real water tiles.</small>
                 </div>
               </div>}
               {resource&&<div className="evo-biome-info">
@@ -792,10 +835,11 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V1.9.5: TERRAIN POLISH & PERFORMANCE</strong>
-        <span>Explore refined pixel scenery, clearer map legends and faster
-          terrain painting. Elevation and streams remain visual until v2.0;
-          your existing worlds, movement rules and saves are unchanged.</span>
+        <strong>V2.0: LIVING GEOGRAPHY & DEPTH</strong>
+        <span>Switch between the classic overhead map and raised 2.5D terrain.
+          New worlds use real slope costs, mountain-aware navigation and
+          terrain-sensitive farming and construction. Earlier saves retain
+          classic behavior until you enable physical terrain.</span>
       </div>
     </main>}
   </div>;
