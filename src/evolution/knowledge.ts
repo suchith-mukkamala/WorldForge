@@ -122,7 +122,7 @@ export function learn(w:World,a:Agent,topic:Topic,source:KnowledgeSource,
 
 function eligible(a:Agent,topic:Topic,w:World):boolean{
   const d=a.development;
-  if(!d||lifeStage(a)==='infant'||lifeStage(a)==='child')return false;
+  if(!d)return false;
   const biome=w.tiles[a.y*w.width+a.x].biome;
   switch(topic){
     case 'agriculture':return (a.work?.job==='farmer'||d.skills.foraging>=3)&&
@@ -161,8 +161,11 @@ export function advanceKnowledge(w:World,rand:()=>number):void{
   };
   for(const a of w.agents){
     if(a.age<traitProfile(a.ancestry).maturity*.65)continue;
+    const stage=lifeStage(a);
+    if(stage==='infant'||stage==='child')continue;
+    const known=knowledgeSets.get(a.id)!;
     // Experimentation grows from lived work, thought, and observed materials.
-    const candidates=TOPICS.filter(t=>!knows(a,t)&&eligible(a,t,w));
+    const candidates=TOPICS.filter(t=>!known.has(t)&&eligible(a,t,w));
     if(candidates.length){
       const topic=candidates[Math.floor(rand()*candidates.length)];
       const curiosity=(a.genes.curiosity??1)*
