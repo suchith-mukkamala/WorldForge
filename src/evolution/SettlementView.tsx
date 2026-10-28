@@ -10,6 +10,7 @@ import {accordBetween} from './institutions';
 import {governmentOf,GOVERNMENT_LABELS,POLICY_LABELS} from './culture';
 import {pixelRectsFor} from './pixelArt';
 import {personName} from './identity';
+import {topographyForWorld} from './topography';
 import {populationScene,renderedPopulation} from './populationVisibility';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
@@ -101,13 +102,21 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
     zoom:4,maxVisible:48});
   const names=new Map(world.lineage.map(r=>[r.id,r]));
   const deposits=new Map((world.deposits??[]).map(d=>[d.index,d]));
+  const heights=topographyForWorld(world).heights;
+  const altitudeAt=(x:number,y:number)=>x>=0&&y>=0&&
+    x<world.width&&y<world.height?heights[y*world.width+x]:null;
   const originX=place.x-HALF,originY=place.y-HALF;
   const allTiles=[];
   for(let dy=0;dy<VIEW;dy++)for(let dx=0;dx<VIEW;dx++){
     const x=originX+dx,y=originY+dy;
     const tile=x>=0&&y>=0&&x<world.width&&y<world.height?
       world.tiles[y*world.width+x]:null;
+    const elevation=altitudeAt(x,y);
+    const difference=(nx:number,ny:number)=>elevation===null?0:
+      elevation-(altitudeAt(nx,ny)??elevation);
     allTiles.push({id:dy*VIEW+dx,x:dx*CELL,y:dy*CELL,tile,
+      elevation,dropN:difference(x,y-1),dropE:difference(x+1,y),
+      dropS:difference(x,y+1),dropW:difference(x-1,y),
       owner:tile&&land.has(y*world.width+x),route:tile&&roads.has(y*world.width+x),
       paved:tile&&paved.has(y*world.width+x),bridge:tile&&bridges.has(y*world.width+x),
       deposit:tile?deposits.get(y*world.width+x):undefined});
@@ -121,6 +130,23 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
         <rect x={p.x} y={p.y} width={CELL} height={CELL}
           fill={p.tile?BIOME_INFO[p.tile.biome].color:'#11192a'}
           stroke="#182539" strokeWidth={.65}/>
+        {p.elevation!==null&&<>
+          <title>{'Elevation '+p.elevation+'/255'}</title>
+          {p.dropN>9&&<rect x={p.x} y={p.y} width={CELL} height={3}
+            fill="#f3ecc7" opacity={Math.min(.7,p.dropN/75)}/>}
+          {p.dropW>10&&<rect x={p.x} y={p.y} width={3} height={CELL}
+            fill="#f6e6b6" opacity={Math.min(.55,p.dropW/85)}/>}
+          {p.dropS>9&&<rect x={p.x} y={p.y+CELL-5}
+            width={CELL} height={5} fill="#18263a"
+            opacity={Math.min(.72,p.dropS/75)}/>}
+          {p.dropE>9&&<rect x={p.x+CELL-4} y={p.y}
+            width={4} height={CELL} fill="#1c2d3e"
+            opacity={Math.min(.58,p.dropE/90)}/>}
+          {(p.dropN>30||p.dropW>30)&&
+            <path d={`M${p.x+2} ${p.y+5}l7 2m6 4l5 2`}
+              stroke="#e0d5ae" strokeWidth={1.5} fill="none"
+              opacity={.65}/>}
+        </>}
         {p.tile?.biome==='forest'&&<>
           <rect x={p.x+6} y={p.y+4} width={14} height={15} fill="#39795d"/>
           <rect x={p.x+9} y={p.y+1} width={8} height={10} fill="#67a875"/>
@@ -131,6 +157,9 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
           <rect x={p.x+12} y={p.y+17} width={11} height={2} fill="#3d7f9c"/>
         </>}
         {p.tile?.biome==='mountain'&&<>
+          {p.elevation!==null&&p.elevation>=180&&
+            <path d={`M${p.x+3} ${p.y+13}l8-9 4 7 4-4 5 8z`}
+              fill="#e0e8e2" opacity={.72}/>}
           <rect x={p.x+5} y={p.y+13} width={17} height={10} fill="#6e8296"/>
           <rect x={p.x+9} y={p.y+7} width={9} height={9} fill="#aebdc8"/>
           <rect x={p.x+12} y={p.y+5} width={3} height={5} fill="#e0e8e5"/>
