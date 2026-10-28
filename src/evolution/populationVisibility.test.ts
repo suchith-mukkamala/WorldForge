@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {createWorld,type Agent} from './engine';
 import {advanceWorldDays} from './calendar';
+import {initialCognition} from './mindII';
 import {isVisuallyIndoors,populationScene,renderedPopulation} from './populationVisibility';
 
 function fixture(){
@@ -41,6 +42,9 @@ describe('v1.8 presentation-only population',()=>{
       dailyLife:{...working.dailyLife!,activity:'travel'}};
     expect(isVisuallyIndoors(working,scene)).toBe(true);
     expect(isVisuallyIndoors(traveling,scene)).toBe(false);
+    const leaving:Agent={...working,cognition:{...initialCognition(),
+      today:{year:0,day:1,action:'travel',explanation:'Going outside'}}};
+    expect(isVisuallyIndoors(leaving,scene)).toBe(false);
     const view={bounds:{minX:0,minY:0,maxX:20,maxY:20},zoom:4};
     expect(renderedPopulation([working,traveling],scene,view).map(a=>a.id))
       .toEqual([102]);
