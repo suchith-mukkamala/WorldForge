@@ -3,6 +3,7 @@ import type {ChangeEvent,SetStateAction} from 'react';
 import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas,type MapOverlay} from './WorldCanvas';
+import {MapLayerLegend} from './MapLayerLegend';
 import {elevationAt} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
@@ -603,6 +604,7 @@ export function WorldforgeApp(){
               <option value="watersheds">Watersheds & rivers</option>
             </select>
           </div>
+          <MapLayerLegend overlay={overlay}/>
           <div className="evo-map-scroll" ref={mapScrollRef}>
             <WorldCanvas world={world} brush={brush} overlay={overlay} zoom={zoom}
               speed={speed} followId={followId} onFollowPosition={centerCamera}
@@ -618,10 +620,7 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              HEIGHTMAP & WATERSHEDS IN MAP LAYERS · ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
-            {overlay==='watersheds'&&<span>WATERSHEDS: LAND COLORS MARK DRAINAGE BASINS
-              · BLUE LINES ARE CREEKS & RIVERS · LIGHT BLUE POOLS SHOW POTENTIAL
-              DEPRESSIONS · DISPLAY ONLY, NO MOVEMENT CHANGES</span>}
+              ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -793,10 +792,10 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V1.5: BELIEFS & GOVERNMENT</strong>
-        <span>People now develop faiths, share or question beliefs, elect local
-          leaders, and fund civic priorities from real resources. Watch these
-          cultural changes in the Beliefs & Government archive.</span>
+        <strong>V1.9.5: TERRAIN POLISH & PERFORMANCE</strong>
+        <span>Explore refined pixel scenery, clearer map legends and faster
+          terrain painting. Elevation and streams remain visual until v2.0;
+          your existing worlds, movement rules and saves are unchanged.</span>
       </div>
     </main>}
   </div>;

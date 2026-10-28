@@ -9,6 +9,40 @@ export type TerrainMotif='oak'|'pine'|'fern'|'grass'|'flowers'|'pebbles'|
   'scrub'|'basalt'|'embers'|'ripples'|'shorefoam'|'none';
 export type TerrainDetail={motif:TerrainMotif;variant:0|1|2|3};
 
+/** A tiny sprite sheet replaces several fillRect calls for every decorated
+ * tile. Its pixels come from the original painter, so both paths are identical.
+ */
+const ATLAS_MOTIFS:readonly Exclude<TerrainMotif,'none'>[]=[
+  'oak','pine','fern','grass','flowers','pebbles','reeds','boulder',
+  'scree','snowstone','crystal','stalagmite','scrub','basalt','embers',
+  'ripples','shorefoam',
+];
+const ATLAS_INDEX=Object.fromEntries(ATLAS_MOTIFS.map((motif,i)=>[motif,i])) as
+  Record<Exclude<TerrainMotif,'none'>,number>;
+const ATLAS_CELL=6;
+
+/** Build once per world-map canvas. No graphics state or atlas is serialized. */
+export function buildTerrainDetailAtlas(canvas:HTMLCanvasElement):boolean{
+  canvas.width=ATLAS_MOTIFS.length*4*ATLAS_CELL;
+  canvas.height=ATLAS_CELL;
+  const ctx=canvas.getContext('2d');
+  if(!ctx)return false;
+  for(const [i,motif] of ATLAS_MOTIFS.entries())for(let v=0;v<4;v++){
+    paintTerrainDetail(ctx,{motif,variant:v as TerrainDetail['variant']},
+      i*4+v,0);
+  }
+  return true;
+}
+
+/** Draw the exact 6x6 sprite in one blit rather than 2-4 tiny paint calls. */
+export function paintTerrainDetailFromAtlas(ctx:CanvasRenderingContext2D,
+  atlas:HTMLCanvasElement,detail:TerrainDetail,x:number,y:number):void{
+  if(detail.motif==='none')return;
+  const source=(ATLAS_INDEX[detail.motif]*4+detail.variant)*ATLAS_CELL;
+  ctx.drawImage(atlas,source,0,ATLAS_CELL,ATLAS_CELL,
+    x*ATLAS_CELL,y*ATLAS_CELL,ATLAS_CELL,ATLAS_CELL);
+}
+
 function hash(seed:number,x:number,y:number):number{
   let n=(seed^Math.imul(x+11939,73856093)^
     Math.imul(y+7193,19349663)^0x9e3779b9)>>>0;
