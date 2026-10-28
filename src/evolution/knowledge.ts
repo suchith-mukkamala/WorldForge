@@ -2,7 +2,7 @@
  * Discovery needs experience or an explored site. Teaching needs contact;
  * durable written archives require an actual literate community and hall.
  */
-import type {Agent,LineageRecord,Settlement,World} from './engine';
+import type {Agent,LineageRecord,Settlement,Species,World} from './engine';
 import {traitProfile} from './family';
 import {divineFactor} from './divine';
 import {appendLifeMoment} from './identity';
@@ -20,10 +20,17 @@ export type LearnedTopic={topic:Topic;year:number;source:KnowledgeSource;
 export type KnowledgeDiscovery={topic:Topic;year:number;personId:number;
   source:KnowledgeSource;siteId?:number};
 export type KnowledgeState={firsts:KnowledgeDiscovery[]};
-export const ANCIENT_KINDS=['temple','archive','vault'] as const;
+// Archive and vault remain valid so worlds saved before v1.4 still load.
+export const ANCIENT_KINDS=['temple','library','crypt','ruin','archive','vault'] as const;
 export type AncientKind=typeof ANCIENT_KINDS[number];
 export type AncientSite={id:number;kind:AncientKind;x:number;y:number;
-  topic:Topic;danger:number;visitors:number[]};
+  topic:Topic;danger:number;visitors:number[];visits?:number;
+  origin?:'ancient'|'collapsed';name?:string;culture?:Species;
+  collapsed?:number;lostTopics?:Topic[];recovered?:number};
+export type Artifact={siteId:number;name:string;kind:'relic'|'tome'|'tool'|'charm';
+  topic:Topic;year:number};
+export type ExpeditionRecord={year:number;personId:number;siteId:number;
+  outcome:'injury'|'fatal'|'insight'|'artifact'|'empty';description:string};
 export const TOPIC_INFO:Record<Topic,{name:string;description:string;benefit:string}>= {
   agriculture:{name:'Cultivation',description:'Experiment with seeds, soil and organized crops.',
     benefit:'Knowledgeable farmers produce sustainable harvests.'},
@@ -70,7 +77,8 @@ export function generateAncientSites(w:Pick<World,'settings'|'width'|'height'|'t
     const kind=ANCIENT_KINDS[Math.floor(rand()*ANCIENT_KINDS.length)];
     const topic=TOPICS[Math.floor(rand()*TOPICS.length)];
     sites.push({id:sites.length+1,kind,x,y,topic,
-      danger:Math.round(10+rand()*72),visitors:[]});
+      danger:Math.round(10+rand()*72),visitors:[],visits:0,
+      origin:'ancient',recovered:0});
   }
   return sites;
 }
@@ -242,29 +250,99 @@ export function advanceKnowledge(w:World,rand:()=>number):void{
     }
   }
   for(const a of w.agents){
+    const plan=a.mind?.expedition;
+    if(plan?.stage==='preparing'&&plan.started===w.year){
+      const town=w.settlements.find(s=>distance(a,s)<=7&&s.stores>=1.5);
+      if(town)town.stores=Math.max(0,town.stores-1.5);
+      else a.energy=Math.max(1,a.energy-3);
+    }
     if(a.age<traitProfile(a.ancestry).maturity||
       a.mind?.goal!=='explore'&&a.mind?.goal!=='venture')continue;
-    for(const site of w.ancientSites){
-      if(site.visitors.includes(a.id)||site.visitors.length>=8||
-        distance(a,site)>1)continue;
-      site.visitors.push(a.id);
-      // Treasures are not safe; failures can leave explorers gravely injured.
-      const resilience=traitProfile(a.ancestry).strength*a.genes.vigor;
-      const risk=(site.danger/100)*.45/resilience;
-      if(rand()<risk){
-        a.health=Math.max(1,Math.round(a.health-18-site.danger*.85));
-        a.energy=Math.max(1,a.energy-site.danger*.6);
-        const fatal=rand()<site.danger/250;
-        if(fatal)a.mortalWound=true;
-        w.events.push({id:w.nextEventId++,year:w.year,type:'knowledge',
-          message:fatal?'An explorer suffered mortal wounds in an ancient '+site.kind+'.':
-            'An explorer was wounded in an ancient '+site.kind+'.'});
-        if(w.events.length>90)w.events=w.events.slice(-90);
-      }else{
-        teach(a,site.topic,'ruin',undefined,site.id);
+    if(plan?.stage==='preparing'||plan?.stage==='returning')continue;
+    const site=plan?.stage==='travel'?
+      w.ancientSites.find(s=>s.id===plan.siteId&&distance(a,s)<=1):
+      w.ancientSites.find(s=>distance(a,s)<=1&&
+        !a.visitedSites?.includes(s.id)&&!s.visitors.includes(a.id));
+    if(!site||a.visitedSites?.includes(site.id)||site.visitors.includes(a.id))continue;
+    // Casual passersby may notice a doorway, but a prepared deliberate
+    // expedition has a much better chance of actually entering it.
+    if(!plan&&rand()>.12+a.genes.curiosity*.12)continue;
+    a.visitedSites=[...(a.visitedSites??[]).slice(-31),site.id];
+    site.visitors=[...site.visitors.slice(-7),a.id];
+    site.visits=(site.visits??0)+1;
+    const resilience=traitProfile(a.ancestry).strength*a.genes.vigor;
+    const preparedness=plan?.preparedness??18;
+    const provisions=plan?.supplies??0;
+    const danger=(site.danger/100)*.54/
+      Math.max(.5,resilience)*(1-preparedness/240-provisions/420);
+    let outcome:ExpeditionRecord['outcome']='empty';
+    let description='Returned from '+(site.name??'an ancient '+site.kind)+' empty-handed.';
+    if(rand()<danger){
+      const harm=Math.round(12+site.danger*.7*(1-preparedness/210));
+      a.health=Math.max(1,a.health-harm);
+      a.energy=Math.max(1,a.energy-site.danger*.45);
+      const fatal=rand()<site.danger/260/Math.max(.75,resilience);
+      if(fatal)a.mortalWound=true;
+      outcome=fatal?'fatal':'injury';
+      description=fatal?'Suffered mortal wounds in '+(site.name??'a '+site.kind)+'.':
+        'Survived traps in '+(site.name??'a '+site.kind)+' with injuries.';
+      if(a.development){
+        a.development.memories.push({year:w.year,kind:'hardship',detail:description});
+        if(a.development.memories.length>18)
+          a.development.memories=[a.development.memories[0],...a.development.memories.slice(-17)];
+        a.development.resilience=clamp(a.development.resilience+1,0,100);
       }
-      break;
+    }else{
+      const lost=site.lostTopics?.filter(topic=>!knows(a,topic))??[];
+      const topic=lost.length?lost[Math.floor(rand()*lost.length)]:site.topic;
+      const learned=teach(a,topic,'ruin',undefined,site.id);
+      outcome=learned?'insight':'empty';
+      if(learned)description='Recovered '+TOPIC_INFO[topic].name+' from '+
+        (site.name??'an ancient '+site.kind)+'.';
+      if(rand()<.08+preparedness/600){
+        const unknown=[...(site.lostTopics??[]),...TOPICS].filter(t=>!knows(a,t));
+        const hidden=unknown[Math.floor(rand()*unknown.length)];
+        if(hidden&&teach(a,hidden,'ruin',undefined,site.id)){
+          outcome='insight';
+          description+=' Deciphered extraordinary '+TOPIC_INFO[hidden].name+' as well.';
+        }
+      }
+      // A rare find is portable, traceable and changes the owner's actual
+      // capabilities. Sites gradually run out of intact artifacts.
+      if((site.recovered??0)<3&&(a.artifacts?.length??0)<6&&rand()<.2+
+        (site.kind==='crypt'||site.kind==='vault'?.16:0)){
+        const kind=site.kind==='library'||site.kind==='archive'?'tome':
+          site.kind==='crypt'?'charm':site.kind==='temple'?'relic':'tool';
+        const name=(kind==='tome'?'Illuminated manuscript':
+          kind==='charm'?'Ancient ward':kind==='tool'?'Masterwork instrument':
+          'Sanctuary relic')+' of '+TOPIC_INFO[topic].name;
+        a.artifacts=[...(a.artifacts??[]),{siteId:site.id,name,kind,topic,year:w.year}];
+        site.recovered=(site.recovered??0)+1;
+        if(a.development){
+          a.development.skills.knowledge=clamp(a.development.skills.knowledge+8,0,100);
+          a.development.skills.craft=clamp(a.development.skills.craft+4,0,100);
+        }
+        a.health=clamp(a.health+5,1,100);
+        outcome='artifact';description='Recovered '+name+' from '+
+          (site.name??'an ancient '+site.kind)+'.';
+        appendLifeMoment(w,a.id,{year:w.year,kind:'discovery',
+          text:'Brought home '+name+' from a dangerous expedition.'},records);
+      }
     }
+    if(plan){
+      a.mind.expedition={...plan,stage:'returning'};
+      a.mind.target={...plan.home};
+      a.mind.reason='Returning home after an expedition.';
+    }
+    if(outcome==='injury'||outcome==='fatal')
+      appendLifeMoment(w,a.id,{year:w.year,kind:'discovery',text:description},records);
+    w.expeditions??=[];
+    w.expeditions.push({year:w.year,personId:a.id,siteId:site.id,
+      outcome,description});
+    if(w.expeditions.length>180)w.expeditions=w.expeditions.slice(-180);
+    w.events.push({id:w.nextEventId++,year:w.year,type:'knowledge',
+      message:'Explorer #'+a.id+': '+description});
+    if(w.events.length>90)w.events=w.events.slice(-90);
   }
 }
 
@@ -299,15 +377,41 @@ export function validKnowledge(w:World):boolean{
       !s.archives.every(validTopic)))return false;
   }
   if(w.ancientSites!==undefined){
-    if(!Array.isArray(w.ancientSites)||w.ancientSites.length>40||
+    if(!Array.isArray(w.ancientSites)||w.ancientSites.length>100||
       !w.ancientSites.every(s=>s&&Number.isInteger(s.id)&&s.id>0&&
         ANCIENT_KINDS.includes(s.kind)&&Number.isInteger(s.x)&&
         Number.isInteger(s.y)&&s.x>=0&&s.y>=0&&
         s.x<w.width&&s.y<w.height&&validTopic(s.topic)&&
         Number.isInteger(s.danger)&&s.danger>=0&&s.danger<=100&&
+        (s.visits===undefined||Number.isInteger(s.visits)&&s.visits>=0)&&
+        (s.recovered===undefined||Number.isInteger(s.recovered)&&s.recovered>=0&&s.recovered<=3)&&
+        (s.origin===undefined||['ancient','collapsed'].includes(s.origin))&&
+        (s.name===undefined||typeof s.name==='string'&&s.name.length<=100)&&
+        (s.culture===undefined||['human','elf','dwarf','demon'].includes(s.culture))&&
+        (s.collapsed===undefined||Number.isInteger(s.collapsed)&&s.collapsed>=0&&s.collapsed<=w.year)&&
+        (s.lostTopics===undefined||Array.isArray(s.lostTopics)&&s.lostTopics.length<=TOPICS.length&&
+          new Set(s.lostTopics).size===s.lostTopics.length&&s.lostTopics.every(validTopic))&&
         Array.isArray(s.visitors)&&s.visitors.length<=8&&
         new Set(s.visitors).size===s.visitors.length&&
-        s.visitors.every(id=>Number.isSafeInteger(id)&&id>0)))return false;
+        s.visitors.every(id=>Number.isSafeInteger(id)&&id>0))||
+      new Set(w.ancientSites.map(s=>s.id)).size!==w.ancientSites.length)return false;
+  }
+  if(w.expeditions!==undefined&&(!Array.isArray(w.expeditions)||
+    w.expeditions.length>180||!w.expeditions.every(e=>e&&
+      Number.isInteger(e.year)&&e.year>=0&&e.year<=w.year&&
+      Number.isSafeInteger(e.personId)&&e.personId>0&&
+      Number.isInteger(e.siteId)&&e.siteId>0&&
+      ['injury','fatal','insight','artifact','empty'].includes(e.outcome)&&
+      typeof e.description==='string'&&e.description.length<=220)))return false;
+  for(const a of w.agents){
+    if(a.visitedSites!==undefined&&(!Array.isArray(a.visitedSites)||
+      a.visitedSites.length>32||new Set(a.visitedSites).size!==a.visitedSites.length||
+      !a.visitedSites.every(n=>Number.isInteger(n)&&n>0)))return false;
+    if(a.artifacts!==undefined&&(!Array.isArray(a.artifacts)||a.artifacts.length>6||
+      !a.artifacts.every(v=>v&&Number.isInteger(v.siteId)&&v.siteId>0&&
+        typeof v.name==='string'&&v.name.length<=100&&
+        ['relic','tome','tool','charm'].includes(v.kind)&&validTopic(v.topic)&&
+        Number.isInteger(v.year)&&v.year>=0&&v.year<=w.year)))return false;
   }
   return true;
 }

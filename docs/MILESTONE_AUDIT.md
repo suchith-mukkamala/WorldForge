@@ -1,4 +1,4 @@
-# WorldForge milestone audit (through v1.3)
+# WorldForge milestone audit (through v1.4)
 
 WorldForge is a *simulation* rather than a scripted city painter. This audit
 distinguishes implemented foundations from aspirational features.
@@ -18,6 +18,7 @@ distinguishes implemented foundations from aspirational features.
 | v1.2 | Four-direction sprites, two-frame walking motion between yearly positions and an optional camera following a living individual. |
 | v1.2.1 | Saved 365-day calendar, day/week/month/year playback and stepping, monthly pursuit of existing travel goals, physically bounded multi-person settlement tiles, map-size-scaled settlement count and demographic seed-sweep tooling. Annual reproduction, aging and economy are unchanged in frequency. |
 | v1.3 | Nine learnable knowledge domains tied to lived practice, work and environment; nearby cross-cultural mentorship, persistent lineage learning records, written archives, seeded ancient temples/vaults with injuries or rare breakthroughs, a Knowledge Codex, and inherited demon physical strength/speed that actually influence travel, health, extraction, crafting and construction. |
+| v1.4 | Seeded libraries, crypts, temples and ruins; true collapsed towns with archived lost knowledge; curiosity/risk-aware site selection and provisioning; persistent trips, hazards, recoverable relics, exceptional multi-subject learning, and an expedition chronicle. Distinct site pixel art, traveler gear and a focused simplified navigation/journal. |
 
 ## Validation
 
@@ -40,6 +41,10 @@ distinguishes implemented foundations from aspirational features.
   lineage knowledge, rescue of old saves without knowledge fields, seeded ancient
   site generation, dangerous once-per-person visits and mixed-ancestry physical
   strengths. Specialized labor connects education to tangible world output.
+- v1.4: Expedition tests exercise seed-independent site generation, autonomous
+  destination choice, preparation, factual collapsed-town ruins, artifacts,
+  individual knowledge changes and serialized outcomes. New journal records
+  stay independent of zoom, while old worlds without the new fields still load.
 
 ## Honest limits and next work
 
@@ -74,5 +79,10 @@ distinguishes implemented foundations from aspirational features.
   hall to create. Archives can survive their founders, but oral knowledge without
   teachers can be lost. Excavations can seriously wound explorers, with death
   usually resolved by the subsequent annual health and survival tick.
+- Expedition sites are pixel-map landmarks and simulated encounters, **not**
+  navigable interiors or tactical dungeon combat. A person plans independently
+  from nearby sites and known routes; no global pathfinding or organized multi-
+  person expedition parties are modeled yet. Lost-town archives reflect actual
+  pre-collapse records, whereas primordial sites are seed-generated mysteries.
 
 The UI's zoom controls only affect rendering and never alter world progression.

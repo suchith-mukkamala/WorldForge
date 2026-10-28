@@ -22,7 +22,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - Watch animated walkers face north, south, east or west and alternate their stride between actual changes in position. Choose a person and press **FOLLOW** to track their travels with a camera that moves with them; **TRACKING** turns it off.
 - Set the world clock to days, weeks, months, seasons or years. Smaller intervals advance a genuine saved calendar and people pursue existing travel goals on monthly boundaries. Aging, births, yearly work and economic accounting still happen annually; full daily routines are a later milestone.
 - Explore the **Age of Knowledge (v1.3)**: agriculture, herbalism, stonecraft, navigation, irrigation, metallurgy, engineering, medicine and writing are specific discoveries, not a global technology tree. People experiment based on their occupations and surroundings, teach nearby friends and family, and may preserve discoveries in communal written archives. Acquired knowledge is tracked on individual profiles and retained in their life records after death; newborns do not inherit it automatically.
-- Discover procedurally placed ancient temples, archives and vaults. Explorers can acquire knowledge well beyond their own experience, but dangerous expeditions may injure or ultimately kill them. Discoveries, first scholars, surviving knowers, lost knowledge and archives appear in the new **Knowledge** codex.
+- Discover procedurally placed temples, libraries, crypts, vaults and ancient ruins. Curious people independently weigh risk and potential knowledge, pack provisions, follow a chosen site, survive traps or mortal injuries, and sometimes recover a unique artifact that improves their capabilities. Every voyage and outcome is recorded in the **Expeditions & Knowledge** journal; a surviving traveler brings their ideas back to ordinary teaching and settlement archives. Real fallen settlements become named archaeological sites with their historic culture and any knowledge archived before collapse.
+- Identify each site by its distinct pixel-art silhouette, spot equipped explorers and artifact holders, and navigate a streamlined WorldForge with a focused journal and secondary pages organized under **More Pages**.
 - See much stronger and faster **demons**: their inherited physical strength and speed improve actual resource extraction, construction, artisan production, physical recovery and travel frequency. Mixed-ancestry descendants inherit proportional physical abilities. This is a species trait buff; the v1.3 update does not change biome fertility or regrowth.
 - Observe natural crowding in settlements: neighborhoods can host bounded groups of inhabitants while wilderness remains more sparsely occupied. More spacious maps support more settlements without the former fixed 54-town limit. Physical crowding is independent of housing quality and household shelter needs.
 - Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
@@ -64,8 +65,8 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v1.3 — Age of Knowledge: specific discoveries, deliberate teaching, preserved knowledge, ancient sites, and stronger demons.
-- **Next:** v1.4 — Beliefs & Institutions: self-organized religions, governments and cultural disagreement, followed by deeper daily routines, exploration consequences, and eventual animals/herding.
+- **Current:** v1.4 — Ruins & Expeditions: deliberate risk-aware exploration, preparation, preserved collapsed civilizations, artifacts and an expedition chronicle. The core Age of Knowledge and its stronger demons remain intact.
+- **Next:** v1.5 — Beliefs & Institutions: self-organized religions, governments and cultural disagreement, followed by deeper daily routines and eventual animals/herding.
 - **Future:** Optional mortal perspective with travel, interactions, choices and character progression. No mortal-play mode is implemented yet.
 
 ## Architecture
@@ -80,7 +81,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/pixelArt.ts` and `PixelPortrait.tsx`: deterministic 16×22 character designs, landscape and structure art, and matching full-size portraits. Zoom never mutates the simulation.
 - `src/evolution/motion.ts`: visual-only directional movement, timed interpolation and camera centering. These animations and view positions are not saved into the world or used for agent decisions.
 - `src/evolution/calendar.ts`: canonical day/week/month/year stepping. Monthly travel changes real agent positions; annual life and economic events remain once per year.
-- `src/evolution/knowledge.ts` and `KnowledgeCodex.tsx`: seeded ancient discoveries, personal knowledge and lineage histories, experiments, interpersonal teaching, written archives, knowledge loss and practical professional benefits.
+- `src/evolution/knowledge.ts` and `KnowledgeCodex.tsx`: seeded sites, inherited ruins, individual knowledge and lineage histories, perilous expeditions, artifacts, expedition logs, interpersonal teaching and written archives. `mind.ts` handles independent expedition choices and preparation.
 - `src/evolution/density.ts`: deterministic physical capacity for settlement neighborhoods and resident indexes; population scales with developed habitat instead of requiring every person to have a separate tile.
 - `src/evolution/divine.ts`: divine actions and their consequences.
 - `src/evolution/storage.ts`: browser persistence and world-file compatibility.

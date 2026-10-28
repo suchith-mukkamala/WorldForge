@@ -4,7 +4,7 @@ import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
 import {paintBuilding,paintDeposit,paintPerson,paintTerrain,spriteKey,
-  PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
+  paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
@@ -108,19 +108,19 @@ export function WorldCanvas({
     }
     for(const ruin of world.ruins??[]){
       const x=ruin.x*CELL,y=ruin.y*CELL;
-      ctx.fillStyle='#343648';ctx.fillRect(x-2,y+2,10,4);
-      ctx.fillStyle='#ad9b9c';ctx.fillRect(x-1,y,3,4);
-      ctx.fillRect(x+4,y+1,3,3);ctx.fillStyle='#605969';
-      ctx.fillRect(x+1,y+4,4,2);
+      const culture=ARCHITECTURE[ruin.species];
+      ctx.fillStyle='#222537';ctx.fillRect(x-4,y+4,16,3);
+      ctx.fillStyle=culture.wall;ctx.fillRect(x-4,y-3,4,8);
+      ctx.fillRect(x+6,y-5,4,9);
+      ctx.fillStyle=culture.roof;ctx.fillRect(x-5,y-6,5,2);
+      ctx.fillRect(x+5,y-7,5,2);
+      ctx.fillStyle='#394351';ctx.fillRect(x,y+2,6,4);
+      ctx.fillStyle='#8fa18b';ctx.fillRect(x-3,y+4,2,2);
+      ctx.fillRect(x+9,y+3,2,2);
     }
     for(const site of world.ancientSites??[]){
-      const x=site.x*CELL,y=site.y*CELL;
-      const color=site.kind==='temple'?'#debd86':
-        site.kind==='archive'?'#9acac2':'#c19ee2';
-      ctx.fillStyle='#232238';ctx.fillRect(x-2,y-3,10,10);
-      ctx.fillStyle=color;ctx.fillRect(x-1,y-2,8,3);
-      ctx.fillRect(x,y+1,2,5);ctx.fillRect(x+4,y+1,2,5);
-      ctx.fillStyle='#42394b';ctx.fillRect(x+2,y+3,2,3);
+      paintAncientSite(ctx,site.kind,site.x*CELL,site.y*CELL,
+        (site.visits??site.visitors.length)>0);
     }
     for(const s of world.settlements){
       const px=s.x*CELL,py=s.y*CELL;
@@ -230,6 +230,14 @@ export function WorldCanvas({
         const width=focus&&zoom>=5?16:zoom>=5?12:9;
         const height=focus&&zoom>=5?22:zoom>=5?17:13;
         visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
+        if(a.mind?.expedition?.stage==='travel'){
+          visible.fillStyle='#7d5947';visible.fillRect(px-4,py-6,3,5);
+          visible.fillStyle='#d1b68a';visible.fillRect(px-3,py-6,1,2);
+        }
+        if(a.artifacts?.length){
+          visible.fillStyle='#efd48b';visible.fillRect(px+7,py-10,2,2);
+          visible.fillStyle='#fff3c3';visible.fillRect(px+7,py-11,1,1);
+        }
         if(a.partnerId!==undefined){
           visible.fillStyle='#ffe1b3';visible.fillRect(px+6,py-8,2,2);
         }

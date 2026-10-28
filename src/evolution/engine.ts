@@ -27,7 +27,8 @@ import {advanceInstitutions,cloneInstitutions,validInstitutions,
 import {addResident,removeResident,residentIndex,settlementSafetyLimit,
   tileCapacity} from './density';
 import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
-  type AncientSite,type KnowledgeState,type LearnedTopic,type Topic} from './knowledge';
+  type AncientSite,type Artifact,type ExpeditionRecord,type KnowledgeState,
+  type LearnedTopic,type Topic} from './knowledge';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -41,7 +42,8 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
-  work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean};
+  work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean;
+  visitedSites?:number[];artifacts?:Artifact[]};
 export type Bond={id:number;a:number;b:number;since:number;
   stage:'courting'|'partner'|'ended';strength:number;ended?:number;
   lastBirthYear?:number;children:number[]};
@@ -90,7 +92,8 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   ruins?:RuinSite[];trails?:Trail[];deposits?:ResourceDeposit[];
   shipments?:Shipment[];nextShipmentId?:number;
   transport?:TransportNetwork;tradeRelations?:TradeRelation[];
-  institutions?:Institutions;knowledge?:KnowledgeState;ancientSites?:AncientSite[]};
+  institutions?:Institutions;knowledge?:KnowledgeState;ancientSites?:AncientSite[];
+  expeditions?:ExpeditionRecord[]};
 export const SPECIES:Species[]=['human','elf','dwarf','demon'];
 export const BIOMES:Biome[]=['plains','forest','mountain','cave','wasteland','volcanic','water'];
 export const SPECIES_INFO:Record<Species,{name:string;symbol:string;color:string;
@@ -306,6 +309,8 @@ export function stepWorld(previous:World):World{
     tiles:previous.tiles.map(t=>({...t})),
     agents:previous.agents.map(a=>({...a,
       knowledge:a.knowledge?.map(k=>({...k})),
+      visitedSites:a.visitedSites?[...a.visitedSites]:undefined,
+      artifacts:a.artifacts?.map(v=>({...v})),
       development:a.development?cloneDevelopment(a.development):undefined,
       work:a.work?{...a.work}:undefined,
       blessings:activeEffects(a,previous.year+1).map(e=>({...e})),
@@ -314,6 +319,8 @@ export function stepWorld(previous:World):World{
       ...a.mind,target:a.mind.target?{...a.mind.target}:undefined,
       lastScarcity:a.mind.lastScarcity?{...a.mind.lastScarcity}:undefined,
       lastGoodFood:a.mind.lastGoodFood?{...a.mind.lastGoodFood}:undefined,
+      expedition:a.mind.expedition?{...a.mind.expedition,
+        home:{...a.mind.expedition.home}}:undefined,
     }:undefined})),
     settlements:previous.settlements.map(s=>({...s,infrastructure:s.infrastructure?
       cloneInfrastructure(s.infrastructure):undefined,
@@ -351,7 +358,9 @@ export function stepWorld(previous:World):World{
     institutions:previous.institutions?cloneInstitutions(previous.institutions):undefined,
     knowledge:previous.knowledge?{firsts:previous.knowledge.firsts.map(k=>({...k}))}:
       {firsts:[]},
-    ancientSites:previous.ancientSites?.map(s=>({...s,visitors:[...s.visitors]}))};
+    ancientSites:previous.ancientSites?.map(s=>({...s,visitors:[...s.visitors],
+      lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
+    expeditions:previous.expeditions?.map(e=>({...e}))??[]};
   prepareDevelopment(world);
   regrowDeposits(world);
   for(const s of world.settlements){
@@ -779,6 +788,16 @@ export function isWorld(value:unknown):value is World{
           (!Number.isSafeInteger(a.mind.targetPersonId)||
             a.mind.targetPersonId<=0||a.mind.targetPersonId>=w.nextAgentId!))||
         (a.mind.target!==undefined&&!checkPlace(a.mind.target))||
+        (a.mind.expedition!==undefined&&(!a.mind.expedition||
+          !Number.isSafeInteger(a.mind.expedition.siteId)||a.mind.expedition.siteId<=0||
+          !Number.isInteger(a.mind.expedition.started)||
+          a.mind.expedition.started<0||a.mind.expedition.started>year||
+          !['preparing','travel','returning'].includes(a.mind.expedition.stage)||
+          !Number.isFinite(a.mind.expedition.preparedness)||
+          a.mind.expedition.preparedness<0||a.mind.expedition.preparedness>100||
+          !Number.isFinite(a.mind.expedition.supplies)||
+          a.mind.expedition.supplies<0||a.mind.expedition.supplies>100||
+          !checkPlace(a.mind.expedition.home)))||
         (a.mind.lastScarcity!==undefined&&!checkMemory(a.mind.lastScarcity))||
         (a.mind.lastGoodFood!==undefined&&!checkMemory(a.mind.lastGoodFood))))||
       (a.development!==undefined&&!checkDevelopment(a.development)))return false;
