@@ -12,7 +12,6 @@ import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
 import {TOPIC_INFO} from './knowledge';
 import {DivinePowers} from './DivinePowers';
-import {SettlementView} from './SettlementView';
 import {settlementStage} from './construction';
 import {SPECIALTY_LABELS} from './economy';
 import {RESOURCE_LABELS,RESOURCE_COLORS} from './resources';
@@ -23,6 +22,8 @@ import {hybridFraction,traitProfile,ancestryLabel} from './family';
 import {lifeStage,CAREER_LABELS} from './development';
 import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
+const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
+const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
 import {compactWorld,loadBrowserWorld,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
@@ -43,7 +44,7 @@ function initialWorld():World{
   return createWorld(DEFAULT_SETTINGS);
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
-  'settlements';
+  'settlements'|'culture';
 const format=(n:number)=>n.toLocaleString('en-US');
 const brushValue=(b:Brush)=>b.kind==='inspect'?'inspect':
   b.kind==='food'?'food':b.kind==='spawn'?'spawn-'+b.species:'terrain-'+b.biome;
@@ -331,19 +332,20 @@ export function WorldforgeApp(){
         <button role="tab" aria-selected={tab==='knowledge'}
           className={tab==='knowledge'?'active':''} onClick={()=>navigate('knowledge')}>
           ✧ EXPEDITIONS & KNOWLEDGE</button>
-        <button role="tab" aria-selected={tab==='history'}
-          className={tab==='history'?'active':''} onClick={()=>navigate('history')}>
-          ≋ HISTORY</button>
+        <button role="tab" aria-selected={tab==='culture'}
+          className={tab==='culture'?'active':''} onClick={()=>navigate('culture')}>
+          ⚖ BELIEFS & GOVERNMENT</button>
         <button role="tab" aria-selected={tab==='powers'}
           className={tab==='powers'?'active':''} onClick={()=>navigate('powers')}>
           ⚡ POWERS</button>
         <select className="evo-more-pages" aria-label="More WorldForge pages"
-          value={['creator','family','codex'].includes(tab)?tab:''}
+          value={['creator','family','codex','history'].includes(tab)?tab:''}
           onChange={e=>navigate(e.target.value as Tab)}>
           <option value="" disabled>MORE PAGES ▾</option>
           <option value="creator">✧ WORLD CREATOR</option>
           <option value="family">♡ FAMILIES</option>
           <option value="codex">✦ DIVINE CODEX</option>
+          <option value="history">≋ HISTORY</option>
         </select>
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}
@@ -353,10 +355,11 @@ export function WorldforgeApp(){
     {tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
       current={world.settings} onCreate={startWorld} onReturn={()=>navigate('world')}/>:
     tab==='history'?<EvolutionHistory world={world}/>:
-    tab==='settlements'?<SettlementView world={world}
+    tab==='settlements'?<Suspense fallback={<main className="evo-history-page" role="status">
+      Opening the settlement atlas…</main>}><SettlementView world={world}
       selectedId={selectedSettlementId} onFindOnMap={findSettlement}
       playing={playing} onTogglePlay={()=>setPlaying(v=>!v)}
-      onAdvance={step}/>:
+      onAdvance={step}/></Suspense>:
     tab==='family'?<WorldFamily world={world} focusId={selectedAgentId}
       onChoose={focusPerson} onShowOnMap={findOnMap}
       onFavorite={favoritePerson} onRename={giveName}/>:
@@ -367,6 +370,9 @@ export function WorldforgeApp(){
     tab==='knowledge'?<Suspense fallback={<main className="evo-history-page" role="status">
       Opening the expedition journal…</main>}><KnowledgeCodex world={world}
       onFindOnMap={findAncientSite} onOpenPerson={openPerson}/></Suspense>:
+    tab==='culture'?<Suspense fallback={<main className="evo-history-page" role="status">
+      Opening the civilization archive…</main>}><CultureCodex world={world}
+      onFindSettlement={findSettlement} onOpenPerson={openPerson}/></Suspense>:
     tab==='codex'?<DivineCodex world={world}
       onOpenPerson={focusPerson} onFavoritePerson={favoritePerson}
       onFavoriteSettlement={favoriteSettlement}
@@ -628,11 +634,10 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V1.4: RUINS & EXPEDITIONS</strong>
-        <span>Watch mortals prepare journeys to temples, libraries, crypts and
-          the remains of fallen settlements. Discoveries, scars, relics and
-          lost learning are traceable in the Expeditions & Knowledge journal.
-          The world keeps evolving at every zoom level.</span>
+        <strong>V1.5: BELIEFS & GOVERNMENT</strong>
+        <span>People now develop faiths, share or question beliefs, elect local
+          leaders, and fund civic priorities from real resources. Watch these
+          cultural changes in the Beliefs & Government archive.</span>
       </div>
     </main>}
   </div>;

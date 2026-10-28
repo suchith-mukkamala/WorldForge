@@ -29,6 +29,8 @@ import {addResident,removeResident,residentIndex,settlementSafetyLimit,
 import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
   type AncientSite,type Artifact,type ExpeditionRecord,type KnowledgeState,
   type LearnedTopic,type Topic} from './knowledge';
+import {advanceCulture,cloneCulture,validCulture,
+  type Belief,type CultureState} from './culture';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -43,7 +45,7 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
   work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean;
-  visitedSites?:number[];artifacts?:Artifact[]};
+  visitedSites?:number[];artifacts?:Artifact[];belief?:Belief};
 export type Bond={id:number;a:number;b:number;since:number;
   stage:'courting'|'partner'|'ended';strength:number;ended?:number;
   lastBirthYear?:number;children:number[]};
@@ -66,7 +68,7 @@ export type Settlement={id:number;species:Species;name:string;x:number;y:number;
   archives?:Topic[]};
 export type WorldEvent={id:number;year:number;
   type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|
-    'trade'|'guild'|'diplomacy'|'knowledge';
+    'trade'|'guild'|'diplomacy'|'knowledge'|'culture';
   message:string};
 export type DeathCause='old_age'|'starvation'|'exposure'|'ill_health';
 export const DEATH_CAUSES:DeathCause[]=['old_age','starvation','exposure','ill_health'];
@@ -93,7 +95,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   shipments?:Shipment[];nextShipmentId?:number;
   transport?:TransportNetwork;tradeRelations?:TradeRelation[];
   institutions?:Institutions;knowledge?:KnowledgeState;ancientSites?:AncientSite[];
-  expeditions?:ExpeditionRecord[]};
+  expeditions?:ExpeditionRecord[];culture?:CultureState};
 export const SPECIES:Species[]=['human','elf','dwarf','demon'];
 export const BIOMES:Biome[]=['plains','forest','mountain','cave','wasteland','volcanic','water'];
 export const SPECIES_INFO:Record<Species,{name:string;symbol:string;color:string;
@@ -247,7 +249,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     ruins:[],trails:[],deposits:[],shipments:[],nextShipmentId:1,
     transport:{roads:[],bridges:[]},tradeRelations:[],
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
-    ancientSites:[]};
+    ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
   const occupied=new Set<number>();
@@ -311,6 +313,7 @@ export function stepWorld(previous:World):World{
       knowledge:a.knowledge?.map(k=>({...k})),
       visitedSites:a.visitedSites?[...a.visitedSites]:undefined,
       artifacts:a.artifacts?.map(v=>({...v})),
+      belief:a.belief?{...a.belief}:undefined,
       development:a.development?cloneDevelopment(a.development):undefined,
       work:a.work?{...a.work}:undefined,
       blessings:activeEffects(a,previous.year+1).map(e=>({...e})),
@@ -356,6 +359,7 @@ export function stepWorld(previous:World):World{
     transport:previous.transport?cloneTransport(previous.transport):undefined,
     tradeRelations:previous.tradeRelations?.map(r=>({...r}))??[],
     institutions:previous.institutions?cloneInstitutions(previous.institutions):undefined,
+    culture:previous.culture?cloneCulture(previous.culture):undefined,
     knowledge:previous.knowledge?{firsts:previous.knowledge.firsts.map(k=>({...k}))}:
       {firsts:[]},
     ancientSites:previous.ancientSites?.map(s=>({...s,visitors:[...s.visitors],
@@ -621,6 +625,9 @@ export function stepWorld(previous:World):World{
   // Labor competes across farming, extraction, crafts, trade and construction.
   advanceEconomy(world,movementSteps);
   advanceInstitutions(world);
+  // Culture responds to lived memories, faith conversations and residents'
+  // votes. Policies spend real stocks; nothing depends on camera distance.
+  advanceCulture(world,()=>random(state));
   // Construction is a world-tick system. Map zoom and open UI tabs never enter it.
   advanceConstruction(world,movementSteps);
   for(const crossing of advanceTransport(world))
@@ -923,7 +930,8 @@ export function isWorld(value:unknown):value is World{
   }
   if(!w.agents.every(a=>records.has(a.id))||!validDivinity(w as World)||
     !validConstruction(w as World)||!validDeposits(w as World)||
-    !validInstitutions(w as World)||!validKnowledge(w as World))return false;
+    !validInstitutions(w as World)||!validKnowledge(w as World)||
+    !validCulture(w as World))return false;
   if(!w.history.every(p=>{
     const valid=Number.isInteger(p.year)&&p.year>=0&&
       Number.isInteger(p.total)&&p.total>=0&&
@@ -949,7 +957,7 @@ export function isWorld(value:unknown):value is World{
   if(!w.events.every(e=>Number.isSafeInteger(e.id)&&
     Number.isInteger(e.year)&&e.year>=0&&
     ['world','birth','death','settlement','collapse','milestone','bond','hybrid',
-      'trade','guild','diplomacy','knowledge']
+      'trade','guild','diplomacy','knowledge','culture']
       .includes(e.type)&&typeof e.message==='string'&&e.message.length<500))
     return false;
   return true;
