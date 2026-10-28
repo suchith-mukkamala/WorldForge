@@ -7,6 +7,8 @@ import {GOAL_LABELS} from './mind';
 import {JOB_LABELS} from './economy';
 import {guildOf} from './institutions';
 import {PixelPortrait} from './PixelPortrait';
+import {RankBadge,RankProfile} from './RankProfile';
+import {potentialRank,TRAIT_RANKS,type TraitRank} from './traitRanks';
 import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
@@ -31,7 +33,8 @@ function LifeChip({world,record,focused,onPick,onFavorite}:{
         background:SPECIES_INFO[record.species].color}}/>
       <span><strong>{personName(world,record)}</strong>
         <small>#{record.id} · Gen {record.generation} · {ancestryLabel(record.ancestry)}
-          · {alive?'Age '+world.agents.find(a=>a.id===record.id)?.age:'Archive'}</small>
+          · {alive?'Age '+world.agents.find(a=>a.id===record.id)?.age:'Archive'}
+          {' · Potential '}<RankBadge rank={potentialRank(world.settings.seed,record)}/></small>
       </span>
     </button>
     <button type="button" className={'evo-dir-star'+(favorite?' is-on':'')}
@@ -45,6 +48,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<Filter>('all');
   const [species,setSpecies]=useState<'all'|Species>('all');
+  const [minRank,setMinRank]=useState<'all'|TraitRank>('all');
   const [activeId,setActiveId]=useState<number|null>(null);
   const [draft,setDraft]=useState('');
   const [editNotice,setEditNotice]=useState('');
@@ -60,6 +64,8 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
     const favorites=new Set(favoriteIds);
     const list=world.lineage.filter(r=>{
       if(species!=='all'&&r.species!==species)return false;
+      if(minRank!=='all'&&TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))<
+        TRAIT_RANKS.indexOf(minRank))return false;
       if(filter==='living'&&!living.has(r.id))return false;
       if(filter==='deceased'&&living.has(r.id))return false;
       if(filter==='favorites'&&!favorites.has(r.id))return false;
@@ -69,8 +75,12 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
       return true;
     });
     return list.sort((a,b)=>Number(favorites.has(b.id))-Number(favorites.has(a.id))||
-      b.id-a.id);
-  },[world,query,filter,species,living,favoriteIds]);
+      (minRank!=='all'?TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,b))-
+        TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,a)):0)||b.id-a.id);
+  },[world,query,filter,species,minRank,living,favoriteIds]);
+  const exceptional=useMemo(()=>world.lineage.filter(r=>
+    TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))>=
+      TRAIT_RANKS.indexOf('S')).length,[world.lineage,world.settings.seed]);
   const alive=focused&&living.get(focused.id);
   const development=alive?.development;
   const guild=alive?guildOf(world,alive.id):undefined;
@@ -96,6 +106,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
         <span><b>{world.agents.length}</b> living</span>
         <span><b>{world.lineage.length}</b> in archive</span>
         <span><b>{favoriteIds.length}</b> favorites</span>
+        <span><b>{exceptional}</b> S-rank+ potential</span>
       </div>
     </header>
     <div className="evo-directory-layout">
@@ -123,6 +134,14 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 onChange={e=>setSpecies(e.target.value as typeof species)}>
                 <option value="all">All peoples</option>
                 {SPECIES.map(s=><option key={s} value={s}>{SPECIES_INFO[s].name}</option>)}
+              </select>
+            </label>
+            <label htmlFor="evo-people-rank">MIN. POTENTIAL
+              <select id="evo-people-rank" value={minRank}
+                onChange={e=>setMinRank(e.target.value as typeof minRank)}>
+                <option value="all">Any rank</option>
+                {TRAIT_RANKS.map(rank=><option key={rank} value={rank}>
+                  {rank} or higher</option>)}
               </select>
             </label>
           </div>
@@ -157,6 +176,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 {alive&&<p>Life stage: {lifeStage(alive)}</p>}
               </div>
             </div>
+            <RankProfile seed={world.settings.seed} person={alive??focused}/>
             <div className="evo-directory-actions">
               <button onClick={()=>onFavorite(focused.id)}
                 aria-pressed={isPersonFavorite(world,focused.id)}>

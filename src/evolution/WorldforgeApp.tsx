@@ -15,6 +15,7 @@ import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import {cameraScrollTarget} from './motion';
 import {PixelPortrait} from './PixelPortrait';
+import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
@@ -808,6 +809,7 @@ export function WorldforgeApp(){
                   <label>HEALTH <b>{Math.round(agent.health)}%</b>
                     <progress max="100" value={agent.health}/></label>
                 </div>
+                <RankProfile seed={world.settings.seed} person={agent} compact/>
                 <div className="evo-mind-status" aria-label="Autonomous mind">
                   <small>◈ CURRENT INTENTION</small>
                   <strong>{agent.mind?GOAL_LABELS[agent.mind.goal]:'Awakening'}</strong>
@@ -877,12 +879,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.07: SEE THE WORLD FROM EVERY SIDE</strong>
-        <span>Orbit the raised terrain through a full 360° and tilt the camera
-          down toward the horizon or up for a broad overview. Mountains, cliffs,
-          trees, people and towns turn together, and visible rock faces respond
-          to the viewing direction. Height and camera controls change only how
-          the existing world is drawn, never its people or physics.</span>
+        <strong>V2.1.1: POTENTIAL IS NOT DESTINY</strong>
+        <span>Every person now carries a rare-or-common latent potential rank,
+          from F through SSS, fixed from birth and retained in their family
+          history. Real practice has a separate proficiency grade. A powerful
+          inheritance does not grant mastery, morality or automatic greatness.
+          Named innate traits and age-scaled awakening come next.</span>
       </div>
     </main>}
   </div>;

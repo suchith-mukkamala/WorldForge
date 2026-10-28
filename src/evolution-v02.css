@@ -8,6 +8,23 @@
     linear-gradient(#ffffff04 1px,transparent 1px);
   background-size:32px 32px}
 .evo-world-canvas{image-rendering:pixelated;image-rendering:crisp-edges}
+.evo-rank-profile{padding:12px 13px;margin:11px 0;border:1px solid #5c5973;
+  background:linear-gradient(130deg,#1d2840,#27263a 75%);border-radius:4px}
+.evo-rank-facts{display:flex;flex-wrap:wrap;gap:13px 24px}
+.evo-rank-facts>span{display:flex;flex-direction:column;gap:7px;min-width:0;flex:1}
+.evo-rank-facts small{font:9px 'Space Mono',monospace;letter-spacing:.06em;color:#b2b8ca}
+.evo-rank-facts strong{font:11px/1.55 'Space Mono',monospace;color:#e3e7e2;
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.evo-rank-badge{display:inline-flex;min-width:27px;min-height:24px;padding:2px 4px;
+  justify-content:center;align-items:center;border:1px solid;border-radius:3px;
+  background:#0d1c2e;font:bold 12px/1.2 'Space Mono',monospace;
+  text-shadow:0 0 9px currentColor;box-sizing:border-box}
+.evo-rank-profile p{font:10px/1.7 'Space Mono',monospace;color:#b0b9c8;
+  margin:10px 0 0}
+.evo-rank-ladder{display:block;border-top:1px solid #4d5066;margin-top:10px;
+  padding-top:8px;font:9px 'Space Mono',monospace;color:#d6cbac}
+.evo-rank-profile.is-compact{margin:9px 0;padding:10px 11px}
+.evo-rank-profile.is-compact .evo-rank-facts{gap:10px}
 .evo-map-heading strong:after{content:" · WIDE WORLD";font:8px 'Space Mono',monospace;
   margin-left:9px;color:#8cdeb9}
 .evo-inspector-heritage{padding:11px 0 13px;border-top:1px solid #334e60;

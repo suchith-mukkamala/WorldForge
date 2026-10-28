@@ -4,6 +4,7 @@
  */
 import type {Agent,Biome,Species,World} from './engine';
 import {appendLifeMoment,makeLifeRecord} from './identity';
+import {birthPotentialRank,potentialRank} from './traitRanks';
 import {initialDevelopment} from './development';
 import {initialMind} from './mind';
 import {editDeposit} from './resources';
@@ -190,6 +191,7 @@ export function intervene(previous:World,action:DivineAction):World{
       ancestry,generation:0,x:at.x,y:at.y,age,born:w.year-age,
       energy:98,health:100,genes:{vigor:1,curiosity:1,fertility:1,social:1},
       mind:initialMind(w.year)};
+    agent.potentialRank=birthPotentialRank(w.settings.seed,agent.id,agent.genes);
     agent.development=initialDevelopment(agent,w.tiles[at.y*w.width+at.x].biome);
     w.agents.push(agent);w.lineage.push(makeLifeRecord(w,agent));
     record(w,id,'summon','Summoned a '+action.species+' into the world.',agent.id);
@@ -208,6 +210,7 @@ export function intervene(previous:World,action:DivineAction):World{
       knowledge:past.knownKnowledge?.map(k=>({...k})),
       ...(past.parents?{parents:[...past.parents] as [number,number]}:{}),
       mind:initialMind(w.year)};
+    restored.potentialRank=potentialRank(w.settings.seed,past);
     restored.development=initialDevelopment(restored,w.tiles[at.y*w.width+at.x].biome);
     w.agents.push(restored);past.died=undefined;
     record(w,id,'resurrect','Returned from death with a renewed adult body.',past.id);

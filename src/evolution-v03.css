@@ -26,7 +26,7 @@
   border-radius:2px;background:#0b1b30;color:#f1e6d5;
   padding:11px;font:11px/1.65 'Space Mono',monospace}
 .evo-directory-filters>label input{margin-top:1px}
-.evo-directory-filter-row{display:grid;grid-template-columns:1fr 1fr;
+.evo-directory-filter-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;margin-top:12px}
 .evo-directory-scroll{overflow:auto;max-height:min(68vh,710px);
   padding:9px;background:#101c30}
