@@ -14,18 +14,19 @@ const CELL=WORLD_CELL_SIZE;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
-  followId=null,onFollowPosition,
+  followId=null,onFollowPosition,onDiagnostics,
 }:{
   world:World;brush:Brush;overlay:'terrain'|'resources'|'deposits';
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
   zoom?:number;speed?:number;followId?:number|null;
   onFollowPosition?:(x:number,y:number)=>void;
+  onDiagnostics?:(stats:{drawn:number;frameMs:number})=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const backgroundStamp=useRef<{
-    tiles:World['tiles'];settlements:World['settlements'];
+    tiles:World['tiles'];settlementKey:string;
     ruins:World['ruins'];deposits:World['deposits'];
     ancientSites:World['ancientSites'];
     transport:World['transport'];zoom:number;overlay:string;seed:number;
@@ -46,6 +47,18 @@ export function WorldCanvas({
     const ctx=background.getContext('2d');if(!ctx)return;
     const W=world.width,H=world.height;
     const stamp=backgroundStamp.current;
+    // Most annual world ticks replace settlement arrays even when their
+    // visible buildings and roads are unchanged. Compare the actual scenery
+    // instead of repainting every terrain pixel on population-only changes.
+    const settlementKey=world.settlements.map(s=>{
+      const infra=s.infrastructure;
+      return [s.x,s.y,s.species,settlementStage(s),
+        (infra?.roads??[]).join(','),
+        (infra?.buildings??[]).map(b=>[
+          b.x,b.y,b.type,b.stage,Math.round(b.progress),
+          Math.round(b.condition),b.culture].join(':')).join(',')
+      ].join('/');
+    }).join('|');
     // Food-only updates can occur every simulated day. Repaint the resource
     // heatmap when appropriate, but avoid rasterizing all scenery again when
     // every actual biome and structure is unchanged.
@@ -53,7 +66,7 @@ export function WorldCanvas({
       (overlay==='resources'||!stamp||stamp.tiles.length!==world.tiles.length||
         stamp.tiles.some((tile,i)=>tile.biome!==world.tiles[i].biome));
     const sceneryChanged=!stamp||landChanged||
-      stamp.settlements!==world.settlements||stamp.ruins!==world.ruins||
+      stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
       stamp.zoom!==zoom||stamp.overlay!==overlay||
@@ -159,7 +172,7 @@ export function WorldCanvas({
         paintBuilding(ctx,b);
       }
     }
-    backgroundStamp.current={tiles:world.tiles,settlements:world.settlements,
+    backgroundStamp.current={tiles:world.tiles,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
       zoom,overlay,seed:world.settings.seed,width:canvas.width,height:canvas.height};
@@ -207,12 +220,14 @@ export function WorldCanvas({
       [0,-3]] as const;
     const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
     let handle=0,lastFrame=-Infinity,previouslyWalking=false;
+    let lastReport=-Infinity;
     const draw=(timestamp:number)=>{
       // Animation is presentation-only and capped to limit large-world GPU work.
       if(timestamp-lastFrame<1000/(previouslyWalking?24:5)){
         handle=requestAnimationFrame(draw);return;
       }
       lastFrame=timestamp;
+      const drawStart=performance.now();
       visible.clearRect(0,0,canvas.width,canvas.height);
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0);
@@ -334,6 +349,11 @@ export function WorldCanvas({
         if(tracked)onFollowPosition?.(tracked.x,tracked.y);
       }
       previouslyWalking=active;
+      if(onDiagnostics&&timestamp-lastReport>=1000){
+        lastReport=timestamp;
+        onDiagnostics({drawn:ordered.length,
+          frameMs:Math.max(0,performance.now()-drawStart)});
+      }
       if(active||animatingCloseup)handle=requestAnimationFrame(draw);
       else handle=0;
     };
@@ -347,7 +367,7 @@ export function WorldCanvas({
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,
-    overlay,selected,zoom,speed,followId,onFollowPosition]);
+    overlay,selected,zoom,speed,followId,onFollowPosition,onDiagnostics]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);

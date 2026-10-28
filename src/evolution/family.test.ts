@@ -199,7 +199,7 @@ describe('portable worlds and v0.1 migration',()=>{
       key===WORLD_STORAGE_KEY?saved:key===LEGACY_STORAGE_KEY?JSON.stringify(legacy):null}))
       .toEqual(modern);
     expect(readSavedWorld('bad')).toBeNull();
-    expect(readSavedWorld(saved.replace('"evo-packed-v2"','"not-supported"')))
+    expect(readSavedWorld(saved.replace('"evo-packed-v3"','"not-supported"')))
       .toBeNull();
     const invalid={...modern,agents:[modern.agents[0],modern.agents[0]]};
     expect(readSavedWorld(JSON.stringify(invalid))).toBeNull();

@@ -27,7 +27,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - Follow **Beliefs & Government (v1.5)**: people may found religions from their own life experiences, teach beliefs through actual contact and shared language, question or leave a tradition, or choose no faith at all. Religions have founders, priorities and varying tolerance; no species is assigned a predetermined faith.
 - Watch residents establish assemblies, councils, circles of elders or local chiefdoms based on their values. They elect leaders, disagree, and periodically reform their leadership and policies. Community funds and provisions support mutual aid, public learning, traditions or personal autonomy. Inspect legitimacy, dissent, active faiths, government decisions and historical records in the new **Beliefs & Government** archive or in individual settlement and person views.
 - Follow **Living Days & Social Choices (v1.6)**: every week, individuals weigh fatigue, hunger, curiosity, companionship, family duties and their chosen jobs before resting, studying, caring, traveling, crafting, working, foraging or reflecting. Nearby people may actually meet, share lessons, become friends or disagree; willingness and language matter. Inspect each person's current routine, morale, fatigue, social needs and a bounded encounter journal in **People**. Time speed never changes the resulting choices, and weekly shifts do not duplicate annual economic production.
-- Explore **Mind Engine II & Daily Life (v1.7)**: people may hold multiple future plans with several dependent steps, or prefer having no agenda. Real hunger, exhaustion, lost relationships, changed priorities and blocked routes can interrupt plans without erasing their history. Daily actions practice skills, care for dependents, forage from actual tile supplies and travel through safe adjacent cells. The **Life Viewer** in People reveals emotions, plans, motives, progress, interruptions, alternatives considered and remembered outcomes. Conversations now distinguish comfort, debate, shared ambitions, mentorship and reconciliation, with consequences for trust and familiarity. Animated sprites have four walking poses and situation-aware idle/work/study/conversation poses, and the map can trace traveled footprints and planned routes.
+- Explore **Stability & Performance (v1.8)**: background Web Worker playback with single-flight ordering and safe synchronous fallback, opt-in performance diagnostics, camera-based crowd rendering, approximate indoor visibility, more efficient scenery caching, checksummed versioned saves, backup recovery and stronger release tests. Simulation continues independently of the camera. See [architecture contracts](docs/ARCHITECTURE.md) and the [release acceptance checklist](docs/RELEASE_CHECKLIST.md).\n- Explore **Mind Engine II & Daily Life (v1.7)**: people may hold multiple future plans with several dependent steps, or prefer having no agenda. Real hunger, exhaustion, lost relationships, changed priorities and blocked routes can interrupt plans without erasing their history. Daily actions practice skills, care for dependents, forage from actual tile supplies and travel through safe adjacent cells. The **Life Viewer** in People reveals emotions, plans, motives, progress, interruptions, alternatives considered and remembered outcomes. Conversations now distinguish comfort, debate, shared ambitions, mentorship and reconciliation, with consequences for trust and familiarity. Animated sprites have four walking poses and situation-aware idle/work/study/conversation poses, and the map can trace traveled footprints and planned routes.
 - See much stronger and faster **demons**: their inherited physical strength and speed improve actual resource extraction, construction, artisan production, physical recovery and travel frequency. Mixed-ancestry descendants inherit proportional physical abilities. This is a species trait buff; the v1.3 update does not change biome fertility or regrowth.
 - Observe natural crowding in settlements: neighborhoods can host bounded groups of inhabitants while wilderness remains more sparsely occupied. More spacious maps support more settlements without the former fixed 54-town limit. Physical crowding is independent of housing quality and household shelter needs.
 - Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
@@ -51,6 +51,7 @@ Open the local URL printed by Vite.
 ```bash
 npm run build
 npm test
+npm run test:release-smoke
 npm run test:long-simulation
 npm run test:population-sweep
 npm run test:daily-life-sweep -- 40
@@ -71,8 +72,8 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v1.7 — Mind Engine II & Daily Life: persistent multi-step intentions, interruptions and reconsideration; tangible daily practice and travel; social consequences; explainable Life Viewer; richer animation.
-- **Next:** Deeper group goals, long-term trust and conflict, local institutions, weather and day-night visuals, and preparation for a future mortal perspective. Animals and herding remain deferred until creatures and ecology exist.
+- **Current:** v1.8 — Stability & Performance: background simulation, culling and crowd budgets, error and checkpoint recovery, versioned saves, diagnostics and long-run release gates.
+- **Next:** v1.9 terrain foundations (elevation, cliffs, river drainage, spatial geometry), followed by v2.0 physical terrain rules. Build ranked traits and lifetime training after stable geography. No 2.5D exploration or physical elevation is implemented yet.
 - **Future visual direction:** A Pokémon Black & White–inspired 2.5D perspective: layered low-poly fantasy environments, depth, camera movement and **crisp pixel-art characters and textures**. Later, optional mortal exploration, procedurally generated planets, separate realms and interplanetary travel. No 3D or mortal-play mode is implemented yet.
 
 ## Architecture
@@ -92,7 +93,10 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/knowledge.ts` and `KnowledgeCodex.tsx`: seeded sites, inherited ruins, individual knowledge and lineage histories, perilous expeditions, artifacts, expedition logs, interpersonal teaching and written archives. `mind.ts` handles independent expedition choices and preparation.
 - `src/evolution/density.ts`: deterministic physical capacity for settlement neighborhoods and resident indexes; population scales with developed habitat instead of requiring every person to have a separate tile.
 - `src/evolution/divine.ts`: divine actions and their consequences.
-- `src/evolution/storage.ts`: browser persistence and world-file compatibility.
+- `src/evolution/storage.ts`: versioned checksummed browser snapshots, recovery and older-world compatibility.
+- `src/evolution/simulation.worker.ts` and `simulationProtocol.ts`: one-flight background calendar ticks with revision guards; the UI can fall back to the exact same engine.
+- `src/evolution/populationVisibility.ts`: stable display-only crowd sampling and indoor visibility hints; physical interior simulation is future work.
+- `src/evolution/releaseSmoke.ts`: deterministic release gating for world boundaries, camera independence and saved-world integrity.
 - `src/evolution/populationSweep.ts`: multi-seed long-horizon demographic diagnostics to detect systematic species collapse.
 - `src/evolution/WorldforgeApp.tsx`: the current god-perspective UI.
 

@@ -1,5 +1,7 @@
 import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import type {ChangeEvent} from 'react';
+import type {ChangeEvent,SetStateAction} from 'react';
+import {shouldAcceptSimulation,type PendingSimulation,
+  type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas} from './WorldCanvas';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
@@ -24,7 +26,7 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
-import {compactWorld,loadBrowserWorld,readSavedWorld,WORLD_STORAGE_KEY,
+import {compactWorld,loadBrowserWorld,loadBrowserWorldSnapshot,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
 export {readSavedWorld} from './storage';
@@ -90,11 +92,34 @@ async function saveSnapshot(world:World):Promise<void>{
 }
 
 export function WorldforgeApp(){
-  const [world,setWorld]=useState<World>(initialWorld);
+  const [world,reactSetWorld]=useState<World>(initialWorld);
+  // A generation is incremented on EVERY player edit/import/command. A stale
+  // worker result must never replace those changes.
+  const worldRevision=useRef(0);
+  const setWorld=useCallback((change:SetStateAction<World>)=>{
+    worldRevision.current++;
+    reactSetWorld(change);
+  },[]);
+  const simulationWorker=useRef<Worker|null>(null);
+  const simulationPending=useRef<PendingSimulation|null>(null);
+  const simulationRequestId=useRef(0);
+  const workerSyncedRevision=useRef(-1);
+  const lastSimulationMs=useRef<number|null>(null);
+  const lastTransferMs=useRef<number|null>(null);
+  const [workerMode,setWorkerMode]=useState<'worker'|'fallback'|'starting'>('starting');
+  const [showDiagnostics,setShowDiagnostics]=useState(false);
+  const [canvasDiagnostics,setCanvasDiagnostics]=useState<{
+    drawn:number;frameMs:number}|null>(null);
   // Server-rendered previews have no browser database to restore.
   const [storageReady,setStorageReady]=useState(typeof window==='undefined');
   const [tab,setTab]=useState<Tab>('world');
-  const [playing,setPlaying]=useState(false);
+  const [playing,reactSetPlaying]=useState(false);
+  const playingRef=useRef(false);
+  const setPlaying=useCallback((change:SetStateAction<boolean>)=>{
+    const next=typeof change==='function'?change(playingRef.current):change;
+    playingRef.current=next;
+    reactSetPlaying(next);
+  },[]);
   const [timeRate,setTimeRate]=useState<TimeRate>('month');
   const playback=TIME_RATES.find(rate=>rate.id===timeRate)??TIME_RATES[2];
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
@@ -112,6 +137,8 @@ export function WorldforgeApp(){
   const fileRef=useRef<HTMLInputElement>(null);
   const currentWorld=useRef(world);
   currentWorld.current=world;
+  const tabRef=useRef(tab);
+  tabRef.current=tab;
   const centerCamera=useCallback((x:number,y:number)=>{
     const viewport=mapScrollRef.current;
     if(!viewport)return;
@@ -125,9 +152,9 @@ export function WorldforgeApp(){
     let active=true;
     loadDatabaseSnapshot().then(restored=>{
       let localTime=0;
-      try{localTime=Number(window.localStorage.getItem(WORLD_STORAGE_TIME_KEY)??0);}
-      catch{/* Private mode can disable localStorage independently of IndexedDB. */}
-      if(!Number.isFinite(localTime))localTime=0;
+      try{
+        localTime=loadBrowserWorldSnapshot(window.localStorage)?.savedAt??0;
+      }catch{/* Restricted storage does not suppress database recovery. */}
       if(active&&restored&&restored.savedAt>=localTime)
         setWorld(restored.world);
     }).catch(()=>{/* localStorage / newly created world remains available. */})
@@ -156,16 +183,100 @@ export function WorldforgeApp(){
     return ()=>window.clearTimeout(timer);
   },[world,playing,storageReady]);
   useEffect(()=>{if(tab!=='world'&&tab!=='settlements')setPlaying(false);},[tab]);
+  // A dedicated worker owns each expensive playback calculation. The UI
+  // remains authoritative for edits; stale worker results are discarded.
+  // Missing/crashed workers safely fall back to the exact same calendar code.
+  useEffect(()=>{
+    if(typeof Worker==='undefined'){setWorkerMode('fallback');return;}
+    let worker:Worker;
+    try{
+      worker=new Worker(new URL('./simulation.worker.ts',import.meta.url),
+        {type:'module'});
+    }catch{
+      setWorkerMode('fallback');return;
+    }
+    simulationWorker.current=worker;
+    workerSyncedRevision.current=-1;
+    setWorkerMode('worker');
+    const fallback=(message:string)=>{
+      worker.terminate();
+      if(simulationWorker.current===worker)simulationWorker.current=null;
+      simulationPending.current=null;
+      workerSyncedRevision.current=-1;
+      setWorkerMode('fallback');
+      setNotice(message);
+    };
+    worker.onmessage=(event:MessageEvent<SimulationReply>)=>{
+      const reply=event.data,pending=simulationPending.current;
+      if(!pending||!reply||pending.id!==reply.id)return;
+      simulationPending.current=null;
+      if(reply.kind==='failed'){
+        fallback('Background simulation failed; using safe main-thread playback.');
+        return;
+      }
+      if(shouldAcceptSimulation(pending,reply,worldRevision.current,
+        playingRef.current&&['world','settlements'].includes(tabRef.current),
+        currentWorld.current)){
+        lastSimulationMs.current=reply.elapsedMs;
+        // One clock step becomes visible after React commits. Save snapshots
+        // always reference this accepted world, not a pending worker copy.
+        currentWorld.current=reply.world;
+        setWorld(reply.world);
+        // Worker already owns the accepted result, so subsequent ticks only
+        // transfer the day count until the user changes world state.
+        workerSyncedRevision.current=worldRevision.current;
+      }else{
+        workerSyncedRevision.current=-1;
+      }
+    };
+    worker.onerror=()=>{
+      fallback('Background worker unavailable; continuing with safe playback.');
+    };
+    return ()=>{
+      worker.terminate();
+      if(simulationWorker.current===worker)simulationWorker.current=null;
+      simulationPending.current=null;
+      workerSyncedRevision.current=-1;
+    };
+  },[setWorld]);
   useEffect(()=>{
     if(!playing||(tab!=='world'&&tab!=='settlements'))return;
     const timer=window.setInterval(()=>{
+      const current=currentWorld.current;
+      if(!current.agents.length||current.year>=9999)return;
+      const worker=simulationWorker.current;
+      if(worker){
+        if(simulationPending.current)return; // no unbounded tick queue
+        const request:SimulationRequest={kind:'advance',
+          id:++simulationRequestId.current,days:playback.days,
+          ...(workerSyncedRevision.current===worldRevision.current?
+            {}:{world:current})};
+        simulationPending.current={id:request.id,
+          revision:worldRevision.current,world:current};
+        try{
+          const start=performance.now();
+          worker.postMessage(request);
+          lastTransferMs.current=Math.max(0,performance.now()-start);
+          return;
+        }catch{
+          worker.terminate();
+          simulationWorker.current=null;
+          simulationPending.current=null;
+          workerSyncedRevision.current=-1;
+          setWorkerMode('fallback');
+          setNotice('Worker messaging failed; using safe main-thread playback.');
+        }
+      }
+      const start=performance.now();
       setWorld(w=>{
         if(!w.agents.length||w.year>=9999)return w;
-        return advanceWorldDays(w,playback.days);
+        const next=advanceWorldDays(w,playback.days);
+        lastSimulationMs.current=Math.max(0,performance.now()-start);
+        return next;
       });
     },playback.interval);
     return ()=>window.clearInterval(timer);
-  },[playing,playback.days,playback.interval,tab]);
+  },[playing,playback.days,playback.interval,tab,setWorld]);
   useEffect(()=>{
     if(playing&&(!world.agents.length||world.year>=9999))setPlaying(false);
   },[world.agents.length,world.year,playing]);
@@ -445,6 +556,11 @@ export function WorldforgeApp(){
                   setFollowId(agent.id);setZoom(v=>Math.max(3,v));
                   setMapFocus(agent.id);
                 }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
+              <button onClick={()=>setShowDiagnostics(v=>!v)}
+                aria-pressed={showDiagnostics}
+                title="Toggle simulation and rendering diagnostics">
+                {showDiagnostics?'◉ STATS':'◌ STATS'}
+              </button>
               <button onClick={()=>setZoom(v=>Math.max(1,v-.5))}
                 disabled={zoom<=1} title="Zoom out">−</button>
               <button onClick={()=>setZoom(1)} title="Fit map to view">⌖ FIT</button>
@@ -480,7 +596,8 @@ export function WorldforgeApp(){
           <div className="evo-map-scroll" ref={mapScrollRef}>
             <WorldCanvas world={world} brush={brush} overlay={overlay} zoom={zoom}
               speed={speed} followId={followId} onFollowPosition={centerCamera}
-              selected={displayed} onSelect={chooseTile} onEdit={brushAt}/>
+              selected={displayed} onSelect={chooseTile} onEdit={brushAt}
+              onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>
           </div>
           <div className="evo-map-footer">
             <div className="evo-species-legend">
@@ -493,6 +610,22 @@ export function WorldforgeApp(){
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
           </div>
+          {showDiagnostics&&<section className="evo-diagnostics" role="status"
+            aria-label="WorldForge performance diagnostics">
+            <strong>PERFORMANCE & WORLD HEALTH</strong>
+            <span>SIMULATION: {workerMode==='worker'?'Background worker':
+              workerMode==='starting'?'Initializing':'Main-thread fallback'}
+              {' · '+(lastSimulationMs.current===null?'not sampled':
+                lastSimulationMs.current.toFixed(1)+' ms / tick')}</span>
+            <span>WORKER MESSAGE: {lastTransferMs.current===null?'not sampled':
+              lastTransferMs.current.toFixed(1)+' ms'}
+              {' · Frame: '+(canvasDiagnostics?.frameMs.toFixed(1)??'—')+' ms'}</span>
+            <span>PEOPLE: {world.agents.length.toLocaleString()}
+              {' · DRAWN SPRITES: '+(canvasDiagnostics?.drawn??'—')}
+              {' · SETTLEMENTS: '+world.settlements.length}</span>
+            <small>Camera and visibility only change rendering, not NPC
+              behavior. Worker ticks are applied in order; stale edits win.</small>
+          </section>}
           {notice&&<div className="evo-notice" role="status">{notice}</div>}
         </section>
         <aside className="evo-world-sidebar">

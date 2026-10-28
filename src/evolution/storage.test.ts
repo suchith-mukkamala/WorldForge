@@ -1,7 +1,9 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {advanceWorldDays} from './calendar';
 import {createWorld} from './engine';
-import {compactWorld,loadDatabaseSnapshot,readSavedWorld,saveDatabaseWorld} from './storage';
+import {compactWorld,loadBrowserWorldSnapshot,loadDatabaseSnapshot,readSavedWorld,
+  saveDatabaseWorld,SAVE_FORMAT_VERSION,WORLD_SCHEMA_VERSION,WORLD_STORAGE_KEY,
+  WORLD_STORAGE_TIME_KEY} from './storage';
 
 afterEach(()=>vi.unstubAllGlobals());
 
@@ -11,6 +13,34 @@ describe('v1.2.1: autosave and older-save compatibility',()=>{
     expect(readSavedWorld(compactWorld(world))).toEqual(world);
     const {dayOfYear:_,...annualLegacy}=world;
     expect(readSavedWorld(JSON.stringify(annualLegacy))).toEqual(annualLegacy);
+  });
+
+  it('verifies v3 checksum, rejects unknown schema and supports packed v2',()=>{
+    const world=createWorld({seed:408,size:'small'});
+    const packed=JSON.parse(compactWorld(world));
+    expect(SAVE_FORMAT_VERSION).toBe(3);
+    expect(packed.format).toBe('evo-packed-v3');
+    expect(packed.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+    expect(readSavedWorld(JSON.stringify(packed))).toEqual(world);
+    const legacyV2={format:'evo-packed-v2',world:packed.world,
+      terrain:packed.terrain};
+    expect(readSavedWorld(JSON.stringify(legacyV2))).toEqual(world);
+    packed.world.year=99;
+    expect(readSavedWorld(JSON.stringify(packed))).toBeNull();
+    packed.schemaVersion=77;
+    expect(readSavedWorld(JSON.stringify(packed))).toBeNull();
+  });
+  it('only trusts timestamps on valid browser snapshots',()=>{
+    const world=createWorld({seed:409,size:'small'});
+    const data=new Map([[WORLD_STORAGE_KEY,compactWorld(world)],
+      [WORLD_STORAGE_TIME_KEY,'1000']]);
+    const storage={getItem:(key:string)=>data.get(key)??null};
+    expect(loadBrowserWorldSnapshot(storage)).toEqual({world,savedAt:1000});
+    data.set(WORLD_STORAGE_KEY,'{broken');
+    expect(loadBrowserWorldSnapshot(storage)).toBeNull();
+    data.set(WORLD_STORAGE_KEY,compactWorld(world));
+    data.set(WORLD_STORAGE_TIME_KEY,'not-a-time');
+    expect(loadBrowserWorldSnapshot(storage)).toEqual({world,savedAt:0});
   });
 
   it('serializes IndexedDB checkpoints and restores the latest complete write',async()=>{
