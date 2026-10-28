@@ -342,8 +342,8 @@ export function WorldforgeApp(){
           onChange={e=>navigate(e.target.value as Tab)}>
           <option value="" disabled>MORE PAGES ▾</option>
           <option value="creator">✧ WORLD CREATOR</option>
-          <option value="family">♡ Families</option>
-          <option value="codex">✦ Divine Codex</option>
+          <option value="family">♡ FAMILIES</option>
+          <option value="codex">✦ DIVINE CODEX</option>
         </select>
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}

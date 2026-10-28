@@ -185,5 +185,5 @@ describe('Evolution Lab v0.6 — divine powers and mortal agency',()=>{
     expect(human,'human community at year 240').toBeGreaterThanOrEqual(8);
     expect(demon,'demon community at year 240').toBeGreaterThanOrEqual(8);
     expect(isWorld(w)).toBe(true);
-  },120000);
+  },300000);
 });

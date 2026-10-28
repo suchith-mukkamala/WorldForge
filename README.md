@@ -51,6 +51,7 @@ npm run test:long-simulation
 npm run test:population-sweep
 # Longer optional demographic survey (12 seeds × 250 years):
 npm run test:population-sweep -- 250
+npm run test:expedition-benchmark -- 31 240
 ```
 
 The long-run simulation is intentionally more expensive than unit tests. The simulation has no artificial population ceiling, but your hardware and available world tiles still bound what can run efficiently.
