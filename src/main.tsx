@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { WorldforgeApp } from './evolution/WorldforgeApp';
+import { WorldforgeErrorBoundary } from './evolution/WorldforgeErrorBoundary';
 import './styles.css';
 import './neon.css';
 import './evolution-v01.css';
@@ -23,5 +24,6 @@ import './evolution-v16.css';
 import './evolution-v17.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><WorldforgeApp /></React.StrictMode>,
+  <React.StrictMode><WorldforgeErrorBoundary><WorldforgeApp />
+  </WorldforgeErrorBoundary></React.StrictMode>,
 );
