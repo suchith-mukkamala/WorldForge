@@ -25,6 +25,18 @@
 .evo-innate-gift small{font:10px/1.55 'Space Mono',monospace;color:#bcc8d3}
 .evo-innate-gift em{font:9px/1.5 'Space Mono',monospace;letter-spacing:.02em;
   font-style:normal;color:#b4a6c9}
+.evo-innate-gift.is-awakened{background:linear-gradient(110deg,#152b3b,#25233d);
+  box-shadow:inset 0 0 20px #b8e2d90d,0 0 16px #b4beff16}
+.evo-innate-gift.is-awakened em{color:#b8e8ce}
+.evo-awakening-timeline{margin-top:11px;display:grid;gap:7px}
+.evo-awakening-labels{display:flex;justify-content:space-between;gap:10px;
+  flex-wrap:wrap;color:#c6c9db;font:9px/1.6 'Space Mono',monospace}
+.evo-awakening-labels span:last-child{color:#f1d7a9}
+.evo-awakening-track{height:7px;border:1px solid #637388;
+  background:#0e2030;overflow:hidden;border-radius:2px}
+.evo-awakening-track>span{display:block;height:100%;transition:width .25s;
+  box-shadow:0 0 10px currentColor}
+.evo-awakening-timeline>small{color:#99acbf;font:9px/1.6 'Space Mono',monospace}
 .evo-rank-profile p{font:10px/1.7 'Space Mono',monospace;color:#b0b9c8;
   margin:10px 0 0}
 .evo-rank-ladder{display:block;border-top:1px solid #4d5066;margin-top:10px;
@@ -89,6 +101,7 @@
   font:10px/1.5 'Space Mono',monospace}
 .evo-family-person-text small{color:#96aebe;
   font:9px/1.7 'Space Mono',monospace}
+.evo-family-person-text .evo-family-awakened{color:#a5e8c3}
 .evo-family-help,.evo-family-note{color:#859fb2;font:10px/1.9 'Space Mono',monospace;
   margin:0;padding:13px 11px}
 .evo-family-note{border-top:1px solid #31465d;color:#8097ae;background:#152139}

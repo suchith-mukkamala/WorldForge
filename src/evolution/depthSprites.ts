@@ -3,6 +3,7 @@
 import {SPECIES_INFO,type Agent} from './engine';
 import {ARCHITECTURE,buildingTier,type Building} from './construction';
 import {DEPTH_FOOTPRINT} from './spatialDetails';
+import {INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 
 type Point={x:number;y:number};
 type Painter=CanvasRenderingContext2D;
@@ -13,13 +14,20 @@ const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
 /** Mortals are tiny one-pixel-wide figures on the raised world map: a tile is
  * twelve pixels wide, and the taller trees and homes preserve a real sense of
  * scale. Full character detail remains in the close-up and portrait views. */
-export function paintDepthPerson(ctx:Painter,a:Pick<Agent,'species'|'id'>,
-  p:Point,walking=false):void{
+export function paintDepthPerson(ctx:Painter,a:Pick<Agent,'species'|'id'> &
+  Partial<Pick<Agent,'innateTrait'|'awakening'>>,
+  p:Point,walking=false,showGlow=false):void{
   const width=DEPTH_FOOTPRINT.person;
   draw(ctx,'rgba(11,28,39,.7)',p.x,p.y+1,width,1);
   draw(ctx,SPECIES_INFO[a.species].color,p.x,p.y-2,width,2);
   draw(ctx,'#f1d7a5',p.x,p.y-3,width,1);
   if(walking)draw(ctx,'#202e3a',p.x,p.y,width,1);
+  if(showGlow&&a.awakening&&a.innateTrait){
+    const gift=INNATE_TRAIT_INFO[a.innateTrait];
+    const color=TRAIT_DOMAIN_INFO[gift.domain].color;
+    draw(ctx,color,p.x-2,p.y-5,1,1);
+    draw(ctx,color,p.x+2,p.y-6,1,1);
+  }
 }
 
 export function paintDepthTree(ctx:Painter,p:Point,pine:boolean):void{

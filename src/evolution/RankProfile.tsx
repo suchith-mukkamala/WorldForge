@@ -3,13 +3,15 @@ import type {Agent} from './engine';
 import {potentialRank,proficiencyRank,TRAIT_RANK_INFO,TRAIT_RANKS,
   type TraitRank} from './traitRanks';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
+import {awakeningWindow} from './awakening';
 
 const SKILL_NAMES:Record<Skill,string>={
   foraging:'Foraging',navigation:'Navigation',craft:'Craft',
   knowledge:'Knowledge',care:'Care',diplomacy:'Diplomacy',
 };
-type Person=Pick<Agent,'id'|'genes'|'potentialRank'|'innateTrait'> &
-  Partial<Pick<Agent,'development'>>;
+type Person=Pick<Agent,'id'|'genes'|'potentialRank'|'innateTrait'|
+  'ancestry'|'born'|'awakening'> &
+  Partial<Pick<Agent,'development'|'age'>> & {died?:number};
 
 export function RankBadge({rank}:{rank:TraitRank}){
   const info=TRAIT_RANK_INFO[rank];
@@ -25,6 +27,10 @@ export function RankProfile({seed,person,compact=false}:{
   const rank=potentialRank(seed,person);
   const gift=INNATE_TRAIT_INFO[innateTrait(seed,person)];
   const domain=TRAIT_DOMAIN_INFO[gift.domain];
+  const window=awakeningWindow(person.ancestry);
+  const age=person.age??(person.died===undefined?null:person.died-person.born);
+  const progress=person.awakening?100:age===null?0:Math.min(100,Math.max(0,
+    Math.round((age-window.earliest)/Math.max(1,window.latest-window.earliest)*100)));
   const skills=person.development?.skills;
   const lead=skills?SKILLS.reduce((best,skill)=>
     skills[skill]>skills[best]?skill:best,SKILLS[0]):null;
@@ -39,16 +45,36 @@ export function RankProfile({seed,person,compact=false}:{
           {SKILL_NAMES[lead]} · {Math.round(mastery)}/100</>:
           'Not recorded'}</strong></span>
     </div>
-    <div className="evo-innate-gift" style={{borderColor:domain.color}}>
+    <div className={'evo-innate-gift'+(person.awakening?' is-awakened':'')}
+      style={{borderColor:domain.color}}>
       <span className="evo-overline" style={{color:domain.color}}>
         ✦ ONE INNATE GIFT · {domain.name.toUpperCase()}</span>
       <strong>{gift.name}</strong>
       <small>Possible affinity: {gift.possibility}</small>
-      <em>LATENT AT BIRTH · AWAKENING FOLLOWS IN V2.1.3</em>
+      <em>{person.awakening?
+        '✦ NATURALLY AWAKENED · AGE '+person.awakening.age+
+          ' · YEAR '+person.awakening.year:
+        '◇ DORMANT · LATENT AT BIRTH · NATURAL AWAKENING NOT GUARANTEED'}</em>
+    </div>
+    <div className="evo-awakening-timeline" aria-label="Species-scaled awakening timeline">
+      <div className="evo-awakening-labels"><span>
+        {person.awakening?'AWAKENED':'NATURAL AWAKENING WINDOW'}</span>
+        <span>{person.awakening?'Y'+person.awakening.year+' · '+
+          person.awakening.age+' years old':'AGES '+window.earliest+'–'+window.latest}
+        </span></div>
+      <div className="evo-awakening-track" role="progressbar" aria-valuemin={0}
+        aria-valuemax={100} aria-valuenow={progress}
+        aria-label="Progress across the typical awakening window">
+        <span style={{width:progress+'%',backgroundColor:domain.color}}/>
+      </div>
+      <small>{person.awakening?'An irreversible life milestone, preserved in the archive.':
+        person.died!==undefined?'No natural awakening recorded during this lifetime.':
+        'Current age '+(age??'unknown')+' · Timing differs by ancestry and chance.'}
+      </small>
     </div>
     <p>Potential is not power or destiny. Rank describes this gift's possible
-      strength; training rank reflects practiced skills. Gifts are
-      visible but grant no simulation bonuses before v2.1.5.</p>
+      strength; training rank reflects practiced skills; no simulation bonuses
+      are granted by awakening before trait effects arrive in v2.1.5.</p>
     {!compact&&<small className="evo-rank-ladder">RANKS · {TRAIT_RANKS.join(' · ')}</small>}
   </div>;
 }

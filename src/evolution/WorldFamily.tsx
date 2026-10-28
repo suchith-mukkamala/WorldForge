@@ -29,6 +29,8 @@ function LifeCard({world,record,active,onSelect,compact=false}:{
       <strong>{personName(world,record)}</strong>
       <small>#{record.id} · Gen {record.generation} · Born Y{record.born}
         {record.died!==undefined?' · Died Y'+record.died:' · Alive'}</small>
+      {record.awakening&&<small className="evo-family-awakened">
+        ✦ Awakened Y{record.awakening.year} · age {record.awakening.age}</small>}
     </span>
   </button>;
 }

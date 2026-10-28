@@ -14,6 +14,7 @@ import {buildTerrainDetailAtlas,paintTerrainDetail,
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalWorldPoint} from './spatialDetails';
+import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -357,6 +358,16 @@ export function WorldCanvas({
         const width=focus&&zoom>=5?5:zoom>=5?4:3;
         const height=focus&&zoom>=5?8:zoom>=5?6:5;
         visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
+        if(a.awakening){
+          // Tiny, non-colliding pixel motes show awakened gifts without making
+          // a person the size of a whole tile or changing map selection.
+          const gift=INNATE_TRAIT_INFO[innateTrait(world.settings.seed,a)];
+          const color=TRAIT_DOMAIN_INFO[gift.domain].color;
+          visible.fillStyle=color;
+          visible.fillRect(px+1,py-3,1,1);
+          visible.fillRect(px+5,py-7,1,1);
+          if(zoom>=5)visible.fillRect(px+2,py-10,1,1);
+        }
         if(a.mind?.expedition?.stage==='travel'){
           visible.fillStyle='#7d5947';visible.fillRect(px-4,py-6,3,5);
           visible.fillStyle='#d1b68a';visible.fillRect(px-3,py-6,1,2);

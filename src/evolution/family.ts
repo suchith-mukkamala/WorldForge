@@ -84,6 +84,7 @@ export function livingRecord(a:Agent):LineageRecord{
     genes:{...a.genes},born:a.born,generation:a.generation,
     potentialRank:a.potentialRank,
     innateTrait:a.innateTrait,
+    ...(a.awakening?{awakening:{...a.awakening}}:{}),
     parents:a.parents?[...a.parents]:undefined,
     children:[],partnerIds:[]};
 }

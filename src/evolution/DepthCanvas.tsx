@@ -207,7 +207,8 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   for(const a of agents){
     const pos=positions.get(a.id)??{x:a.x,y:a.y};
     const p=projector.project(pos.x,pos.y,heights[a.y*w.width+a.x]);
-    actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id))});
+    actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id),
+      zoom>=2||!!selected&&selected.x===a.x&&selected.y===a.y)});
   }
   actors.sort((a,b)=>a.order-b.order);
   for(const actor of actors)actor.paint();
