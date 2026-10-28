@@ -24,6 +24,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 - Explore the **Age of Knowledge (v1.3)**: agriculture, herbalism, stonecraft, navigation, irrigation, metallurgy, engineering, medicine and writing are specific discoveries, not a global technology tree. People experiment based on their occupations and surroundings, teach nearby friends and family, and may preserve discoveries in communal written archives. Acquired knowledge is tracked on individual profiles and retained in their life records after death; newborns do not inherit it automatically.
 - Discover procedurally placed temples, libraries, crypts, vaults and ancient ruins. Curious people independently weigh risk and potential knowledge, pack provisions, follow a chosen site, survive traps or mortal injuries, and sometimes recover a unique artifact that improves their capabilities. Every voyage and outcome is recorded in the **Expeditions & Knowledge** journal; a surviving traveler brings their ideas back to ordinary teaching and settlement archives. Real fallen settlements become named archaeological sites with their historic culture and any knowledge archived before collapse.
 - Identify each site by its distinct pixel-art silhouette, spot equipped explorers and artifact holders, and navigate a streamlined WorldForge with a focused journal and secondary pages organized under **More Pages**.
+- Follow **Beliefs & Government (v1.5)**: people may found religions from their own life experiences, teach beliefs through actual contact and shared language, question or leave a tradition, or choose no faith at all. Religions have founders, priorities and varying tolerance; no species is assigned a predetermined faith.
+- Watch residents establish assemblies, councils, circles of elders or local chiefdoms based on their values. They elect leaders, disagree, and periodically reform their leadership and policies. Community funds and provisions support mutual aid, public learning, traditions or personal autonomy. Inspect legitimacy, dissent, active faiths, government decisions and historical records in the new **Beliefs & Government** archive or in individual settlement and person views.
 - See much stronger and faster **demons**: their inherited physical strength and speed improve actual resource extraction, construction, artisan production, physical recovery and travel frequency. Mixed-ancestry descendants inherit proportional physical abilities. This is a species trait buff; the v1.3 update does not change biome fertility or regrowth.
 - Observe natural crowding in settlements: neighborhoods can host bounded groups of inhabitants while wilderness remains more sparsely occupied. More spacious maps support more settlements without the former fixed 54-town limit. Physical crowding is independent of housing quality and household shelter needs.
 - Explore textured forests, mountains, waterways, ore deposits and roads, with distinctive building sprites that reveal construction progress, completed homes, docks and ruins.
@@ -66,9 +68,9 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v1.4 — Ruins & Expeditions: deliberate risk-aware exploration, preparation, preserved collapsed civilizations, artifacts and an expedition chronicle. The core Age of Knowledge and its stronger demons remain intact.
-- **Next:** v1.5 — Beliefs & Institutions: self-organized religions, governments and cultural disagreement, followed by deeper daily routines and eventual animals/herding.
-- **Future:** Optional mortal perspective with travel, interactions, choices and character progression. No mortal-play mode is implemented yet.
+- **Current:** v1.5 — Beliefs & Government: voluntary faiths, cross-cultural transmission, elected local governments, reforms, community priorities and dissent.
+- **Next:** Deeper daily-life routines, social interactions and richer individual choices; animals and herding remain deferred until the creatures and their ecology are implemented.
+- **Future:** Optional mortal perspective with travel, interactions, choices and character progression; detailed low-poly 3D environments with pixel-art textures; eventually full procedurally generated planets, distinct realms and interplanetary exploration. No mortal-play or 3D mode is implemented yet.
 
 ## Architecture
 
@@ -79,6 +81,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/transport.ts`: settlement-funded roads and bridges, route planning, physical travel advantages and upkeep.
 - `src/evolution/shipping.ts`: connected-water shipping routes, embarkation, landings and sailor rescue.
 - `src/evolution/institutions.ts`: voluntary guild formation, worker training, treasury decisions and diplomatic accords.
+- `src/evolution/culture.ts` and `CultureCodex.tsx`: life-influenced religious foundations, personal faith choices, local transmission, elected governments, civic policies, dissent and cultural chronology.
 - `src/evolution/pixelArt.ts` and `PixelPortrait.tsx`: deterministic 16×22 character designs, landscape and structure art, and matching full-size portraits. Zoom never mutates the simulation.
 - `src/evolution/motion.ts`: visual-only directional movement, timed interpolation and camera centering. These animations and view positions are not saved into the world or used for agent decisions.
 - `src/evolution/calendar.ts`: canonical day/week/month/year stepping. Monthly travel changes real agent positions; annual life and economic events remain once per year.

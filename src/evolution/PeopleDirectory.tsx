@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {SPECIES,SPECIES_INFO,type LineageRecord,type Species,type World} from './engine';
 import {ancestryLabel,traitProfile} from './family';
 import {TOPIC_INFO} from './knowledge';
+import {faithOf} from './culture';
 import {GOAL_LABELS} from './mind';
 import {JOB_LABELS} from './economy';
 import {guildOf} from './institutions';
@@ -290,6 +291,13 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
               <div className="evo-development-culture">
                 <h4>EVOLVING GUIDING BELIEF</h4>
                 <p>{guidingBelief(development)}</p>
+                <h4>PERSONAL FAITH & CONVICTION</h4>
+                {alive.belief?<p>{faithOf(world,alive)?.name??'Unknown tradition'}
+                  {' · conviction '+Math.round(alive.belief.conviction)+'/100'+
+                    ' · chosen in year '+alive.belief.since}
+                  {alive.belief.teacherId&&' · heard from #'+alive.belief.teacherId}
+                </p>:<small>No formal faith chosen. Individuals can remain
+                  independent, learn from others, or question a tradition.</small>}
                 <h4>LANGUAGES & EXPOSURE</h4>
                 <p>{SPECIES.filter(s=>development.languages[s]>0).map(s=>
                   SPECIES_INFO[s].name+': '+Math.round(development.languages[s])+'%'

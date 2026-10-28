@@ -7,6 +7,7 @@ import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from '
 import {TOPIC_INFO} from './knowledge';
 import {bridgeTiles,roadTiles} from './transport';
 import {accordBetween} from './institutions';
+import {governmentOf,GOVERNMENT_LABELS,POLICY_LABELS} from './culture';
 import {pixelRectsFor} from './pixelArt';
 import {personName} from './identity';
 
@@ -221,6 +222,11 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
   const completed=structures.filter(b=>b.stage==='complete').length;
   const residents=place?world.agents.filter(a=>Math.max(Math.abs(a.x-place.x),
     Math.abs(a.y-place.y))<=7):[];
+  const government=place?governmentOf(world,place.id):undefined;
+  const faithCounts=new Map<number,number>();
+  for(const a of residents)if(a.belief)
+    faithCounts.set(a.belief.faithId,(faithCounts.get(a.belief.faithId)??0)+1);
+  const localFaiths=[...faithCounts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4);
   const homes=world.households?.filter(h=>h.residence?.settlementId===place?.id).length??0;
   const localShipments=(world.shipments??[]).filter(t=>
     t.originId===place?.id||t.destinationId===place?.id);
@@ -277,6 +283,22 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
             </div>
             <button onClick={()=>onFindOnMap(selected.id)}>⌖ FIND ON MAP ↗</button>
           </div>
+          {place&&<section className="evo-settlement-culture" aria-label="Local beliefs and government">
+            <h3>⚖ BELIEFS & LOCAL GOVERNMENT</h3>
+            {government?<>
+              <p><strong>{GOVERNMENT_LABELS[government.kind]}</strong>
+                {' · led by citizen #'+government.leaderId+
+                  ' · elected Y'+government.elected}</p>
+              <p>Current policy: <strong>{POLICY_LABELS[government.policy]}</strong>
+                {' · legitimacy '+Math.round(government.legitimacy)+'/100'+
+                  ' · unrest '+Math.round(government.unrest)+'/100'}</p>
+            </>:<p>Residents have not yet established a formal government.</p>}
+            {localFaiths.length?<p>Living traditions: {localFaiths.map(([id,count])=>
+              (world.culture?.faiths.find(f=>f.id===id)?.name??'Unknown')+
+              ' ('+count+')').join(' · ')}.</p>:
+              <p>No locally practicing faiths have been recorded.</p>}
+            <small>Institutions emerge from people's choices and evolve over time.</small>
+          </section>}
           <div className="evo-city-metrics">
             <div><small>LOCAL RESIDENTS</small><strong>{num(residents.length)}</strong></div>
             <div><small>COMPLETE BUILDINGS</small><strong>{completed}</strong></div>

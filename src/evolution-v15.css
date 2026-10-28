@@ -1,0 +1,25 @@
+/* v1.5: a readable cultural history alongside individual civilization cards. */
+.evo-culture-page{display:flex;flex-direction:column;gap:20px;color:#dce5ec}
+.evo-culture-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:13px}
+.evo-culture-card{display:flex;flex-direction:column;gap:12px;padding:20px;min-width:0}
+.evo-culture-card h3{margin:3px 0;color:#e7d4a7;font-size:18px}
+.evo-culture-card p{margin:0;color:#b7cbd1;line-height:1.7}
+.evo-culture-card small{color:#9baebf}
+.evo-culture-meters{display:grid;gap:10px;margin:9px 0}
+.evo-culture-meters label{display:grid;grid-template-columns:1fr auto;gap:7px;
+  font:11px 'Space Mono',monospace;color:#b7d3ca}
+.evo-culture-meters progress{grid-column:1/-1;width:100%;height:8px;
+  accent-color:#97bda7}
+.evo-culture-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:8px}
+.evo-culture-actions button{color:#c8e8d8;background:#223845;
+  border:1px solid #567069;border-radius:4px;padding:8px 12px;cursor:pointer}
+.evo-culture-actions button:hover{border-color:#d2bd8d;background:#334954}
+.evo-culture-chronicle{padding:19px}
+.evo-culture-chronicle .evo-expedition-log p{padding:9px 13px;
+  border-left:2px solid #9eac86;background:#192a36}
+.evo-culture-chronicle b{color:#e7cd94}
+.evo-settlement-culture{margin:16px 0;padding:16px;
+  background:#172637;border:1px solid #475e65;border-radius:5px}
+.evo-settlement-culture h3{color:#f0d6a7;margin:0 0 10px;font-size:14px}
+.evo-settlement-culture p{color:#c1d0d8;margin:7px 0;line-height:1.55}
+.evo-settlement-culture small{color:#a2c8b9}
