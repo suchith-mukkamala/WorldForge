@@ -103,6 +103,7 @@ export function WorldforgeApp(){
   const simulationWorker=useRef<Worker|null>(null);
   const simulationPending=useRef<PendingSimulation|null>(null);
   const simulationRequestId=useRef(0);
+  const workerSyncedRevision=useRef(-1);
   const lastSimulationMs=useRef<number|null>(null);
   const lastTransferMs=useRef<number|null>(null);
   const [workerMode,setWorkerMode]=useState<'worker'|'fallback'|'starting'>('starting');
@@ -195,11 +196,13 @@ export function WorldforgeApp(){
       setWorkerMode('fallback');return;
     }
     simulationWorker.current=worker;
+    workerSyncedRevision.current=-1;
     setWorkerMode('worker');
     const fallback=(message:string)=>{
       worker.terminate();
       if(simulationWorker.current===worker)simulationWorker.current=null;
       simulationPending.current=null;
+      workerSyncedRevision.current=-1;
       setWorkerMode('fallback');
       setNotice(message);
     };
@@ -219,6 +222,11 @@ export function WorldforgeApp(){
         // always reference this accepted world, not a pending worker copy.
         currentWorld.current=reply.world;
         setWorld(reply.world);
+        // Worker already owns the accepted result, so subsequent ticks only
+        // transfer the day count until the user changes world state.
+        workerSyncedRevision.current=worldRevision.current;
+      }else{
+        workerSyncedRevision.current=-1;
       }
     };
     worker.onerror=()=>{
@@ -228,6 +236,7 @@ export function WorldforgeApp(){
       worker.terminate();
       if(simulationWorker.current===worker)simulationWorker.current=null;
       simulationPending.current=null;
+      workerSyncedRevision.current=-1;
     };
   },[setWorld]);
   useEffect(()=>{
@@ -239,7 +248,9 @@ export function WorldforgeApp(){
       if(worker){
         if(simulationPending.current)return; // no unbounded tick queue
         const request:SimulationRequest={kind:'advance',
-          id:++simulationRequestId.current,days:playback.days,world:current};
+          id:++simulationRequestId.current,days:playback.days,
+          ...(workerSyncedRevision.current===worldRevision.current?
+            {}:{world:current})};
         simulationPending.current={id:request.id,
           revision:worldRevision.current,world:current};
         try{
@@ -251,6 +262,7 @@ export function WorldforgeApp(){
           worker.terminate();
           simulationWorker.current=null;
           simulationPending.current=null;
+          workerSyncedRevision.current=-1;
           setWorkerMode('fallback');
           setNotice('Worker messaging failed; using safe main-thread playback.');
         }
