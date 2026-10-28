@@ -26,7 +26,7 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
-import {compactWorld,loadBrowserWorld,readSavedWorld,WORLD_STORAGE_KEY,
+import {compactWorld,loadBrowserWorld,loadBrowserWorldSnapshot,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
 export {readSavedWorld} from './storage';
@@ -151,9 +151,9 @@ export function WorldforgeApp(){
     let active=true;
     loadDatabaseSnapshot().then(restored=>{
       let localTime=0;
-      try{localTime=Number(window.localStorage.getItem(WORLD_STORAGE_TIME_KEY)??0);}
-      catch{/* Private mode can disable localStorage independently of IndexedDB. */}
-      if(!Number.isFinite(localTime))localTime=0;
+      try{
+        localTime=loadBrowserWorldSnapshot(window.localStorage)?.savedAt??0;
+      }catch{/* Restricted storage does not suppress database recovery. */}
       if(active&&restored&&restored.savedAt>=localTime)
         setWorld(restored.world);
     }).catch(()=>{/* localStorage / newly created world remains available. */})
