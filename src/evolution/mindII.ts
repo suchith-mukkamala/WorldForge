@@ -504,9 +504,10 @@ export function advanceMindDay(previous:World,day:number,
     const targetPerson=step.personId?byId.get(step.personId):undefined;
     const target=targetPerson&&step.kind==='travel'?targetPerson:step.target;
     if(step.kind==='travel'){
+      const interval=Math.max(1,Math.round(3/traitProfile(a.ancestry).speed));
       if(!target){progressed=true;c.route=undefined;}
       else if(distance(a,target)<=1){progressed=true;c.route=undefined;}
-      else if(day%3===a.id%3){
+      else if(day%interval===a.id%interval){
         const desired=target.y*w.width+target.x;
         const route=c.route;
         if(!route||route.target!==desired||
