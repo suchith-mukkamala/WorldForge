@@ -10,6 +10,7 @@ import {accordBetween} from './institutions';
 import {governmentOf,GOVERNMENT_LABELS,POLICY_LABELS} from './culture';
 import {pixelRectsFor} from './pixelArt';
 import {personName} from './identity';
+import {populationScene,renderedPopulation} from './populationVisibility';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
   playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
@@ -86,14 +87,18 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
   const roads=new Set(settlement?.infrastructure?.roads??ruin?.roads??[]);
   const paved=roadTiles(world),bridges=bridgeTiles(world);
   const land=new Set(settlement?.infrastructure?.land??[]);
+  const peopleById=new Map(world.agents.map(a=>[a.id,a]));
   const caravans=(world.shipments??[]).flatMap(t=>{
-    const driver=world.agents.find(a=>a.id===t.carrierId);
+    const driver=peopleById.get(t.carrierId);
     return driver&&Math.abs(driver.x-place.x)<=HALF&&
       Math.abs(driver.y-place.y)<=HALF?[{shipment:t,driver}]:[];
   });
-  const residents=world.agents.filter(a=>
-    Math.abs(a.x-place.x)<=HALF&&Math.abs(a.y-place.y)<=HALF)
-    .sort((a,b)=>a.y-b.y||a.id-b.id).slice(0,240);
+  // The town continues simulating every inhabitant. Only a small, stable
+  // sample of outdoor pedestrians is drawn in this high-detail SVG.
+  const residents=renderedPopulation(world.agents,populationScene(world),{
+    bounds:{minX:place.x-HALF,minY:place.y-HALF,
+      maxX:place.x+HALF,maxY:place.y+HALF},
+    zoom:4,maxVisible:48});
   const names=new Map(world.lineage.map(r=>[r.id,r]));
   const deposits=new Map((world.deposits??[]).map(d=>[d.index,d]));
   const originX=place.x-HALF,originY=place.y-HALF;
