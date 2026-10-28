@@ -31,6 +31,7 @@ import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
   type LearnedTopic,type Topic} from './knowledge';
 import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
+import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -45,7 +46,7 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
   work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean;
-  visitedSites?:number[];artifacts?:Artifact[];belief?:Belief};
+  visitedSites?:number[];artifacts?:Artifact[];belief?:Belief;dailyLife?:DailyLife};
 export type Bond={id:number;a:number;b:number;since:number;
   stage:'courting'|'partner'|'ended';strength:number;ended?:number;
   lastBirthYear?:number;children:number[]};
@@ -314,6 +315,7 @@ export function stepWorld(previous:World):World{
       visitedSites:a.visitedSites?[...a.visitedSites]:undefined,
       artifacts:a.artifacts?.map(v=>({...v})),
       belief:a.belief?{...a.belief}:undefined,
+      dailyLife:a.dailyLife?cloneDailyLife(a.dailyLife):undefined,
       development:a.development?cloneDevelopment(a.development):undefined,
       work:a.work?{...a.work}:undefined,
       blessings:activeEffects(a,previous.year+1).map(e=>({...e})),
@@ -807,7 +809,8 @@ export function isWorld(value:unknown):value is World{
           !checkPlace(a.mind.expedition.home)))||
         (a.mind.lastScarcity!==undefined&&!checkMemory(a.mind.lastScarcity))||
         (a.mind.lastGoodFood!==undefined&&!checkMemory(a.mind.lastGoodFood))))||
-      (a.development!==undefined&&!checkDevelopment(a.development)))return false;
+      (a.development!==undefined&&!checkDevelopment(a.development))||
+      (a.dailyLife!==undefined&&!validDailyLife(a.dailyLife,year)))return false;
     if(a.mortalWound!==undefined&&typeof a.mortalWound!=='boolean')return false;
     const index=offset(width,a.x,a.y);
     const voyage=captains.get(a.id);
