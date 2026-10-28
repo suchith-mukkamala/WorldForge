@@ -1,4 +1,4 @@
-# WorldForge milestone audit (through v1.5)
+# WorldForge milestone audit (through v1.6)
 
 WorldForge is a *simulation* rather than a scripted city painter. This audit
 distinguishes implemented foundations from aspirational features.
@@ -20,6 +20,7 @@ distinguishes implemented foundations from aspirational features.
 | v1.3 | Nine learnable knowledge domains tied to lived practice, work and environment; nearby cross-cultural mentorship, persistent lineage learning records, written archives, seeded ancient temples/vaults with injuries or rare breakthroughs, a Knowledge Codex, and inherited demon physical strength/speed that actually influence travel, health, extraction, crafting and construction. |
 | v1.4 | Seeded libraries, crypts, temples and ruins; true collapsed towns with archived lost knowledge; curiosity/risk-aware site selection and provisioning; persistent trips, hazards, recoverable relics, exceptional multi-subject learning, and an expedition chronicle. Distinct site pixel art, traveler gear and a focused simplified navigation/journal. |
 | v1.5 | Religions emerge from individuals' lived experiences; voluntary contact- and language-based faith adoption, doubt and dissent. Local residents select governments and leaders through value-informed votes; civic priorities draw on real funds and food or develop skills and values. Legitimacy, unrest, re-elections, reforms and persistent culture histories appear in a new archive and person/town views. |
+| v1.6 | Weekly personal routines chosen from energy, fatigue, family responsibilities, work, values and existing mind goals; tracked morale and social need. Real nearby encounters with consent, language requirements and mentorship create bounded social records, incremental skills and friendship opportunities. Person directory presents routines and encounters; annual economic and demographic accounting remains unchanged. |
 
 ## Validation
 
@@ -50,6 +51,9 @@ distinguishes implemented foundations from aspirational features.
   founders, voluntary adoption and resistance, cross-species communication,
   locally chosen governments, real funded policy effects, deep-cloned world
   transitions, save compatibility and observable histories.
+- v1.6: Weekly-life tests verify non-economic scheduling, real proximity and
+  consent for conversations, replay equivalence across day and year increments,
+  legacy-save compatibility, copy safety and inspectable person histories.
 
 ## Honest limits and next work
 
@@ -66,10 +70,11 @@ distinguishes implemented foundations from aspirational features.
   bounded occupancy based on communal space, wilderness tiles remain
   single-occupancy, and device resources are practical limits. Settlements are
   bounded by a map-area safety limit rather than the former fixed 54.
-- The daily calendar allows weeks and months to pass slowly, with real local
-  movement on month boundaries. Aging, births, resources and the economy still
-  update annually. **Full day-by-day needs, work schedules, and conversations
-  remain future Mind Engine / Daily Life milestones.**
+- The calendar supports arbitrary day increments. **Weekly** boundaries now
+  evaluate routines, lessons and face-to-face encounters; monthly boundaries
+  move travelers. Aging, births, resources and the economy still update
+  annually. Hour-by-hour routines, simulated speech, daily food consumption
+  and working shifts with their own goods ledger are not yet implemented.
 - Sprite appearances and directional walking are implemented, but weather,
   day-night cycles, combat animation and a full character avatar editor remain
   future work. Rapid multi-tile travel uses an abbreviated onscreen path, not

@@ -7,6 +7,7 @@ import {biomeSuitability,stepWorld,type World} from './engine';
 import {traitProfile} from './family';
 import {knows} from './knowledge';
 import {addResident,removeResident,residentIndex,tileCapacity} from './density';
+import {advanceWeeklyLife} from './dailyLife';
 
 export const DAYS_PER_YEAR=365;
 export const MONTH_LENGTHS=[31,28,31,30,31,30,31,31,30,31,30,31] as const;
@@ -100,8 +101,9 @@ function advanceMonthlyTravel(w:World,month:number):World{
 }
 
 /** Advance an exact number of simulated days, independent of UI playback rate.
- * Yearly biology/economy still runs once at the boundary; movement happens at
- * calendar month boundaries. Older saves with no dayOfYear start on Jan 1.
+ * Yearly biology/economy still runs once at the boundary; social choices run
+ * weekly, while movement happens at month boundaries. Older saves with no
+ * dayOfYear start on Jan 1. Every time rate crosses identical boundaries.
  */
 export function advanceWorldDays(start:World,days:number):World{
   const count=Math.max(0,Math.min(365*200,Math.trunc(days)));
@@ -110,14 +112,17 @@ export function advanceWorldDays(start:World,days:number):World{
   while(remaining>0&&w.year<9999){
     const day=w.dayOfYear??0;
     const {end,month}=monthEnd(day);
-    const elapsed=Math.min(remaining,end-day);
+    const nextWeek=Math.min(364,(Math.floor(day/7)+1)*7);
+    const boundary=Math.min(end,nextWeek>day?nextWeek:DAYS_PER_YEAR);
+    const elapsed=Math.min(remaining,boundary-day);
     remaining-=elapsed;
     const nextDay=day+elapsed;
     w={...w,dayOfYear:nextDay===DAYS_PER_YEAR?0:nextDay};
     if(nextDay===DAYS_PER_YEAR){
       w=stepWorld(w);
-    }else if(nextDay===end){
-      w=advanceMonthlyTravel(w,month);
+    }else{
+      if(nextDay%7===0)w=advanceWeeklyLife(w,nextDay);
+      if(nextDay===end)w=advanceMonthlyTravel(w,month);
     }
   }
   return w;

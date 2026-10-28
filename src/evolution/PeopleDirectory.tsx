@@ -10,6 +10,7 @@ import {PixelPortrait} from './PixelPortrait';
 import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
+import {ACTIVITY_LABELS} from './dailyLife';
 
 type Props={world:World;selectedId:number|null;onOpen:(id:number)=>void;
   onFavorite:(id:number)=>void;onRename:(id:number,name:string)=>void;
@@ -193,6 +194,38 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
               </small>}
               <small>Decisions follow needs, relationships, terrain and experience.
                 These are simulated rules, not generated dialogue.</small>
+            </div>
+          </section>}
+          {alive?.dailyLife&&<section className="evo-section-card evo-daily-profile">
+            <div className="evo-card-heading"><strong>◈ A LIFE IN PROGRESS</strong>
+              <span>V1.6 / PERSONAL ROUTINES</span></div>
+            <div className="evo-daily-body">
+              <span className="evo-overline">THIS WEEK · Y{alive.dailyLife.year}
+                {' '}DAY {alive.dailyLife.day}</span>
+              <h3>{ACTIVITY_LABELS[alive.dailyLife.activity]}</h3>
+              <p>{alive.dailyLife.reason}</p>
+              <div className="evo-daily-measures">
+                {([['Morale',alive.dailyLife.morale],
+                  ['Fatigue',alive.dailyLife.fatigue],
+                  ['Need for company',alive.dailyLife.socialNeed]] as const)
+                  .map(([label,value])=><label key={label}>
+                    <span>{label}</span><progress max={100} value={value}/>
+                    <b>{Math.round(value)}</b>
+                  </label>)}
+              </div>
+              <h4>RECENT ENCOUNTERS</h4>
+              {alive.dailyLife.encounters.length?
+                [...alive.dailyLife.encounters].reverse().map((entry,i)=><p key={i}
+                  className="evo-daily-encounter">
+                  <small>Y{entry.year} · DAY {entry.day} · {entry.kind}</small>
+                  {' '}{entry.detail} With{' '}
+                  <button type="button" onClick={()=>setActiveId(entry.withId)}>
+                    {nameFor(entry.withId)}</button>
+                </p>):<small>They have not yet recorded a conversation. Neighbors
+                  must actually meet and be willing to talk.</small>}
+              <small>Weekly choices draw on energy, fatigue, relationships,
+                vocation and personal values. Annual economic production remains
+                separate; everyday encounters can change skills and trust.</small>
             </div>
           </section>}
           {(blessings.length>0||(alive?.whispers?.length??0)>0||
