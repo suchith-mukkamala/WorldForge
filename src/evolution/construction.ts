@@ -22,10 +22,14 @@ export type MaterialStock=Record<Material,number>;
 export const ORES=['coal','copper','iron','gold'] as const;
 export type Ore=typeof ORES[number];
 export type OreStock=Record<Ore,number>;
+export type BuildingTier=0|1|2|3;
+export const BUILDING_TIER_NAMES=['Stick hut','Timber hut','Stone dwelling',
+  'Developed home'] as const;
 export type Building={id:number;type:BuildingType;x:number;y:number;
   culture:Species;stage:BuildingStage;progress:number;condition:number;
   started:number;finished?:number;abandoned?:number;
-  spent:MaterialStock;labor:number;householdId?:number};
+  spent:MaterialStock;labor:number;householdId?:number;
+  tier?:BuildingTier;upgraded?:number};
 export type SettlementInfrastructure={land:number[];buildings:Building[];
   roads:number[];stock:MaterialStock;oreStock?:OreStock;nextBuildingId:number;
   foundedWithResidents:number};
@@ -64,6 +68,13 @@ const distance=(a:{x:number;y:number},b:{x:number;y:number})=>
 const position=(w:World,x:number,y:number)=>y*w.width+x;
 const inWorld=(w:World,x:number,y:number)=>x>=0&&y>=0&&x<w.width&&y<w.height;
 const complete=(b:Building)=>b.stage==='complete';
+export const buildingTier=(b:Building):BuildingTier=>b.tier??0;
+export const buildingAppearance=(b:Building)=>{
+  if(!complete(b))return b.stage==='ruin'?'Ruins':
+    b.stage==='abandoned'?'Abandoned structure':'Under construction';
+  if(b.type!=='shelter'&&b.type!=='house')return BUILDING_LABELS[b.type];
+  return BUILDING_TIER_NAMES[buildingTier(b)];
+};
 const stock=():MaterialStock=>({wood:0,stone:0,clay:0});
 const oreStock=():OreStock=>({coal:0,copper:0,iron:0,gold:0});
 const materialFor=(kind:ResourceKind):Material|Ore=>kind==='tree'?'wood':kind;
@@ -220,7 +231,7 @@ function beginProject(w:World,s:Settlement,residents:Agent[]):void{
   if(!at)return;
   const b:Building={id:i.nextBuildingId++,type,x:at.x,y:at.y,
     culture:s.species,stage:'foundation',progress:0,condition:100,
-    started:w.year,spent:stock(),labor:0};
+    started:w.year,spent:stock(),labor:0,tier:0};
   i.buildings.push(b);
   if(i.buildings.length>90){
     const old=i.buildings.findIndex(v=>v.stage==='ruin');
@@ -329,6 +340,37 @@ function build(w:World,s:Settlement,residents:Agent[]):void{
       b.stage='complete';b.progress=100;b.finished=w.year;
     }else b.stage=b.progress<34?'foundation':b.progress<72?'frame':'finishing';
   }
+}
+
+/** Completed buildings are not frozen sprites. A settlement invests surplus
+ * materials and nearby skilled labor to improve one structure per year.
+ * Existing housing assignments, tile footprints and trade routes stay put.
+ */
+export function improveBuildings(w:World,s:Settlement,residents:Agent[]):boolean{
+  const i=s.infrastructure;if(!i)return false;
+  const limit:BuildingTier={encampment:0,hamlet:1,village:2,town:3,city:3}[
+    settlementStage(s)] as BuildingTier;
+  if(!limit)return false;
+  const materials:Record<1|2|3,MaterialStock>={
+    1:{wood:3,stone:0,clay:2},
+    2:{wood:2,stone:5,clay:3},
+    3:{wood:4,stone:9,clay:5},
+  };
+  const workers=willingBuilders(w,s,residents);
+  for(const b of i.buildings){
+    const current=buildingTier(b);
+    if(!complete(b)||current>=limit||b.finished===w.year||
+      b.condition<50||b.upgraded===w.year)continue;
+    const crew=workers.find(a=>distance(a,b)<=2&&a.energy>=50);
+    if(!crew)continue;
+    const next=(current+1) as 1|2|3,cost=materials[next];
+    if(!MATERIALS.every(m=>i.stock[m]>=cost[m]))continue;
+    for(const m of MATERIALS)i.stock[m]=round(i.stock[m]-cost[m]);
+    b.tier=next;b.upgraded=w.year;
+    crew.energy=round(Math.max(1,crew.energy-(1+next*.4)));
+    return true;
+  }
+  return false;
 }
 
 /** Residences are occupied by households, not abstract settlement capacity. */
@@ -448,7 +490,10 @@ export function advanceConstruction(w:World,moved:number[]):void{
       i.land=[...new Set([...i.land,...additional])].slice(0,300);
     }
     gather(w,s,residents,deposits);
-    if(residents.length>0){beginProject(w,s,residents);build(w,s,residents);}
+    if(residents.length>0){
+      beginProject(w,s,residents);build(w,s,residents);
+      improveBuildings(w,s,residents);
+    }
     assignHomes(w,s,residents);maintain(w,s);applyBenefits(w,s);
   }
   updateRoutes(w,moved);
@@ -481,6 +526,9 @@ export function validConstruction(w:World):boolean{
     (b.abandoned===undefined||Number.isInteger(b.abandoned)&&
       b.abandoned>=b.started&&b.abandoned<=w.year)&&
     (b.householdId===undefined||validId(b.householdId))&&validStock(b.spent)&&
+    (b.tier===undefined||Number.isInteger(b.tier)&&b.tier>=0&&b.tier<=3)&&
+    (b.upgraded===undefined||Number.isInteger(b.upgraded)&&
+      b.upgraded>=b.started&&b.upgraded<=w.year)&&
     Number.isFinite(b.labor)&&b.labor>=0&&b.labor<=1000;
   const validTileIds=(ids:number[],limit:number)=>Array.isArray(ids)&&
     ids.length<=limit&&new Set(ids).size===ids.length&&

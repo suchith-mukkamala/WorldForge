@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Settlement,type World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
-  settlementStage,type Building,type RuinSite} from './construction';
+  buildingAppearance,buildingTier,settlementStage,type Building,type RuinSite} from './construction';
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
 import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
 import {TOPIC_INFO} from './knowledge';
@@ -130,7 +130,8 @@ function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
   const style=ARCHITECTURE[b.culture],abandoned=b.stage==='abandoned';
   const ruin=b.stage==='ruin',unfinished=['foundation','frame','finishing']
     .includes(b.stage);
-  return <g role="button" tabIndex={0} aria-label={BUILDING_LABELS[b.type]+' '+b.stage}
+  const tier=buildingTier(b),raised=b.stage==='complete'?tier*2:0;
+  return <g role="button" tabIndex={0} aria-label={buildingAppearance(b)+' '+b.stage}
     onClick={onSelect} onKeyDown={e=>{if(e.key==='Enter')onSelect();}}
     style={{cursor:'pointer'}}>
     {selected&&<rect x={x-3} y={y-3} width={CELL+6} height={CELL+6}
@@ -141,8 +142,9 @@ function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
       <path d={`M${x+14} ${y+20} L${x+20} ${y+12} L${x+23} ${y+21}Z`}
         fill={style.roof}/>
     </>:<>
-      {b.stage!=='foundation'&&<rect x={x+4} y={y+9} width={18} height={13}
-        fill={abandoned?'#696976':style.wall} stroke="#172338" strokeWidth={1.3}/>}
+      {b.stage!=='foundation'&&<rect x={x+4} y={y+9-raised} width={18} height={13+raised}
+        fill={abandoned?'#696976':tier>=2?'#a5a4a0':style.wall}
+        stroke="#172338" strokeWidth={1.3}/>}
       {b.stage==='foundation'&&<rect x={x+4} y={y+16} width={18} height={6}
         fill={style.wall} stroke={style.trim} strokeWidth={1.5}/>}
       {b.stage==='frame'&&<>
@@ -150,8 +152,14 @@ function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
           fill="none" stroke={style.trim} strokeWidth={2}/>
       </>}
       {['finishing','complete','abandoned'].includes(b.stage)&&<>
-        <path d={`M${x+2} ${y+10}L${x+13} ${y+3}L${x+24} ${y+10}Z`}
+        <path d={`M${x+2} ${y+10-raised}L${x+13} ${y+3-raised}L${x+24} ${y+10-raised}Z`}
           fill={abandoned?'#494a5d':style.roof} stroke={style.trim} strokeWidth={1}/>
+        {tier>=1&&!abandoned&&<>
+          <rect x={x+8} y={y+11-raised} width={3} height={3} fill="#ffe0a8"/>
+          <rect x={x+16} y={y+11-raised} width={3} height={3} fill="#ffe0a8"/>
+          {tier>=3&&<rect x={x+17} y={y-4-raised} width={4} height={6}
+            fill={style.wall} stroke={style.roof} strokeWidth={1}/>}
+        </>}
         {b.type==='well'?<circle cx={x+13} cy={y+16} r={5} fill="#4689bd"/>
           :b.type==='farm'?<>
             {[8,13,18].map(px=><path key={px}
@@ -549,6 +557,8 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
             </div>
             {building&&<div className="evo-city-building-detail">
               <strong>{BUILDING_LABELS[building.type]} #{building.id}</strong>
+              <p>Architectural stage: {buildingAppearance(building)}
+                {building.upgraded!==undefined?' · improved Y'+building.upgraded:''}</p>
               <p>{building.stage} · Y{building.started} ·
                 {building.progress}% built · {Math.round(building.condition)}% condition</p>
               <p>Materials delivered: {(['wood','stone','clay'] as const).map(m=>
@@ -560,7 +570,7 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
               {structures.slice(-36).reverse().map(b=><button key={b.id}
                 onClick={()=>setChosenBuilding(b.id)}>
                 <span>{BUILDING_LABELS[b.type]} #{b.id}</span>
-                <small>{b.stage} · Y{b.started}</small>
+                <small>{b.stage} · {buildingAppearance(b)} · Y{b.started}</small>
                 <progress value={b.progress} max="100"/>
               </button>)}
             </div>

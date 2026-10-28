@@ -389,6 +389,23 @@ export function paintBuilding(ctx:CanvasRenderingContext2D,b:Building):void{
     for(let i=0;i<5;i++)p(i%2?style.roof:'#e6d5a9',1+i*2,2,2,4);
     p('#584854',2,7,2,2);p('#5b7b60',7,7,2,2);return;
   }
+  // Later settlement materials are actual paid-for building tiers; a former
+  // stick shelter develops walls, masonry and eventually an upper storey.
+  if((b.type==='house'||b.type==='shelter')&&(b.tier??0)>0){
+    const tier=b.tier!,width=9+tier*2,wallHeight=5+tier*2;
+    p('#263244',-tier,9,width+2,2);
+    p(tier>=2?'#a3a5a8':style.wall,1-tier,9-wallHeight,width,wallHeight);
+    p(style.roof,-tier-1,7-wallHeight,width+2,3);
+    p('#ded0a8',1-tier,7-wallHeight,width-2,1);
+    p('#443746',3,5,2,4);
+    p('#f2d99a',width-4-tier,4,2,2);
+    if(tier>=3){
+      p(style.roof,2,-wallHeight-1,width-4,3);
+      p('#d9c9ab',2,-wallHeight+2,width-4,2);
+      p('#ffe0ac',width-6-tier,-wallHeight+3,2,2);
+    }
+    return;
+  }
   if(b.type==='shelter'){
     p('#524f59',0,8,11,2);p('#c5ad82',1,5,9,3);
     p(style.roof,3,2,5,4);p('#6e5361',5,6,2,3);return;
