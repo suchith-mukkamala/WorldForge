@@ -10,30 +10,30 @@ const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);
 };
 
-/** A person is ~one unit; even a young tree occupies roughly twice as much
- * visual space, without being a harvested resource or blocking the next tile. */
+/** Mortals are tiny one-pixel-wide figures on the raised world map: a tile is
+ * twelve pixels wide, and the taller trees and homes preserve a real sense of
+ * scale. Full character detail remains in the close-up and portrait views. */
 export function paintDepthPerson(ctx:Painter,a:Pick<Agent,'species'|'id'>,
   p:Point,walking=false):void{
-  const width=DEPTH_FOOTPRINT.person*3;
-  draw(ctx,'#182737',p.x-1,p.y-1,width,2);
-  draw(ctx,SPECIES_INFO[a.species].color,p.x-1,p.y-5,width,4);
-  draw(ctx,'#f1d7a5',p.x,p.y-7,2,2);
-  draw(ctx,'#152a37',p.x-1,p.y-1,1,walking?2:1);
-  draw(ctx,'#152a37',p.x+1,p.y-1,1,walking?1:2);
+  const width=DEPTH_FOOTPRINT.person;
+  draw(ctx,'rgba(11,28,39,.7)',p.x,p.y+1,width,1);
+  draw(ctx,SPECIES_INFO[a.species].color,p.x,p.y-2,width,2);
+  draw(ctx,'#f1d7a5',p.x,p.y-3,width,1);
+  if(walking)draw(ctx,'#202e3a',p.x,p.y,width,1);
 }
 
 export function paintDepthTree(ctx:Painter,p:Point,pine:boolean):void{
   const width=DEPTH_FOOTPRINT.tree*3;
   draw(ctx,'rgba(12,31,35,.45)',p.x-width/2,p.y,width+1,2);
-  draw(ctx,'#624c3b',p.x-1,p.y-7,2,8);
+  draw(ctx,'#624c3b',p.x-1,p.y-5,2,6);
   if(pine){
-    draw(ctx,'#28574b',p.x-width/2,p.y-12,width,6);
-    draw(ctx,'#3a8064',p.x-2,p.y-15,4,6);
+    draw(ctx,'#28574b',p.x-width/2,p.y-9,width,5);
+    draw(ctx,'#3a8064',p.x-2,p.y-12,4,6);
   }else{
-    draw(ctx,'#2a644c',p.x-width/2,p.y-13,width,7);
-    draw(ctx,'#529b67',p.x-2,p.y-15,5,5);
+    draw(ctx,'#2a644c',p.x-width/2,p.y-10,width,6);
+    draw(ctx,'#529b67',p.x-2,p.y-12,5,5);
   }
-  draw(ctx,'#a1c5a2',p.x,p.y-14,2,2);
+  draw(ctx,'#a1c5a2',p.x,p.y-11,2,2);
 }
 
 /** Four-unit structures become taller and more durable with their real tier.

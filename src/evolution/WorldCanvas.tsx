@@ -330,9 +330,11 @@ export function WorldCanvas({
         if(frame?.walking)active=true;
         const px=x*CELL,py=y*CELL;
         if(zoom<3){
-          visible.fillStyle='#081323';visible.fillRect(px+1,py+1,3,4);
+          // One world tile is 6×6 native pixels. A person is deliberately
+          // smaller than that tile even at normal overview zoom.
+          visible.fillStyle='#081323';visible.fillRect(px+2,py+3,1,1);
           visible.fillStyle=SPECIES_INFO[a.species].color;
-          visible.fillRect(px+2,py+1,2,3);
+          visible.fillRect(px+2,py+1,1,2);
           continue;
         }
         const direction=frame?.facing??facing.current.get(a.id)??'south';
@@ -350,8 +352,10 @@ export function WorldCanvas({
           if(painter)paintPerson(painter,a,0,0,direction,stride,pose);
           spriteCache.current.set(key,sprite);
         }
-        const width=focus&&zoom>=5?16:zoom>=5?12:9;
-        const height=focus&&zoom>=5?22:zoom>=5?17:13;
+        // Larger portrait sprites live in the close-up inspector. On the map,
+        // people remain visibly dwarfed by a house even at high camera zoom.
+        const width=focus&&zoom>=5?5:zoom>=5?4:3;
+        const height=focus&&zoom>=5?8:zoom>=5?6:5;
         visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
         if(a.mind?.expedition?.stage==='travel'){
           visible.fillStyle='#7d5947';visible.fillRect(px-4,py-6,3,5);

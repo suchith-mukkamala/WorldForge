@@ -4,6 +4,7 @@ import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas,type MapOverlay} from './WorldCanvas';
 import {DepthCanvas} from './DepthCanvas';
+import {RELIEF_LEVELS,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
@@ -132,6 +133,7 @@ export function WorldforgeApp(){
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
   const [mapView,setMapView]=useState<'overhead'|'depth'>('overhead');
+  const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [zoom,setZoom]=useState(1);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
@@ -618,6 +620,16 @@ export function WorldforgeApp(){
               <option value="overhead">Top-down · 2D</option>
               <option value="depth">Raised terrain · 2.5D</option>
             </select>
+            {mapView==='depth'&&<>
+              <label htmlFor="evo-relief">HEIGHT</label>
+              <select id="evo-relief" value={reliefLevel}
+                aria-label="Terrain relief exaggeration"
+                onChange={e=>setReliefLevel(e.target.value as ReliefLevel)}>
+                <option value="natural">Natural · 1×</option>
+                <option value="dramatic">Dramatic · 2.5×</option>
+                <option value="monumental">Monumental · 4×</option>
+              </select>
+            </>}
           </div>
           <MapLayerLegend overlay={overlay}/>
           {!hasPhysicalTerrain(world)&&<div className="evo-terrain-upgrade" role="note">
@@ -640,7 +652,7 @@ export function WorldforgeApp(){
               onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
-                onEdit={brushAt}/>}
+                onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}/>}
           </div>
           <div className="evo-map-footer">
             <div className="evo-species-legend">
@@ -652,7 +664,7 @@ export function WorldforgeApp(){
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
-                'RAISED 2.5D TERRAIN · CLICK DIAMONDS TO INSPECT · ZOOM FOR DETAILS'}</span>
+                'CLIFFS & EARTH WALLS · ADJUST HEIGHT FOR DRAMATIC RELIEF · ZOOM TO EXPLORE'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -835,12 +847,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.05: A LIVING WORLD AT HUMAN SCALE</strong>
-        <span>People walk smoothly within and between map cells instead of
-          crowding fixed markers. In the raised view, a person, a tree and a
-          building have visibly different footprints. Settlements can invest
-          actual materials and labor to evolve stick huts into timber huts,
-          stone dwellings and developed homes.</span>
+        <strong>V2.06: TERRAIN THAT RISES ABOVE THE MAP</strong>
+        <span>Raised terrain now has unmistakable cliffs, exposed rock strata,
+          dramatic mountain heights, natural sunlight and visible landmass
+          edges. Choose Natural, Dramatic or Monumental height exaggeration
+          without changing any world physics. Mortals stay tiny beside trees,
+          houses and mountains.</span>
       </div>
     </main>}
   </div>;
