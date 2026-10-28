@@ -6,6 +6,10 @@ import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
+import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
+import {mortalWorldPoint} from './spatialDetails';
+import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
+  type Motion,type Point} from './motion';
 import {depthCanvasSize,projectDepth,tileFromHit,tileHitColor,
   DEPTH_TILE_HEIGHT,DEPTH_TILE_WIDTH,DEPTH_RISE} from './depthProjection';
 
@@ -95,10 +99,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
       if(overlay==='terrain'&&((x*17+y*11+w.settings.seed)%4===0)){
         const detail=terrainDetailAt(biome,x,y,w.settings.seed,height);
         if(detail.motif==='oak'||detail.motif==='pine'){
-          ctx.fillStyle='#674e3e';ctx.fillRect(p.x,p.y-6,2,6);
-          ctx.fillStyle=detail.motif==='pine'?'#285a53':'#427d5d';
-          ctx.fillRect(p.x-3,p.y-10,7,5);
-          ctx.fillStyle='#a0c7a0';ctx.fillRect(p.x-1,p.y-11,3,2);
+          paintDepthTree(ctx,p,detail.motif==='pine');
         }else if(['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
           ctx.fillStyle=detail.motif==='snowstone'?'#ecf1e5':
             detail.motif==='crystal'?'#9cddd5':'#aeb2b5';
@@ -131,25 +132,35 @@ function renderTerrain(w:World,overlay:MapOverlay,
 }
 
 function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
-  selected:{x:number;y:number}|null,zoom:number){
+  selected:{x:number;y:number}|null,zoom:number,
+  positions:Map<number,Point>,walking:Set<number>){
   const heights=topographyForWorld(w).heights;
+  const actors:{order:number;paint:()=>void}[]=[];
   for(const s of w.settlements){
     const p=projectDepth(w,s.x,s.y,heights[s.y*w.width+s.x]);
-    ctx.fillStyle='#182f43';ctx.fillRect(p.x-5,p.y-8,11,8);
-    ctx.fillStyle='#d8ba87';ctx.fillRect(p.x-4,p.y-11,9,9);
-    ctx.fillStyle=SPECIES_INFO[s.species].color;
-    ctx.fillRect(p.x-4,p.y-14,9,3);
-    ctx.fillStyle='#554550';ctx.fillRect(p.x-1,p.y-5,3,5);
+    actors.push({order:p.y+.2,paint:()=>{
+      // A compact town banner identifies the settlement; actual structures
+      // occupy their separate addresses and evolve independently below.
+      ctx.fillStyle='#21364a';ctx.fillRect(p.x-1,p.y-9,2,9);
+      ctx.fillStyle=SPECIES_INFO[s.species].color;
+      ctx.fillRect(p.x-6,p.y-12,11,4);
+      ctx.fillStyle='#f1d9a9';ctx.fillRect(p.x-4,p.y-11,7,1);
+    }});
+    for(const b of s.infrastructure?.buildings??[]){
+      const bp=projectDepth(w,b.x,b.y,heights[b.y*w.width+b.x]);
+      actors.push({order:bp.y+.4,paint:()=>paintDepthBuilding(ctx,b,bp)});
+    }
   }
   const agents=renderedPopulation(w.agents,populationScene(w),{
     bounds:{minX:0,minY:0,maxX:w.width-1,maxY:w.height-1},
-    selected,zoom:Math.max(1,zoom),maxVisible:250});
+    selected,zoom:Math.max(1,zoom),maxVisible:350});
   for(const a of agents){
-    const p=projectDepth(w,a.x,a.y,heights[a.y*w.width+a.x]);
-    ctx.fillStyle='#102638';ctx.fillRect(p.x-2,p.y-6,5,7);
-    ctx.fillStyle=SPECIES_INFO[a.species].color;
-    ctx.fillRect(p.x-1,p.y-7,3,4);
+    const pos=positions.get(a.id)??{x:a.x,y:a.y};
+    const p=projectDepth(w,pos.x,pos.y,heights[a.y*w.width+a.x]);
+    actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id))});
   }
+  actors.sort((a,b)=>a.order-b.order);
+  for(const actor of actors)actor.paint();
   if(selected){
     const index=selected.y*w.width+selected.x;
     if(index>=0&&index<heights.length){
@@ -164,16 +175,20 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   }
 }
 
-export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,zoom=1}:{
+export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
+  zoom=1,speed=4}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
-  onEdit:(x:number,y:number)=>void;zoom?:number;
+  onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<HTMLCanvasElement|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number}|null>(null);
+  const priorRef=useRef<{seed:number;year:number;day:number;
+    positions:Map<number,Point>}|null>(null);
+  const motionsRef=useRef<Map<number,Motion>>(new Map());
   const size=depthCanvasSize(world);
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
@@ -200,10 +215,42 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,zoom=1
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,
       overlay,deposits:world.deposits,seed:world.settings.seed};
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
-    paintInhabitants(ctx,world,selected,zoom);
-  },[world,overlay,selected,zoom]);
+    const positions=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
+    const previous=priorRef.current,day=world.dayOfYear??0;
+    const now=performance.now();
+    if(!previous||previous.seed!==world.settings.seed||
+      world.year<previous.year||world.year-previous.year>1||
+      world.year===previous.year&&day<previous.day){
+      motionsRef.current.clear();
+    }else if(previous.year!==world.year||previous.day!==day){
+      const moving=new Map<number,Motion>();
+      for(const [id,to] of positions){
+        const from=previous.positions.get(id);
+        if(!from||!canAnimate(from,to))continue;
+        moving.set(id,{from,to,start:now,
+          duration:visualMotionDuration(speed),
+          facing:directionBetween(from,to)});
+      }
+      motionsRef.current=moving;
+    }
+    priorRef.current={seed:world.settings.seed,year:world.year,day,positions};
+    let frameHandle=0;
+    const draw=(time:number)=>{
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
+      const interpolated=new Map<number,Point>(),walking=new Set<number>();
+      for(const [id,target] of positions){
+        const motion=motionsRef.current.get(id);
+        const frame=motion?motionFrame(motion,time):null;
+        interpolated.set(id,frame??target);
+        if(frame?.walking)walking.add(id);
+      }
+      paintInhabitants(ctx,world,selected,zoom,interpolated,walking);
+      if(walking.size)frameHandle=requestAnimationFrame(draw);
+    };
+    draw(now);
+    return ()=>cancelAnimationFrame(frameHandle);
+  },[world,overlay,selected,zoom,speed]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };

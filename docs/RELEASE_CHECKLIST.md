@@ -19,6 +19,9 @@
 - [ ] Keep the performance panel open while scrolling a crowded settlement
 - [ ] Reload after an interrupted autosave and verify current or previous valid checkpoint is available
 - [ ] Verify Pages loads from `/WorldForge/`, including the favicon and worker asset
+- [ ] In **VIEW**, switch 2D → 2.5D → 2D; confirm people, tree silhouettes and individual building sizes differ in the raised view, while the same selected tile remains inspectable
+- [ ] While playing, watch a mortal walk smoothly between (and within) tile centers; no phantom teleports or changes to the underlying resident counts
+- [ ] Visit a developed settlement, inspect an individual house and confirm its persistent architecture tier survives export/reimport; new tiers must require real supplies and a builder
 
 ## Future changes
 Engine schema migrations and physics updates require separate PRs. Changes to building interiors, elevation/pathfinding, new races, traits, and realm simulation must extend the test fixtures without sacrificing camera-independent simulation. For broad redesigns, benchmark and validate a small vertical slice first.

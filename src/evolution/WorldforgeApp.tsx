@@ -639,7 +639,7 @@ export function WorldforgeApp(){
               selected={displayed} onSelect={chooseTile} onEdit={brushAt}
               onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
-                zoom={zoom} selected={displayed} onSelect={chooseTile}
+                zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt}/>}
           </div>
           <div className="evo-map-footer">
@@ -835,11 +835,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.0: LIVING GEOGRAPHY & DEPTH</strong>
-        <span>Switch between the classic overhead map and raised 2.5D terrain.
-          New worlds use real slope costs, mountain-aware navigation and
-          terrain-sensitive farming and construction. Earlier saves retain
-          classic behavior until you enable physical terrain.</span>
+        <strong>V2.05: A LIVING WORLD AT HUMAN SCALE</strong>
+        <span>People walk smoothly within and between map cells instead of
+          crowding fixed markers. In the raised view, a person, a tree and a
+          building have visibly different footprints. Settlements can invest
+          actual materials and labor to evolve stick huts into timber huts,
+          stone dwellings and developed homes.</span>
       </div>
     </main>}
   </div>;

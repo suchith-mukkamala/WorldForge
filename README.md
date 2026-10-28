@@ -8,6 +8,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 - Generate deterministic fantasy worlds with humans, elves, dwarves and demons.
 - Switch instantly between the original **top-down 2D** map and a raised **pixel-art 2.5D** landscape. Hills, cliffs, towns and people share the same heightfield and stay selectable in either view, with no graphics-card-heavy 3D engine.
+- Watch **Human-Scale Worlds (v2.05)**: individual mortals move through continuous sub-tile visual positions instead of a few crowded marker slots; a person has roughly one visual footprint unit, a tree two and a building four. The raised map shows *each real building*, not just a generic settlement icon. As settlements grow, builders can spend real wood, clay, stone and effort to evolve stick huts into timber huts, stone dwellings and developed homes. Older saves continue to load with their buildings and histories intact.
 - Experience **Physical Geography (v2.0)**: uphill travel takes more effort and influences route choice, rugged sites discourage building, and elevation, slopes and creeks affect farm yields. Previously saved worlds keep their original rules unless you explicitly enable the new terrain physics in the map panel. Waterway shipping still requires actual water tiles.
 - Watch intelligent agents prioritize survival, relationships, careers, travel and settlement development, with distinct personalities and memories.
 - Follow childhood experiences, households, ancestry, friendships, apprenticeships and long-running family records.
@@ -79,7 +80,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v2.0 — Physical Geography & 2.5D Views. Use the map **VIEW** control to switch between overhead and raised isometric pixel terrain; new worlds have slope-sensitive travel, agriculture and construction. Existing saves can opt in without rewriting their histories. A single Vite GitHub Actions workflow publishes the compiled app under `/WorldForge/`.
+- **Current:** v2.05 — Human-Scale Worlds. Keep the v2.0 selectable top-down and raised isometric views, now with individual fractional-position mortal motion, unequal-scale trees and buildings, actual mapped structures and paid-for architectural progression. The ecological grid still determines resource access, crowds and route validation; visual freedom never teleports an NPC through terrain. A single Vite GitHub Actions workflow publishes the compiled app under `/WorldForge/`.
 - **Next:** v2.1 innate traits, potential, ranks and awakening, followed by v2.2 training/mastery and v2.3 legendary awakenings.
 - **Future visual direction:** Continue developing the Pokémon Black & White–inspired pixel-art perspective into a richer layered environment with camera movement and animated exploration. Later, optional mortal descent, procedurally generated planets, separate realms and interplanetary travel. The current 2.5D view is a lightweight isometric renderer, **not** free-camera 3D or mortal-play mode.
 
@@ -104,6 +105,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/topography.ts`: deterministic, validated heightfields stored in new worlds and regenerated lazily for older saves; the same data drives both map views and opt-in terrain physics.
 - `src/evolution/terrainPhysics.ts`: versioned terrain rules, elevation-weighted travel costs, farming yields and building-site suitability; older saves start with legacy rules and offer explicit opt-in.
 - `src/evolution/DepthCanvas.tsx` and `depthProjection.ts`: selectable 2.5D isometric pixel rendering with true elevation offsets, cliff faces and hidden color-coded tile picking; the underlying world is unchanged.
+- `src/evolution/spatialDetails.ts` and `depthSprites.ts`: reproducible fractional visual positions and unequal object footprints shared with 2D/2.5D drawing. `construction.ts` owns four persistent building tiers, real upgrades and their material costs; views cannot create upgrades by themselves.
 - `src/evolution/simulation.worker.ts` and `simulationProtocol.ts`: one-flight background calendar ticks with revision guards; the UI can fall back to the exact same engine.
 - `src/evolution/populationVisibility.ts`: stable display-only crowd sampling and indoor visibility hints; physical interior simulation is future work.
 - `src/evolution/releaseSmoke.ts`: deterministic release gating for world boundaries, camera independence and saved-world integrity.

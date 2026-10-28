@@ -13,6 +13,7 @@ import {buildTerrainDetailAtlas,paintTerrainDetail,
   paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
+import {mortalWorldPoint} from './spatialDetails';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -68,7 +69,7 @@ export function WorldCanvas({
         (infra?.roads??[]).join(','),
         (infra?.buildings??[]).map(b=>[
           b.x,b.y,b.type,b.stage,Math.round(b.progress),
-          Math.round(b.condition),b.culture].join(':')).join(',')
+          Math.round(b.condition),b.culture,b.tier??0].join(':')).join(',')
       ].join('/');
     }).join('|');
     // Food-only updates can occur every simulated day. Repaint the resource
@@ -233,7 +234,7 @@ export function WorldCanvas({
       width:canvas.width,height:canvas.height};
     }
     else if(stamp)stamp.tiles=world.tiles;
-    const current=new Map(world.agents.map(a=>[a.id,{x:a.x,y:a.y}]));
+    const current=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=prior.current;
     const now=performance.now();
     const day=world.dayOfYear??0;
@@ -271,8 +272,6 @@ export function WorldCanvas({
         maxX:Math.min(W-1,Math.ceil(x+w)+3),
         maxY:Math.min(H-1,Math.ceil(y+h)+3)};
     };
-    const offsets=[[0,0],[-2,-2],[2,-2],[-2,2],[2,2],[-3,0],[3,0],
-      [0,-3]] as const;
     const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
     let handle=0,lastFrame=-Infinity,previouslyWalking=false;
     let lastReport=-Infinity;
@@ -291,13 +290,6 @@ export function WorldCanvas({
       // Cull sprites outside the camera; preserve tracked character and tile.
       const ordered=renderedPopulation(world.agents,scene,
         {bounds:bounds(),zoom,focusId:followId,selected});
-      const visualSlot=new Map<number,number>();
-      const populationByTile=new Map<number,number>();
-      for(const a of ordered){
-        const tile=a.y*W+a.x;
-        visualSlot.set(a.id,populationByTile.get(tile)??0);
-        populationByTile.set(tile,(populationByTile.get(tile)??0)+1);
-      }
       const tracked=followId!==null?world.agents.find(a=>a.id===followId):
         selected?world.agents.find(a=>a.x===selected.x&&a.y===selected.y):
         undefined;
@@ -331,15 +323,16 @@ export function WorldCanvas({
       for(const a of ordered){
         const movement=motions.current.get(a.id);
         const frame=movement?motionFrame(movement,timestamp):null;
-        const x=frame?.x??a.x,y=frame?.y??a.y;
+        const destination=current.get(a.id);
+        const x=frame?.x??destination?.x??a.x;
+        const y=frame?.y??destination?.y??a.y;
         positions.set(a.id,{x,y});
         if(frame?.walking)active=true;
-        const [ox,oy]=offsets[(visualSlot.get(a.id)??0)%offsets.length];
-        const px=x*CELL+ox,py=y*CELL+oy;
+        const px=x*CELL,py=y*CELL;
         if(zoom<3){
-          visible.fillStyle='#081323';visible.fillRect(px+1,py+1,4,4);
+          visible.fillStyle='#081323';visible.fillRect(px+1,py+1,3,4);
           visible.fillStyle=SPECIES_INFO[a.species].color;
-          visible.fillRect(px+2,py+2,2,2);
+          visible.fillRect(px+2,py+1,2,3);
           continue;
         }
         const direction=frame?.facing??facing.current.get(a.id)??'south';
