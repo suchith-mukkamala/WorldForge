@@ -16,6 +16,7 @@ export const LEGACY_STORAGE_KEY='worldforge:world:v1';
 export const MAX_WORLD_FILE_BYTES=64_000_000;
 const WORLD_DATABASE='worldforge-worlds';
 const WORLD_RECORD='current-world';
+const WORLD_PREVIOUS_RECORD='previous-world';
 const WORLD_STORE='snapshots';
 function database():Promise<IDBDatabase>{
   return new Promise((resolve,reject)=>{
@@ -29,23 +30,30 @@ function database():Promise<IDBDatabase>{
     request.onsuccess=()=>resolve(request.result);
   });
 }
-/** Large evolving worlds exceed localStorage quotas. Persist them in IndexedDB. */
+/** IndexedDB snapshots are atomically replaced. Keep the previously
+ * committed checkpoint so a truncated or invalid latest value is recoverable.
+ * Save order is serialized, and a failed transaction leaves the old version.
+ */
 export async function loadDatabaseSnapshot():Promise<{world:World;savedAt:number}|null>{
   const db=await database();
   try{
-    const raw=await new Promise<unknown>((resolve,reject)=>{
-      const request=db.transaction(WORLD_STORE,'readonly')
-        .objectStore(WORLD_STORE).get(WORLD_RECORD);
+    const store=db.transaction(WORLD_STORE,'readonly').objectStore(WORLD_STORE);
+    const get=(key:string)=>new Promise<unknown>((resolve,reject)=>{
+      const request=store.get(key);
       request.onsuccess=()=>resolve(request.result);
       request.onerror=()=>reject(request.error);
     });
-    const payload=typeof raw==='string'?{raw,savedAt:0}:
-      raw&&typeof raw==='object'&&'raw' in raw&&'savedAt' in raw?
-        raw as {raw:unknown;savedAt:unknown}:null;
-    if(!payload||typeof payload.raw!=='string')return null;
-    const world=readSavedWorld(payload.raw);
-    return world?{world,savedAt:Number.isFinite(payload.savedAt)?
-      Number(payload.savedAt):0}:null;
+    const records=await Promise.all([get(WORLD_RECORD),get(WORLD_PREVIOUS_RECORD)]);
+    for(const entry of records){
+      const payload=typeof entry==='string'?{raw:entry,savedAt:0}:
+        entry&&typeof entry==='object'&&'raw' in entry&&'savedAt' in entry?
+          entry as {raw:unknown;savedAt:unknown}:null;
+      if(!payload||typeof payload.raw!=='string')continue;
+      const world=readSavedWorld(payload.raw);
+      if(world)return {world,savedAt:Number.isFinite(payload.savedAt)?
+        Number(payload.savedAt):0};
+    }
+    return null;
   }finally{db.close();}
 }
 let saveQueue=Promise.resolve();
@@ -55,14 +63,26 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now()):Promise<void>{
     try{
       await new Promise<void>((resolve,reject)=>{
         const transaction=db.transaction(WORLD_STORE,'readwrite');
-        transaction.objectStore(WORLD_STORE).put({raw,savedAt},WORLD_RECORD);
+        const store=transaction.objectStore(WORLD_STORE);
+        const previous=store.get(WORLD_RECORD);
+        previous.onsuccess=()=>{
+          const entry=previous.result;
+          const old=typeof entry==='string'?entry:
+            entry&&typeof entry==='object'&&'raw' in entry?
+              (entry as {raw:unknown}).raw:null;
+          // Preserve a backup only for a recognized checkpoint, avoiding
+          // unnecessary writes of corrupt or non-world data.
+          if(typeof old==='string'&&old.length<=MAX_WORLD_FILE_BYTES)
+            store.put(entry,WORLD_PREVIOUS_RECORD);
+          store.put({raw,savedAt},WORLD_RECORD);
+        };
+        previous.onerror=()=>reject(previous.error);
         transaction.oncomplete=()=>resolve();
         transaction.onerror=()=>reject(transaction.error);
         transaction.onabort=()=>reject(transaction.error);
       });
     }finally{db.close();}
   };
-  // Preserve save order if the user pauses during a background checkpoint.
   const result=saveQueue.then(write);
   saveQueue=result.catch(()=>{});
   return result;
