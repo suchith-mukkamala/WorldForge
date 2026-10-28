@@ -36,6 +36,7 @@ import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,validTopography,type Topography} from './topography';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './traitRanks';
+import {birthInnateTrait,innateTrait,isInnateTrait,type InnateTraitId} from './innateTraits';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -48,6 +49,7 @@ export type Ancestry=Record<Species,number>;
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   potentialRank?:TraitRank;
+  innateTrait?:InnateTraitId;
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
   work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean;
@@ -63,6 +65,7 @@ export type LifeMoment={year:number;
 export type LineageRecord={id:number;species:Species;ancestry:Ancestry;
   genes:Genes;born:number;died?:number;generation:number;name?:string;house?:string;
   potentialRank?:TraitRank;
+  innateTrait?:InnateTraitId;
   moments?:LifeMoment[];parents?:[number,number];children:number[];partnerIds:number[];
   divineOrigins?:number[];knownKnowledge?:LearnedTopic[]};
 export type SettlementLegacy={id:number;species:Species;name:string;
@@ -290,6 +293,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
         health:round(84+random(state)*16),genes:genes(state),born:age===0?0:-age,
         mind:initialMind(0)};
       founder.potentialRank=birthPotentialRank(settings.seed,founder.id,founder.genes);
+      founder.innateTrait=birthInnateTrait(settings.seed,founder.id,founder.genes);
       world.agents.push(founder);
       world.lineage.push(makeLifeRecord(world,founder));
     }
@@ -323,6 +327,7 @@ export function stepWorld(previous:World):World{
     tiles:previous.tiles.map(t=>({...t})),
     agents:previous.agents.map(a=>({...a,
       potentialRank:potentialRank(previous.settings.seed,a),
+      innateTrait:innateTrait(previous.settings.seed,a),
       knowledge:a.knowledge?.map(k=>({...k})),
       visitedSites:a.visitedSites?[...a.visitedSites]:undefined,
       artifacts:a.artifacts?.map(v=>({...v})),
@@ -346,7 +351,8 @@ export function stepWorld(previous:World):World{
       archives:s.archives?[...s.archives]:undefined})),
     bonds:previous.bonds.map(b=>({...b,children:[...b.children]})),
     lineage:previous.lineage.map(r=>({...r,
-      potentialRank:potentialRank(previous.settings.seed,r),children:[...r.children],
+      potentialRank:potentialRank(previous.settings.seed,r),
+      innateTrait:innateTrait(previous.settings.seed,r),children:[...r.children],
       partnerIds:[...r.partnerIds],divineOrigins:r.divineOrigins?[...r.divineOrigins]:undefined,
       knownKnowledge:r.knownKnowledge?.map(k=>({...k}))})),
     events:[...previous.events],history:[...previous.history],
@@ -697,6 +703,8 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
       mind:initialMind(world.year)};
     newcomer.potentialRank=birthPotentialRank(world.settings.seed,
       newcomer.id,newcomer.genes);
+    newcomer.innateTrait=birthInnateTrait(world.settings.seed,
+      newcomer.id,newcomer.genes);
     newcomer.development=initialDevelopment(newcomer,tile.biome);
     world.agents.push(newcomer);
     world.lineage.push(makeLifeRecord(world,newcomer));
@@ -813,6 +821,7 @@ export function isWorld(value:unknown):value is World{
       !Number.isInteger(a.born)||!Number.isInteger(a.generation)||a.generation<0||
       !checkAncestry(a.ancestry)||!checkGenes(a.genes)||
       (a.potentialRank!==undefined&&!isTraitRank(a.potentialRank))||
+      (a.innateTrait!==undefined&&!isInnateTrait(a.innateTrait))||
       !Number.isFinite(a.energy)||a.energy<0||a.energy>100||
       !Number.isFinite(a.health)||a.health<=0||a.health>100||
       (a.partnerId!==undefined&&(!Number.isSafeInteger(a.partnerId)||a.partnerId<=0))||
@@ -885,6 +894,7 @@ export function isWorld(value:unknown):value is World{
     if(!r||!Number.isSafeInteger(r.id)||r.id<=0||records.has(r.id)||
       !SPECIES.includes(r.species)||!checkGenes(r.genes)||
       (r.potentialRank!==undefined&&!isTraitRank(r.potentialRank))||
+      (r.innateTrait!==undefined&&!isInnateTrait(r.innateTrait))||
       !checkAncestry(r.ancestry)||!Number.isInteger(r.generation)||r.generation<0||
       !Number.isInteger(r.born)||
       (r.died!==undefined&&(!Number.isInteger(r.died)||r.died<r.born))||

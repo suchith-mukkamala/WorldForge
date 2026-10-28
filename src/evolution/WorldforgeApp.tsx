@@ -879,12 +879,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.1.1: POTENTIAL IS NOT DESTINY</strong>
-        <span>Every person now carries a rare-or-common latent potential rank,
-          from F through SSS, fixed from birth and retained in their family
-          history. Real practice has a separate proficiency grade. A powerful
-          inheritance does not grant mastery, morality or automatic greatness.
-          Named innate traits and age-scaled awakening come next.</span>
+        <strong>V2.1.2: EVERY LIFE BEGINS WITH A GIFT</strong>
+        <span>Each person is born with one innate gift from 48 possibilities
+          spanning body, senses, mind, nature, craft, social bonds, spirit and
+          survival. Their potential rank describes what that gift might grow
+          into, never what they can already do. Gifts remain latent until the
+          age-scaled awakening and real trait effects arrive in future patches.</span>
       </div>
     </main>}
   </div>;
