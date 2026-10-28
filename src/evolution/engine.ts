@@ -406,7 +406,8 @@ export function stepWorld(previous:World):World{
     a.age++;
     a.mind=planMind(world,a,residents,partnerPositions,closeContacts,
       biomeSuitability,traitProfile,permanentHomes);
-    const travel=clamp(info.wander*info.speed*a.genes.curiosity*world.settings.wandering*
+    const travel=clamp(info.wander*info.speed*(knows(a,'navigation')?1.16:1)*
+      a.genes.curiosity*world.settings.wandering*
       divineFactor(a,'courage',world.year),0,.94);
     const destination=a.mind.target;
     const motivated=!!destination&&distance(a,destination)>1;

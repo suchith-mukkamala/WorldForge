@@ -366,7 +366,7 @@ export function WorldforgeApp(){
       onRename={giveName} onFindOnMap={findOnMap}
       onInvoke={id=>{setSelectedAgentId(id);navigate('powers');}}/>:
     tab==='knowledge'?<KnowledgeCodex world={world} onFindOnMap={findAncientSite}
-      onOpenPerson={focusPerson}/>:
+      onOpenPerson={openPerson}/>:
     tab==='codex'?<DivineCodex world={world}
       onOpenPerson={focusPerson} onFavoritePerson={favoritePerson}
       onFavoriteSettlement={favoriteSettlement}

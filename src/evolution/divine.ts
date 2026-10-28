@@ -169,6 +169,8 @@ export function intervene(previous:World,action:DivineAction):World{
       (effect.strength>=0?'+':'')+Math.round(effect.strength*100)+'% applied.',person.id);
   }else if(action.kind==='heal'&&person){
     person.health=100;person.energy=100;
+    // Divine healing can reverse an otherwise fatal ancient-site injury.
+    person.mortalWound=undefined;
     record(w,id,'heal','Restored health and energy completely.',person.id);
   }else if(action.kind==='punish'&&person){
     if(!Number.isFinite(action.severity))throw Error('Invalid severity.');
@@ -202,6 +204,7 @@ export function intervene(previous:World,action:DivineAction):World{
     const restored:Agent={id:past.id,species:past.species,
       ancestry:{...past.ancestry},generation:past.generation,x:at.x,y:at.y,
       born:past.born,age,energy:95,health:100,genes:{...past.genes},
+      knowledge:past.knownKnowledge?.map(k=>({...k})),
       ...(past.parents?{parents:[...past.parents] as [number,number]}:{}),
       mind:initialMind(w.year)};
     restored.development=initialDevelopment(restored,w.tiles[at.y*w.width+at.x].biome);

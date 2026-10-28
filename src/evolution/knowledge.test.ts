@@ -5,6 +5,7 @@ import {pureAncestry,traitProfile} from './family';
 import {TOPICS,advanceKnowledge,generateAncientSites,knows,learn,
   type Topic} from './knowledge';
 import {advanceWorldDays} from './calendar';
+import {intervene} from './divine';
 import {compactWorld,readSavedWorld} from './storage';
 
 describe('WorldForge v1.3: discovery and memory of knowledge',()=>{
@@ -140,6 +141,28 @@ describe('WorldForge v1.3: discovery and memory of knowledge',()=>{
     expect(following.lineage.find(record=>record.id===a.id)?.moments?.at(-1)?.text)
       .toContain('ancient ruin');
     expect(isWorld(following)).toBe(true);
+  });
+  it('lets divine healing reverse a mortal expedition injury',()=>{
+    const w=createWorld({seed:18,size:'small'}),id=w.agents[0].id;
+    w.agents[0].mortalWound=true;
+    w.agents[0].health=1;
+    const healed=intervene(w,{kind:'heal',personId:id});
+    expect(healed.agents[0].mortalWound).toBeUndefined();
+    expect(healed.agents[0].health).toBe(100);
+    expect(isWorld(stepWorld(healed))).toBe(true);
+  });
+  it('returns remembered discoveries when a deity resurrects a scholar',()=>{
+    const w=createWorld({seed:299,size:'small'}),id=w.agents[0].id;
+    learn(w,w.agents[0],'herbalism','discovery');
+    w.agents[0].age=999;
+    const dead=stepWorld(w);
+    expect(dead.agents.some(a=>a.id===id)).toBe(false);
+    const revived=intervene(dead,{kind:'resurrect',personId:id});
+    const scholar=revived.agents.find(a=>a.id===id)!;
+    expect(scholar.knowledge?.map(k=>k.topic)).toContain('herbalism');
+    expect(revived.lineage.find(r=>r.id===id)?.knownKnowledge?.[0].topic)
+      .toBe('herbalism');
+    expect(isWorld(revived)).toBe(true);
   });
   it('produces learned farming and professions over lived generations',()=>{
     const world=advanceWorld(createWorld({seed:104729,size:'small'}),32);

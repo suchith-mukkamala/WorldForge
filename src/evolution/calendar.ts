@@ -5,6 +5,7 @@
  */
 import {biomeSuitability,stepWorld,type World} from './engine';
 import {traitProfile} from './family';
+import {knows} from './knowledge';
 import {addResident,removeResident,residentIndex,tileCapacity} from './density';
 
 export const DAYS_PER_YEAR=365;
@@ -45,7 +46,8 @@ function advanceMonthlyTravel(w:World,month:number):World{
   let moved=false;
   for(let i=0;i<agents.length;i++){
     const a=agents[i];
-    const speed=traitProfile(a.ancestry).speed;
+    const speed=traitProfile(a.ancestry).speed*
+      (knows(a,'navigation')?1.2:1);
     if(a.work?.tradeId||!a.mind||
       // Swift peoples travel on more months than slower peoples. All movement
       // remains on the real grid and respects bridges and neighborhood space.
