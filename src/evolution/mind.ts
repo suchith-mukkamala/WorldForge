@@ -4,14 +4,18 @@
  */
 import type {Agent,Ancestry,Biome,World} from './engine';
 import {divineFactor,mortalWhisper} from './divine';
+import {knows} from './knowledge';
 
 export type MindGoal='forage'|'seek_safety'|'seek_family'|'seek_partner'|
   'stay_together'|'explore'|'venture'|'vocation'|'build'|'return_home'|
   'work'|'trade';
 export type PlaceMemory={x:number;y:number;year:number};
+export type ExpeditionPlan={siteId:number;started:number;
+  stage:'preparing'|'travel'|'returning';preparedness:number;supplies:number;
+  home:{x:number;y:number}};
 export type AgentMind={goal:MindGoal;reason:string;since:number;
   target?:{x:number;y:number};targetPersonId?:number;lastScarcity?:PlaceMemory;
-  lastGoodFood?:PlaceMemory};
+  lastGoodFood?:PlaceMemory;expedition?:ExpeditionPlan};
 
 export const MIND_GOALS:MindGoal[]=[
   'forage','seek_safety','seek_family','seek_partner','stay_together','explore',
@@ -113,6 +117,38 @@ function expedition(w:World,a:Agent):{x:number;y:number}|undefined{
   return best>0?target:undefined;
 }
 
+/** A mortal can only plan for sites in sight or within scouting/rumor reach.
+ * They weigh danger, skills, possible learning and the route home. */
+function chosenSite(w:World,a:Agent){
+  const range=a.development?.career==='scout'||knows(a,'navigation')?25:15;
+  const bravery=a.genes.curiosity*divineFactor(a,'courage',w.year);
+  const navigation=a.development?.skills.navigation??0;
+  const knowledge=a.development?.skills.knowledge??0;
+  const strength=a.ancestry.demon*1.85+a.ancestry.dwarf*1.25+
+    a.ancestry.elf*.92+a.ancestry.human;
+  let target:NonNullable<World['ancientSites']>[number]|undefined,best=-Infinity;
+  for(const site of w.ancientSites??[]){
+    const dist=distance(a,site);
+    if(dist<2||dist>range||a.visitedSites?.includes(site.id)||
+      site.visitors.includes(a.id))continue;
+    if(site.danger>45+bravery*23+strength*8+navigation*.2)continue;
+    let reachable=true;
+    for(let i=1;i<=dist;i++){
+      const x=Math.round(a.x+(site.x-a.x)*i/dist);
+      const y=Math.round(a.y+(site.y-a.y)*i/dist);
+      if(!edible(w,x,y)){reachable=false;break;}
+    }
+    if(!reachable)continue;
+    const learning=!knows(a,site.topic)?25:0;
+    const lore=site.origin==='collapsed'?12:0;
+    const treasure=(site.recovered??0)<3?10:0;
+    const score=learning+lore+treasure+bravery*10+knowledge*.1+
+      (site.kind==='library'?6:0)-site.danger*.3-dist*.75;
+    if(score>best){best=score;target=site;}
+  }
+  return best>0?target:undefined;
+}
+
 export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
   byId:Map<number,Agent>,contacts:Map<number,number>,
   suitability:(ancestry:Ancestry,biome:Biome)=>number,
@@ -127,6 +163,10 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
   const employer=a.work?w.settlements.find(s=>s.id===a.work?.settlementId):undefined;
   let goal:MindGoal='explore',reason='Healthy and curious about the surroundings.';
   let target:AgentMind['target'],targetPersonId:number|undefined;
+  let plan=prior?.expedition;
+  if(plan?.stage==='returning'&&distance(a,plan.home)<=2)plan=undefined;
+  if(plan?.stage==='travel'&&(w.year-plan.started>45||
+    !w.ancientSites?.some(s=>s.id===plan!.siteId)))plan=undefined;
   const expeditionReady=a.age>=maturity*.85&&a.age<lifespan*.76&&
     a.energy>77&&a.health>76&&
     (a.development?.career==='scout'||
@@ -166,6 +206,24 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
       b.age>=traits(b.ancestry).maturity&&b.energy>55,5);
     if(nearby){goal='seek_family';reason='Seeking adult support and companionship.';
       target={x:nearby.x,y:nearby.y};}
+  }else if(plan?.stage==='preparing'){
+    if(w.year>plan.started){
+      plan={...plan,stage:'travel'};
+      const site=w.ancientSites?.find(s=>s.id===plan!.siteId);
+      target=site?{x:site.x,y:site.y}:undefined;
+      goal=target?'venture':'explore';
+      reason='Supplies packed; traveling to a known ancient site.';
+    }else{
+      goal='vocation';target={...plan.home};
+      reason='Preparing provisions for a chosen expedition.';
+    }
+  }else if(plan?.stage==='travel'){
+    const site=w.ancientSites?.find(s=>s.id===plan!.siteId);
+    if(site){goal='venture';target={x:site.x,y:site.y};
+      reason='Seeking '+(site.name??'an ancient '+site.kind)+' despite its risks.';}
+  }else if(plan?.stage==='returning'){
+    goal='return_home';target={...plan.home};
+    reason='Bringing discoveries and scars back to familiar people.';
   }else if(continuing){
     goal='venture';reason='Continuing a chosen expedition into unfamiliar land.';
     target={...prior!.target!};
@@ -199,10 +257,30 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
       'Protecting a close partnership.':'Building trust in a developing bond.';
     target={x:partner.x,y:partner.y};
   }else if(expeditionReady&&
-    (a.development?.career==='scout'||(w.year+a.id*7)%19===0)){
-    const waypoint=expedition(w,a);
-    if(waypoint){goal='venture';reason='Seeking places beyond familiar biomes.';
-      target=waypoint;}
+    (a.development?.career==='scout'||a.development?.career==='scholar'||
+      (w.year+a.id*7)%19===0)){
+    const site=chosenSite(w,a);
+    if(site){
+      const nearby=w.settlements.find(s=>distance(s,a)<=7&&s.stores>8);
+      const supplies=nearby?72:Math.min(65,Math.round(foodAround(w,a.x,a.y)*2));
+      const preparedness=Math.min(100,Math.round(
+        a.health*.22+a.energy*.18+
+        (a.development?.skills.navigation??0)*.3+
+        (a.development?.skills.knowledge??0)*.2+
+        (knows(a,'medicine')?11:0)+(knows(a,'navigation')?13:0)+
+        supplies*.18));
+      if(supplies>=18){
+        plan={siteId:site.id,started:w.year,stage:'preparing',
+          preparedness,supplies,home:{x:a.x,y:a.y}};
+        goal='vocation';target={x:a.x,y:a.y};
+        reason='Packing supplies and studying the danger of '+
+          (site.name??'an ancient '+site.kind)+'.';
+      }
+    }else{
+      const waypoint=expedition(w,a);
+      if(waypoint){goal='venture';reason='Seeking places beyond familiar biomes.';
+        target=waypoint;}
+    }
   }else if(adult&&a.development?.career&&(w.year+a.id)%4===0){
     goal='vocation';
     reason={forager:'Gathering provisions for people nearby.',
@@ -235,7 +313,8 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
     ...(target?{target}:{}),
     ...(targetPersonId?{targetPersonId}:{}),
     ...(prior?.lastScarcity?{lastScarcity:prior.lastScarcity}:{}),
-    ...(prior?.lastGoodFood?{lastGoodFood:prior.lastGoodFood}:{})};
+    ...(prior?.lastGoodFood?{lastGoodFood:prior.lastGoodFood}:{}),
+    ...(plan?{expedition:plan}:{})};
 }
 
 /** Utility for an adjacent position: intentions compete with immediate needs. */

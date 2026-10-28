@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent} from 'react';
 import {WorldCanvas} from './WorldCanvas';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
@@ -10,7 +10,6 @@ import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
-import {KnowledgeCodex} from './KnowledgeCodex';
 import {TOPIC_INFO} from './knowledge';
 import {DivinePowers} from './DivinePowers';
 import {SettlementView} from './SettlementView';
@@ -23,6 +22,7 @@ import {personName,isPersonFavorite,renamePerson,togglePersonFavorite,
 import {hybridFraction,traitProfile,ancestryLabel} from './family';
 import {lifeStage,CAREER_LABELS} from './development';
 import {GOAL_LABELS} from './mind';
+const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 import {compactWorld,loadBrowserWorld,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
@@ -322,12 +322,6 @@ export function WorldforgeApp(){
         <button role="tab" aria-selected={tab==='world'}
           className={tab==='world'?'active':''} onClick={()=>navigate('world')}>
           ◈ WORLD</button>
-        <button role="tab" aria-selected={tab==='creator'}
-          className={tab==='creator'?'active':''} onClick={()=>navigate('creator')}>
-          ✧ WORLD CREATOR</button>
-        <button role="tab" aria-selected={tab==='history'}
-          className={tab==='history'?'active':''} onClick={()=>navigate('history')}>
-          ≋ HISTORY</button>
         <button role="tab" aria-selected={tab==='settlements'}
           className={tab==='settlements'?'active':''}
           onClick={()=>navigate('settlements')}>⌂ SETTLEMENTS</button>
@@ -336,16 +330,21 @@ export function WorldforgeApp(){
           ◉ PEOPLE</button>
         <button role="tab" aria-selected={tab==='knowledge'}
           className={tab==='knowledge'?'active':''} onClick={()=>navigate('knowledge')}>
-          ✧ KNOWLEDGE</button>
-        <button role="tab" aria-selected={tab==='family'}
-          className={tab==='family'?'active':''} onClick={()=>navigate('family')}>
-          ♡ FAMILIES</button>
-        <button role="tab" aria-selected={tab==='codex'}
-          className={tab==='codex'?'active':''} onClick={()=>navigate('codex')}>
-          ✦ DIVINE CODEX</button>
+          ✧ EXPEDITIONS & KNOWLEDGE</button>
+        <button role="tab" aria-selected={tab==='history'}
+          className={tab==='history'?'active':''} onClick={()=>navigate('history')}>
+          ≋ HISTORY</button>
         <button role="tab" aria-selected={tab==='powers'}
           className={tab==='powers'?'active':''} onClick={()=>navigate('powers')}>
-          ⚡ DIVINE POWERS</button>
+          ⚡ POWERS</button>
+        <select className="evo-more-pages" aria-label="More WorldForge pages"
+          value={['creator','family','codex'].includes(tab)?tab:''}
+          onChange={e=>navigate(e.target.value as Tab)}>
+          <option value="" disabled>MORE PAGES ▾</option>
+          <option value="creator">✧ WORLD CREATOR</option>
+          <option value="family">♡ FAMILIES</option>
+          <option value="codex">✦ DIVINE CODEX</option>
+        </select>
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}
         {savedDate&&<small> · SAVED Y{savedDate.year} {MONTH_NAMES[savedDate.month]}
@@ -365,8 +364,9 @@ export function WorldforgeApp(){
       onOpen={focusPerson} onFavorite={favoritePerson}
       onRename={giveName} onFindOnMap={findOnMap}
       onInvoke={id=>{setSelectedAgentId(id);navigate('powers');}}/>:
-    tab==='knowledge'?<KnowledgeCodex world={world} onFindOnMap={findAncientSite}
-      onOpenPerson={openPerson}/>:
+    tab==='knowledge'?<Suspense fallback={<main className="evo-history-page" role="status">
+      Opening the expedition journal…</main>}><KnowledgeCodex world={world}
+      onFindOnMap={findAncientSite} onOpenPerson={openPerson}/></Suspense>:
     tab==='codex'?<DivineCodex world={world}
       onOpenPerson={focusPerson} onFavoritePerson={favoritePerson}
       onFavoriteSettlement={favoriteSettlement}
@@ -515,12 +515,15 @@ export function WorldforgeApp(){
                     {' units · renewable deposit'}</small></div>
               </div>}
               {ancientSite&&<div className="evo-selected-settlement">
-                <strong>✧ ANCIENT {ancientSite.kind.toUpperCase()} #{ancientSite.id}</strong>
+                <strong>✧ {ancientSite.name??'ANCIENT '+ancientSite.kind.toUpperCase()+' #'+ancientSite.id}</strong>
                 <span>Risk {ancientSite.danger}/100 ·
-                  {' '}{ancientSite.visitors.length} previous expeditions</span>
+                  {' '}{ancientSite.visits??ancientSite.visitors.length} previous expeditions</span>
+                {ancientSite.origin==='collapsed'&&<span>
+                  {ancientSite.culture} settlement, abandoned in year {ancientSite.collapsed}.
+                  {' '}{ancientSite.lostTopics?.length??0} archived ideas survive.</span>}
                 <span>Explorers may uncover forgotten wisdom or be injured.
                   Knowledge is never guaranteed.</span>
-                <button onClick={()=>navigate('knowledge')}>✧ EXPLORE KNOWLEDGE CODEX ↗</button>
+                <button onClick={()=>navigate('knowledge')}>⌖ OPEN EXPEDITION JOURNAL ↗</button>
               </div>}
               {agent?<div className="evo-individual">
                 <div className="evo-individual-title">
@@ -625,11 +628,11 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V1.3: THE AGE OF KNOWLEDGE</strong>
-        <span>Experience, experimentation and teaching now shape what each mortal
-          actually knows. Visit the Knowledge Codex to trace discoveries,
-          ancient sites and preserved wisdom. Demons are exceptionally strong
-          and swift; their descendants inherit those traits.</span>
+        <strong>V1.4: RUINS & EXPEDITIONS</strong>
+        <span>Watch mortals prepare journeys to temples, libraries, crypts and
+          the remains of fallen settlements. Discoveries, scars, relics and
+          lost learning are traceable in the Expeditions & Knowledge journal.
+          The world keeps evolving at every zoom level.</span>
       </div>
     </main>}
   </div>;

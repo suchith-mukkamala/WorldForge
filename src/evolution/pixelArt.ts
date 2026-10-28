@@ -6,9 +6,47 @@ import {traitProfile} from './family';
 import {ARCHITECTURE,type Building} from './construction';
 import {RESOURCE_COLORS,type ResourceKind} from './resources';
 import type {Facing} from './motion';
+import type {AncientKind} from './knowledge';
 
 export const PERSON_SPRITE_WIDTH=16;
 export const PERSON_SPRITE_HEIGHT=22;
+/** Six different hand-pixeled silhouettes, painted at map resolution.
+ * An explored site has a lit doorway; abandoned cultures retain their tint. */
+export function paintAncientSite(ctx:CanvasRenderingContext2D,
+  kind:AncientKind,x:number,y:number,visited:boolean):void{
+  const p=(color:string,dx:number,dy:number,w:number,h:number)=>{
+    ctx.fillStyle=color;ctx.fillRect(x+dx,y+dy,w,h);
+  };
+  const stone='#746e79',shade='#353647',edge='#b6a2a0',gold='#e6c380';
+  p('#202636',-5,5,15,3);
+  if(kind==='temple'){
+    p(stone,-3,-4,12,9);p(gold,-5,-7,16,2);p('#a58976',-3,-5,12,2);
+    p(edge,-1,-3,2,7);p(edge,5,-3,2,7);p(shade,2,0,2,5);
+    p('#d9b05d',1,-8,3,1);p('#baa68b',-4,5,14,1);
+  }else if(kind==='library'||kind==='archive'){
+    p('#5a6d79',-4,-5,14,11);p('#b6c9c1',-3,-8,12,3);
+    p('#dfc8a0',-2,-4,3,7);p('#90745b',2,-4,5,7);
+    p('#d8ddbb',3,-3,1,5);p('#9fc0b0',5,-3,1,5);
+    p('#d6e5d9',0,-9,5,1);p(shade,-1,2,3,4);
+  }else if(kind==='crypt'){
+    p('#5a555f',-5,-5,15,11);p('#a8a0a0',-3,-7,11,3);
+    p('#242332',0,-3,5,9);p('#6f6572',1,-4,3,2);
+    p('#ddd2c1',1,0,3,2);p('#242332',1,0,1,1);p('#242332',3,0,1,1);
+    p('#c1a0b2',-6,1,2,3);p('#c1a0b2',9,0,2,4);
+  }else if(kind==='vault'){
+    p('#655568',-4,-6,13,12);p('#a494b3',-3,-8,11,3);
+    p('#2d293b',-1,-3,7,9);p('#997baa',0,-2,5,6);
+    p('#dbc596',2,0,2,2);p('#554a62',-5,4,15,2);
+  }else{
+    p(stone,-5,-2,4,8);p(edge,-5,-6,4,3);
+    p(stone,4,-5,4,11);p(edge,3,-7,6,2);
+    p('#a99ca0',-2,3,5,3);p('#6d717c',8,4,3,2);
+    p('#85818a',0,-6,4,2);p('#58606c',-4,-4,12,1);
+    p('#8b9a7c',-3,5,2,2);
+  }
+  if(visited){p('#f7db8a',2,3,2,2);p('#f3e4bf',2,2,1,1);}
+  else{p('#728f9d',2,3,2,2);}
+}
 export type PixelPerson=Pick<Agent,'id'|'species'|'ancestry'|'genes'> &
   Partial<Pick<Agent,'age'|'work'|'development'>>;
 export type AgeLook='young'|'adult'|'elder';

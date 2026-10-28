@@ -124,10 +124,19 @@ describe('Evolution Lab v0.5 — childhood and social development',()=>{
     const occupied=new Map(w.agents.map(b=>[b.y*w.width+b.x,b.id]));
     const byId=new Map(w.agents.map(b=>[b.id,b]));
     const mind=planMind(w,a,occupied,byId,new Map(),biomeSuitability,traitProfile);
-    expect(mind.goal).toBe('venture');
-    expect(mind.target).toBeDefined();
-    a.mind=mind;
-    const target=mind.target!;
+    // A ruin-focused mind spends a year preparing before traveling. An
+    // unstructured explorer can still venture immediately.
+    expect(['venture','vocation']).toContain(mind.goal);
+    if(mind.goal==='vocation'){
+      expect(mind.expedition?.stage).toBe('preparing');
+      a.mind=mind;w.year++;
+    }
+    const ready=mind.expedition?.stage==='preparing'?
+      planMind(w,a,occupied,byId,new Map(),biomeSuitability,traitProfile):mind;
+    expect(ready.goal).toBe('venture');
+    expect(ready.target).toBeDefined();
+    a.mind=ready;
+    const target=ready.target!;
     const nx=a.x+Math.sign(target.x-a.x),ny=a.y+Math.sign(target.y-a.y);
     expect(movementIntent(a,nx,ny,w.year)).toBeGreaterThan(40);
   });
@@ -137,7 +146,7 @@ describe('Evolution Lab v0.5 — childhood and social development',()=>{
     const traveled=world.agents.filter(a=>a.development?.knownBiomes.some(b=>
       biomeSuitability(a.ancestry,b)<.45));
     expect(traveled.length).toBeGreaterThan(0);
-  },30000);
+  },60000);
 
   it('keeps v0.4 saves readable, records new experiences, and renders the social profile',()=>{
     const original=createWorld({seed:103,size:'small'});

@@ -3,7 +3,7 @@
  */
 import type {Agent,Settlement,Species,World} from './engine';
 import {traitProfile} from './family';
-import {knows} from './knowledge';
+import {knows,TOPICS} from './knowledge';
 import {harvestDeposit,type ResourceDeposit,
   type ResourceKind} from './resources';
 import {hasHarbor} from './shipping';
@@ -416,6 +416,20 @@ export function archiveRuins(w:World,s:Settlement):void{
       spent:{...b.spent},stage:b.stage==='ruin'?'ruin':'abandoned',
       abandoned:b.abandoned??w.year})),roads:[...s.infrastructure.roads]});
   if(w.ruins.length>80)w.ruins=w.ruins.slice(-80);
+  // A collapsed civilization is an actual archaeological site, not a
+  // randomly invented backstory. Its books and techniques can be recovered.
+  w.ancientSites??=[];
+  if(w.ancientSites.length<100&&!w.ancientSites.some(v=>v.origin==='collapsed'&&
+    v.name===s.name&&v.x===s.x&&v.y===s.y)){
+    const id=Math.max(0,...w.ancientSites.map(v=>v.id))+1;
+    const lost=s.archives??[];
+    const topic=lost.length?lost[(s.id+w.year)%lost.length]:
+      TOPICS[(s.id+w.year)%TOPICS.length];
+    w.ancientSites.push({id,kind:'ruin',x:s.x,y:s.y,topic,
+      danger:Math.min(90,24+s.infrastructure.buildings.length*3),visitors:[],
+      visits:0,recovered:0,origin:'collapsed',name:s.name,
+      culture:s.species,collapsed:w.year,lostTopics:[...lost]});
+  }
 }
 
 /** Run exactly once per simulated year, regardless of UI, zoom, or open tab. */

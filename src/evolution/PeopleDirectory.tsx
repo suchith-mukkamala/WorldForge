@@ -312,6 +312,16 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
             <div className="evo-card-heading"><strong>✧ KNOWLEDGE ACQUIRED IN LIFE</strong>
               <span>{focused.knownKnowledge?.length??alive?.knowledge?.length??0} SUBJECTS</span>
             </div>
+            {alive?.mind?.expedition&&<div className="evo-expedition-summary">
+              <span>⌖ Expedition: {alive.mind.expedition.stage}</span>
+              <span>Site #{alive.mind.expedition.siteId}</span>
+              <span>Preparedness {alive.mind.expedition.preparedness}/100</span>
+            </div>}
+            {!!alive?.artifacts?.length&&<div className="evo-knowledge-town">
+              <strong>RECOVERED ARTIFACTS</strong>
+              {alive.artifacts.map((v,i)=><p key={i}>✦ {v.name} ·
+                {' '}found at site #{v.siteId} in Y{v.year}</p>)}
+            </div>}
             <div className="evo-knowledge-list">
               {(focused.knownKnowledge??alive?.knowledge??[]).map(k=><p key={k.topic}>
                 <b>{TOPIC_INFO[k.topic].name}</b> · Learned in year {k.year}
