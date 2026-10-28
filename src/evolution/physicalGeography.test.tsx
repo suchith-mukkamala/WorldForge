@@ -3,8 +3,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import {advanceWorldDays} from './calendar';
 import {DepthCanvas} from './DepthCanvas';
-import {depthCanvasSize,depthDrop,projectDepth,RELIEF_LEVELS,
-  tileFromHit,tileHitColor} from './depthProjection';
+import {createDepthProjector,depthCanvasSize,depthDrop,projectDepth,
+  RELIEF_LEVELS,tileFromHit,tileHitColor} from './depthProjection';
 import {createWorld,isWorld,type World} from './engine';
 import {findMortalRoute} from './mindII';
 import {compactWorld,readSavedWorld} from './storage';
@@ -134,6 +134,53 @@ describe('v2.0 — terrain that physically matters and a selectable depth view',
     }));
     expect(html).toContain('exaggerated cliffs');
     expect(html).toContain(`height="${depthCanvasSize(world,4).height}"`);
+  });
+
+  it('orbits the physical heightfield through 360 degrees without clipping or rotating tile IDs',()=>{
+    const world=createWorld({seed:2070,size:'small'});
+    const before=JSON.stringify(world);
+    const directions=[0,15,45,90,135,180,225,270,315,345,360];
+    for(const yaw of directions)for(const pitch of [18,30,55]){
+      const camera={yaw,pitch};
+      const projection=createDepthProjector(world,4,camera);
+      expect(projection.size.width).toBeGreaterThan(world.width);
+      expect(projection.size.height).toBeGreaterThan(world.height);
+      for(const [x,y] of [[0,0],[world.width-1,0],
+        [0,world.height-1],[world.width-1,world.height-1]]){
+        for(const vertex of projection.tileCorners(x,y,255)){
+          expect(vertex.x).toBeGreaterThanOrEqual(0);
+          expect(vertex.x).toBeLessThan(projection.size.width);
+          expect(vertex.y).toBeGreaterThanOrEqual(0);
+          expect(vertex.y).toBeLessThan(projection.size.height);
+        }
+        const bottom=projection.project(x,y,0);
+        expect(bottom.y).toBeGreaterThan(0);
+        expect(bottom.y).toBeLessThan(projection.size.height);
+      }
+      const mountain=projection.project(10,10,208);
+      const sea=projection.project(10,10,48);
+      expect(mountain.y).toBeLessThan(sea.y);
+      expect(depthCanvasSize(world,4,camera)).toEqual(projection.size);
+    }
+    const north=createDepthProjector(world,2.5,{yaw:0,pitch:30});
+    const east=createDepthProjector(world,2.5,{yaw:90,pitch:30});
+    expect(north.frontX).toBe(1);expect(north.frontY).toBe(1);
+    expect(east.frontX).toBe(1);expect(east.frontY).toBe(-1);
+    expect(createDepthProjector(world,2.5,{yaw:180,pitch:30}).frontX).toBe(-1);
+    expect(createDepthProjector(world,2.5,{yaw:180,pitch:30}).frontY).toBe(-1);
+    expect(createDepthProjector(world,2.5,{yaw:45,pitch:30}).frontY).toBe(0);
+    expect(createDepthProjector(world,2.5,{yaw:135,pitch:30}).frontX).toBe(0);
+    const base=north.project(10,20,108);
+    expect(east.project(10,20,108).x).not.toBe(base.x);
+    expect(JSON.stringify(world)).toBe(before);
+    const html=renderToStaticMarkup(createElement(DepthCanvas,{
+      world,brush:{kind:'inspect'},overlay:'terrain',selected:{x:10,y:20},
+      onSelect:()=>{},onEdit:()=>{},relief:2.5,
+      camera:{yaw:135,pitch:18},
+    }));
+    expect(html).toContain('orbit camera');
+    expect(html).toContain(`width="${depthCanvasSize(world,2.5,
+      {yaw:135,pitch:18}).width}"`);
   });
 
   it('keeps calendar stepping deterministic with the v2.0 terrain rules',()=>{

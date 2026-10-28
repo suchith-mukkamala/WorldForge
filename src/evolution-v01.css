@@ -97,6 +97,18 @@
 .evo-map-toolbar label{font:9px 'Space Mono',monospace;color:#9ebdba}
 .evo-map-toolbar select{background:#1a2c41;color:#d8ede5;border:1px solid #4b6377;
   padding:7px 8px;border-radius:3px;font:10px/1.5 'Space Mono',monospace;max-width:235px}
+.evo-orbit-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  border-left:1px solid #385067;padding-left:10px}
+.evo-orbit-controls button{min-width:29px;min-height:29px;border:1px solid #56717f;
+  border-radius:3px;background:#253c4c;color:#d8eacb;cursor:pointer;
+  font:bold 16px/1 'Space Mono',monospace}
+.evo-orbit-controls button:hover{background:#365d60;border-color:#8fc5b3}
+.evo-orbit-controls button:focus-visible{outline:2px solid #e9d6a4;outline-offset:2px}
+.evo-orbit-controls input[type=range]{width:93px;min-width:70px;accent-color:#91d4bc;
+  cursor:pointer}
+.evo-orbit-controls output{min-width:36px;color:#e4cfa4;
+  font:10px 'Space Mono',monospace;text-align:right}
+.evo-orbit-controls .evo-orbit-reset{font-size:9px;padding:0 7px}
 .evo-layer-legend{display:flex;flex-wrap:wrap;align-items:center;gap:7px 15px;
   padding:8px 15px;border-bottom:1px solid #263d50;background:#142539;
   font:9px/1.55 'Space Mono',monospace;color:#b8cad1}

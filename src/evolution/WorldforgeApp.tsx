@@ -4,7 +4,8 @@ import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas,type MapOverlay} from './WorldCanvas';
 import {DepthCanvas} from './DepthCanvas';
-import {RELIEF_LEVELS,type ReliefLevel} from './depthProjection';
+import {CAMERA_PITCHES,RELIEF_LEVELS,
+  type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
@@ -134,6 +135,8 @@ export function WorldforgeApp(){
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
   const [mapView,setMapView]=useState<'overhead'|'depth'>('overhead');
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
+  const [orbitYaw,setOrbitYaw]=useState(0);
+  const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
   const [zoom,setZoom]=useState(1);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
@@ -629,6 +632,32 @@ export function WorldforgeApp(){
                 <option value="dramatic">Dramatic · 2.5×</option>
                 <option value="monumental">Monumental · 4×</option>
               </select>
+              <div className="evo-orbit-controls" role="group"
+                aria-label="Orbit camera controls">
+                <label htmlFor="evo-orbit">ORBIT</label>
+                <button type="button" aria-label="Rotate camera 45 degrees left"
+                  title="Orbit left 45°"
+                  onClick={()=>setOrbitYaw(yaw=>(yaw+315)%360)}>↶</button>
+                <input id="evo-orbit" type="range" min="0" max="345" step="15"
+                  aria-label="Camera rotation in degrees" value={orbitYaw}
+                  onChange={e=>setOrbitYaw(Number(e.target.value))}/>
+                <button type="button" aria-label="Rotate camera 45 degrees right"
+                  title="Orbit right 45°"
+                  onClick={()=>setOrbitYaw(yaw=>(yaw+45)%360)}>↷</button>
+                <output htmlFor="evo-orbit">{orbitYaw}°</output>
+                <label htmlFor="evo-camera-tilt">TILT</label>
+                <select id="evo-camera-tilt" value={cameraPitch}
+                  aria-label="Camera viewing angle"
+                  onChange={e=>setCameraPitch(e.target.value as CameraPitch)}>
+                  <option value="low">Low · 18°</option>
+                  <option value="classic">Classic · 30°</option>
+                  <option value="high">High · 55°</option>
+                </select>
+                <button type="button" className="evo-orbit-reset"
+                  aria-label="Reset camera orientation"
+                  onClick={()=>{setOrbitYaw(0);setCameraPitch('classic');}}>
+                  RESET</button>
+              </div>
             </>}
           </div>
           <MapLayerLegend overlay={overlay}/>
@@ -652,7 +681,8 @@ export function WorldforgeApp(){
               onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
-                onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}/>}
+                onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
+                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}/>}
           </div>
           <div className="evo-map-footer">
             <div className="evo-species-legend">
@@ -664,7 +694,7 @@ export function WorldforgeApp(){
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
-                'CLIFFS & EARTH WALLS · ADJUST HEIGHT FOR DRAMATIC RELIEF · ZOOM TO EXPLORE'}</span>
+                'ORBIT 360° · CHANGE TILT & HEIGHT · CLICK CLIFFS TO INSPECT'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -847,12 +877,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.06: TERRAIN THAT RISES ABOVE THE MAP</strong>
-        <span>Raised terrain now has unmistakable cliffs, exposed rock strata,
-          dramatic mountain heights, natural sunlight and visible landmass
-          edges. Choose Natural, Dramatic or Monumental height exaggeration
-          without changing any world physics. Mortals stay tiny beside trees,
-          houses and mountains.</span>
+        <strong>V2.07: SEE THE WORLD FROM EVERY SIDE</strong>
+        <span>Orbit the raised terrain through a full 360° and tilt the camera
+          down toward the horizon or up for a broad overview. Mountains, cliffs,
+          trees, people and towns turn together, and visible rock faces respond
+          to the viewing direction. Height and camera controls change only how
+          the existing world is drawn, never its people or physics.</span>
       </div>
     </main>}
   </div>;

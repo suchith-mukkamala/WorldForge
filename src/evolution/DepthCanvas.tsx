@@ -10,10 +10,9 @@ import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites
 import {mortalWorldPoint} from './spatialDetails';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Motion,type Point} from './motion';
-import {depthCanvasSize,projectDepth,tileFromHit,tileHitColor,
-  DEPTH_TILE_HEIGHT,DEPTH_TILE_WIDTH,depthDrop} from './depthProjection';
+import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
+  tileFromHit,tileHitColor,type DepthCamera} from './depthProjection';
 
-const HALF_X=DEPTH_TILE_WIDTH/2,HALF_Y=DEPTH_TILE_HEIGHT/2;
 const BASINS=['#385e60','#4a6758','#536072','#637056',
   '#42637c','#6c695e','#456f68','#606d77'];
 const PALETTE:Record<Biome,{top:string;right:string;left:string}>={
@@ -28,16 +27,13 @@ const PALETTE:Record<Biome,{top:string;right:string;left:string}>={
 const HEIGHT_COLORS=['#234966','#3b7182','#5d866b','#74936a',
   '#8c9a72','#b19f7c','#9b918b','#bcc1c4','#e8e7d9'];
 type Pt={x:number;y:number};
+type Projector=ReturnType<typeof createDepthProjector>;
 
 function polygon(ctx:CanvasRenderingContext2D,points:readonly Pt[],color:string){
   ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
   for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
   ctx.closePath();ctx.fill();
 }
-function diamond(p:Pt):Pt[]{return [
-  {x:p.x,y:p.y-HALF_Y},{x:p.x+HALF_X,y:p.y},
-  {x:p.x,y:p.y+HALF_Y},{x:p.x-HALF_X,y:p.y},
-];}
 /** Illuminated rock faces are drawn as real projected geometry. Their surface
  * is part of the tile's color-picking silhouette, including tall cliff walls. */
 function rockFace(ctx:CanvasRenderingContext2D,hit:CanvasRenderingContext2D,
@@ -77,32 +73,46 @@ function tileColor(w:World,index:number,overlay:MapOverlay,height:number,
  */
 function renderTerrain(w:World,overlay:MapOverlay,
   ctx:CanvasRenderingContext2D,hit:CanvasRenderingContext2D,
-  relief:number){
+  projector:Projector){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
   ctx.fillStyle='#101b2f';ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
   hit.clearRect(0,0,hit.canvas.width,hit.canvas.height);
   ctx.imageSmoothingEnabled=false;hit.imageSmoothingEnabled=false;
-  for(let sum=0;sum<W+H-1;sum++){
-    const minX=Math.max(0,sum-(H-1)),maxX=Math.min(W-1,sum);
-    for(let x=minX;x<=maxX;x++){
-      const y=sum-x,index=y*W+x,height=heights[index];
-      const p=projectDepth(w,x,y,height,relief),corners=diamond(p);
+  const ordered=Array.from({length:W*H},(_,i)=>i);
+  ordered.sort((a,b)=>projector.order(a%W,Math.floor(a/W))-
+    projector.order(b%W,Math.floor(b/W))||a%W-b%W);
+  for(const index of ordered){
+      const x=index%W,y=Math.floor(index/W),height=heights[index];
+      const p=projector.project(x,y,height);
+      const corners=projector.tileCorners(x,y,height);
       const biome=w.tiles[index].biome,palette=PALETTE[biome];
       const east=x<W-1?heights[index+1]:height;
       const south=y<H-1?heights[index+W]:height;
       const west=x>0?heights[index-1]:height;
       const north=y>0?heights[index-W]:height;
-      // Exaggerated internal escarpments expose the actual differential.
-      // At the outer front rim the whole landmass has a 3D earth skirt;
-      // oceans retain a shallow blue edge, and mountains rise above it.
-      const dropX=x<W-1?depthDrop(height,east,relief):
-        depthDrop(height,SEA_LEVEL,relief)+15;
-      const dropY=y<H-1?depthDrop(height,south,relief):
-        depthDrop(height,SEA_LEVEL,relief)+15;
-      rockFace(ctx,hit,corners[1],corners[2],dropX,palette.right,index);
-      rockFace(ctx,hit,corners[2],corners[3],dropY,palette.left,index);
+      // Whichever side of the continent faces the orbiting camera gets a
+      // physical cliff wall; the opposite side cannot bleed through it.
+      const fx=projector.frontX,fy=projector.frontY;
+      if(fx){
+        const adjacent=fx>0?east:west;
+        const boundary=fx>0?x===W-1:x===0;
+        const drop=depthDrop(height,boundary?SEA_LEVEL:adjacent,
+          projector.riseScale)+(boundary?15:0);
+        rockFace(ctx,hit,fx>0?corners[1]:corners[3],
+          fx>0?corners[2]:corners[0],drop,
+          fx>0?palette.right:palette.left,index);
+      }
+      if(fy){
+        const adjacent=fy>0?south:north;
+        const boundary=fy>0?y===H-1:y===0;
+        const drop=depthDrop(height,boundary?SEA_LEVEL:adjacent,
+          projector.riseScale)+(boundary?15:0);
+        rockFace(ctx,hit,fy>0?corners[2]:corners[0],
+          fy>0?corners[3]:corners[1],drop,
+          fy>0?palette.left:palette.right,index);
+      }
       polygon(ctx,corners,tileColor(w,index,overlay,height,drainage));
       if(overlay==='terrain'||overlay==='elevation'){
         // A northwest sun illuminates west-facing slopes; the other aspect
@@ -117,9 +127,14 @@ function renderTerrain(w:World,overlay:MapOverlay,
             (height-125)/380).toFixed(3)})`);
       }
       ctx.strokeStyle='rgba(10,24,39,.28)';ctx.lineWidth=.6;
-      ctx.beginPath();ctx.moveTo(corners[3].x,corners[3].y);
-      ctx.lineTo(corners[2].x,corners[2].y);
-      ctx.lineTo(corners[1].x,corners[1].y);ctx.stroke();
+      ctx.beginPath();
+      if(fx){const a=fx>0?corners[1]:corners[3];
+        const b=fx>0?corners[2]:corners[0];
+        ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}
+      if(fy){const a=fy>0?corners[2]:corners[0];
+        const b=fy>0?corners[3]:corners[1];
+        ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}
+      ctx.stroke();
       if((overlay==='elevation'||overlay==='terrain')&&(
         x>0&&Math.floor(heights[index-1]/30)<Math.floor(height/30)||
         y>0&&Math.floor(heights[index-W]/30)<Math.floor(height/30))){
@@ -147,13 +162,12 @@ function renderTerrain(w:World,overlay:MapOverlay,
         ctx.fillStyle='#89b9be';ctx.fillRect(p.x-2,p.y-1,4,2);
       }
       polygon(hit,corners,tileHitColor(index));
-    }
   }
   if(drainage)for(let i=0;i<W*H;i++){
     const tier=drainage.channel[i],next=drainage.flowTo[i];
     if(!tier||next<0)continue;
-    const from=projectDepth(w,i%W,Math.floor(i/W),heights[i],relief);
-    const to=projectDepth(w,next%W,Math.floor(next/W),heights[next],relief);
+    const from=projector.project(i%W,Math.floor(i/W),heights[i]);
+    const to=projector.project(next%W,Math.floor(next/W),heights[next]);
     ctx.strokeStyle=overlay==='watersheds'?'#a3e5ee':'#5fc4e3';
     ctx.lineWidth=tier>=3?2:tier===2?1.5:1;
     ctx.beginPath();ctx.moveTo(from.x,from.y);
@@ -161,7 +175,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
   }
   if(overlay==='deposits')for(const d of w.deposits??[]){
     if(d.amount<=.1)continue;
-    const p=projectDepth(w,d.index%W,Math.floor(d.index/W),heights[d.index],relief);
+    const p=projector.project(d.index%W,Math.floor(d.index/W),heights[d.index]);
     ctx.fillStyle=d.kind==='tree'?'#92ca91':'#e9c790';
     ctx.fillRect(p.x-1,p.y-4,3,4);
   }
@@ -169,11 +183,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
 
 function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   selected:{x:number;y:number}|null,zoom:number,
-  positions:Map<number,Point>,walking:Set<number>,relief:number){
+  positions:Map<number,Point>,walking:Set<number>,projector:Projector){
   const heights=topographyForWorld(w).heights;
   const actors:{order:number;paint:()=>void}[]=[];
   for(const s of w.settlements){
-    const p=projectDepth(w,s.x,s.y,heights[s.y*w.width+s.x],relief);
+    const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
     actors.push({order:p.y+.2,paint:()=>{
       // A compact town banner identifies the settlement; actual structures
       // occupy their separate addresses and evolve independently below.
@@ -183,7 +197,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
       ctx.fillStyle='#f1d9a9';ctx.fillRect(p.x-4,p.y-11,7,1);
     }});
     for(const b of s.infrastructure?.buildings??[]){
-      const bp=projectDepth(w,b.x,b.y,heights[b.y*w.width+b.x],relief);
+      const bp=projector.project(b.x,b.y,heights[b.y*w.width+b.x]);
       actors.push({order:bp.y+.4,paint:()=>paintDepthBuilding(ctx,b,bp)});
     }
   }
@@ -192,7 +206,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     selected,zoom:Math.max(1,zoom),maxVisible:350});
   for(const a of agents){
     const pos=positions.get(a.id)??{x:a.x,y:a.y};
-    const p=projectDepth(w,pos.x,pos.y,heights[a.y*w.width+a.x],relief);
+    const p=projector.project(pos.x,pos.y,heights[a.y*w.width+a.x]);
     actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id))});
   }
   actors.sort((a,b)=>a.order-b.order);
@@ -200,8 +214,8 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   if(selected){
     const index=selected.y*w.width+selected.x;
     if(index>=0&&index<heights.length){
-      const p=projectDepth(w,selected.x,selected.y,heights[index],relief);
-      const corners=diamond(p);
+      const p=projector.project(selected.x,selected.y,heights[index]);
+      const corners=projector.tileCorners(selected.x,selected.y,heights[index]);
       ctx.lineWidth=2;ctx.strokeStyle='#fff0ac';ctx.beginPath();
       ctx.moveTo(corners[0].x,corners[0].y);
       for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);
@@ -212,21 +226,23 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 }
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
-  zoom=1,speed=4,relief=2.5}:{
+  zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
-  onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;relief?:number;
+  onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
+  relief?:number;camera?:DepthCamera;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<HTMLCanvasElement|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
-    relief:number}|null>(null);
+    relief:number;yaw:number;pitch:number}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
-  const size=depthCanvasSize(world,relief);
+  const projector=createDepthProjector(world,relief,camera);
+  const size=projector.size;
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
@@ -247,12 +263,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||landChanged||stamp.topography!==world.topography||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
-      stamp.relief!==relief||
+      stamp.relief!==relief||stamp.yaw!==camera.yaw||
+      stamp.pitch!==camera.pitch||
       overlay==='deposits'&&stamp.deposits!==world.deposits){
-      renderTerrain(world,overlay,backdrop,hit,relief);
+      renderTerrain(world,overlay,backdrop,hit,projector);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,
-      overlay,deposits:world.deposits,seed:world.settings.seed,relief};
+      overlay,deposits:world.deposits,seed:world.settings.seed,relief,
+      yaw:camera.yaw,pitch:camera.pitch};
     const positions=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
@@ -283,12 +301,12 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
         interpolated.set(id,frame??target);
         if(frame?.walking)walking.add(id);
       }
-      paintInhabitants(ctx,world,selected,zoom,interpolated,walking,relief);
+      paintInhabitants(ctx,world,selected,zoom,interpolated,walking,projector);
       if(walking.size)frameHandle=requestAnimationFrame(draw);
     };
     draw(now);
     return ()=>cancelAnimationFrame(frameHandle);
-  },[world,overlay,selected,zoom,speed,relief]);
+  },[world,overlay,selected,zoom,speed,relief,camera.yaw,camera.pitch]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };
@@ -321,7 +339,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   return <canvas ref={canvasRef} className="evo-world-canvas evo-depth-canvas"
     width={size.width} height={size.height}
     style={{width:(zoom*100)+'%'}} role="grid" tabIndex={0}
-    aria-label={'Isometric terrain depth view with exaggerated cliffs: '+world.width+' by '+
+    aria-label={'Isometric terrain depth view with exaggerated cliffs and orbit camera: '+world.width+' by '+
       world.height+' world cells. Click a raised tile to '+
       (brush.kind==='inspect'?'inspect it':'apply the selected map tool')+
       '. Arrow keys move the selection; Enter applies the brush.'}
