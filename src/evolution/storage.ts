@@ -18,6 +18,15 @@ const WORLD_DATABASE='worldforge-worlds';
 const WORLD_RECORD='current-world';
 const WORLD_PREVIOUS_RECORD='previous-world';
 const WORLD_STORE='snapshots';
+export const SAVE_FORMAT_VERSION=3;
+export const WORLD_SCHEMA_VERSION=2;
+/** Fast corruption detector, not a security signature. Full world validation
+ * remains mandatory for every imported or restored snapshot. */
+function checksum(input:string):string{
+  let hash=2166136261;
+  for(let i=0;i<input.length;i++)hash=Math.imul(hash^input.charCodeAt(i),16777619);
+  return (hash>>>0).toString(16).padStart(8,'0');
+}
 function database():Promise<IDBDatabase>{
   return new Promise((resolve,reject)=>{
     if(typeof indexedDB==='undefined')return reject(Error('IndexedDB unavailable'));
@@ -72,7 +81,7 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now()):Promise<void>{
               (entry as {raw:unknown}).raw:null;
           // Preserve a backup only for a recognized checkpoint, avoiding
           // unnecessary writes of corrupt or non-world data.
-          if(typeof old==='string'&&old.length<=MAX_WORLD_FILE_BYTES)
+          if(typeof old==='string'&&readSavedWorld(old))
             store.put(entry,WORLD_PREVIOUS_RECORD);
           store.put({raw,savedAt},WORLD_RECORD);
         };
@@ -116,8 +125,10 @@ function decodeTiles(raw:string,count:number):Tile[]|null{
 }
 export function compactWorld(world:World):string{
   const {tiles,...rest}=world;
-  return JSON.stringify({format:'evo-packed-v2',world:rest,
-    terrain:encodeTiles(tiles)});
+  const core={schemaVersion:WORLD_SCHEMA_VERSION,world:rest,
+    terrain:encodeTiles(tiles)};
+  return JSON.stringify({format:'evo-packed-v3',...core,
+    checksum:checksum(JSON.stringify(core))});
 }
 function isRecord(input:unknown):input is Record<string,unknown>{
   return !!input&&typeof input==='object'&&!Array.isArray(input);
@@ -208,7 +219,15 @@ export function readSavedWorld(raw:string|null):World|null{
   try{
     const parsed:unknown=JSON.parse(raw);
     if(!isRecord(parsed))return null;
-    if(parsed.format==='evo-packed-v2'){
+    if(parsed.format==='evo-packed-v3'||parsed.format==='evo-packed-v2'){
+      if(parsed.format==='evo-packed-v3'){
+        if(parsed.schemaVersion!==WORLD_SCHEMA_VERSION||
+          typeof parsed.checksum!=='string'||
+          parsed.checksum!==checksum(JSON.stringify({
+            schemaVersion:parsed.schemaVersion,world:parsed.world,
+            terrain:parsed.terrain
+          })))return null;
+      }
       if(!isRecord(parsed.world)||typeof parsed.terrain!=='string')return null;
       const inner=parsed.world;
       const width=inner.width,height=inner.height;
@@ -224,10 +243,20 @@ export function readSavedWorld(raw:string|null):World|null{
     return isWorld(parsed)?parsed:null;
   }catch{return null;}
 }
-export function loadBrowserWorld(storage:Pick<Storage,'getItem'>):World|null{
+/** Compare timestamps only for valid saves. Corrupt localStorage records
+ * must not suppress an older working IndexedDB checkpoint at startup. */
+export function loadBrowserWorldSnapshot(storage:Pick<Storage,'getItem'>):
+    {world:World;savedAt:number}|null{
   try{
     const current=readSavedWorld(storage.getItem(WORLD_STORAGE_KEY));
-    if(current)return current;
-    return readSavedWorld(storage.getItem(LEGACY_STORAGE_KEY));
+    if(current){
+      const savedAt=Number(storage.getItem(WORLD_STORAGE_TIME_KEY));
+      return {world:current,savedAt:Number.isFinite(savedAt)?savedAt:0};
+    }
+    const legacy=readSavedWorld(storage.getItem(LEGACY_STORAGE_KEY));
+    return legacy?{world:legacy,savedAt:0}:null;
   }catch{return null;}
+}
+export function loadBrowserWorld(storage:Pick<Storage,'getItem'>):World|null{
+  return loadBrowserWorldSnapshot(storage)?.world??null;
 }
