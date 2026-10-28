@@ -7,6 +7,7 @@ import {knows,TOPICS} from './knowledge';
 import {harvestDeposit,type ResourceDeposit,
   type ResourceKind} from './resources';
 import {hasHarbor} from './shipping';
+import {terrainBuildPenalty,terrainFarmFactor} from './terrainPhysics';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
   'workshop','market','dock','communal'] as const;
@@ -194,7 +195,8 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
         .some(n=>w.tiles[n]?.biome==='water')?9:1):
       type==='workshop'?(['mountain','cave'].includes(tile.biome)?7:2):
       type==='storage'?Math.max(0,7-near):Math.max(0,6-near);
-    const score=productive-near*.8-hazard+(nearbyRoad?4:0)+
+    const score=productive-near*.8-hazard+(nearbyRoad?4:0)-
+      terrainBuildPenalty(w,id)*(type==='farm'?1.4:.7)+
       // Stable tie breaker: site choice is independent of rendering.
       ((s.id*97+x*17+y*43)%31)*.01;
     if(score>best){best=score;target={x,y};}
@@ -401,7 +403,8 @@ function applyBenefits(w:World,s:Settlement):void{
         wasteland:4.7,volcanic:4.1}[t.biome];
       // Cultivation speeds replenishment of harvested tiles without creating
       // food above the land's ecological carrying capacity.
-      t.food=round(Math.min(original*w.settings.resourceLevel,t.food+.16));
+      t.food=round(Math.min(original*w.settings.resourceLevel,
+        t.food+.16*terrainFarmFactor(w,position(w,x,y))));
     }
   }
 }

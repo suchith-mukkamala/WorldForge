@@ -6,6 +6,7 @@ import type {Agent,Settlement,World} from './engine';
 import {traitProfile} from './family';
 import {knows} from './knowledge';
 import {MATERIALS,prepareInfrastructure,type Material,type Ore} from './construction';
+import {terrainFarmFactor,terrainStepEffort} from './terrainPhysics';
 import {bridgeTiles,caravanPace,considerTradeBridge,findTradeRoute} from './transport';
 import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
 import {accordBetween} from './institutions';
@@ -215,7 +216,8 @@ function farmAndFeed(w:World,s:Settlement,residents:Agent[]):void{
     const technique=knows(a,'agriculture')?1.24:.55;
     const irrigation=knows(a,'irrigation')?1.25:1;
     produced+=Math.min(4.6,(1.25+(a.development?.skills.foraging??0)*.018)*
-      fertile*w.settings.resourceLevel*technique*irrigation*
+      fertile*terrainFarmFactor(w,farm.y*w.width+farm.x)*
+      w.settings.resourceLevel*technique*irrigation*
       (e.specialty==='agriculture'?1.2:1));
     a.energy=rounded(Math.max(1,a.energy-.4));
   }
@@ -375,7 +377,8 @@ function resolveShipments(w:World,moved:number[]):Set<number>{
       a.x=next.x;a.y=next.y;addResident(residents,idx,a.id);
       refresh(old);refresh(idx);
       moved.push(idx);
-      a.energy=rounded(Math.max(1,a.energy-.7));
+      a.energy=rounded(Math.max(1,a.energy-.7*
+        (shipment.mode==='sea'?1:terrainStepEffort(w,old,idx))));
       shipment.progress++;shipment.lastAdvance=w.year;
     }
     if(arrived()){

@@ -10,6 +10,7 @@ import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
 import {residentIndex,tileCapacity,addResident,removeResident} from './density';
 import {traitProfile} from './family';
+import {hasPhysicalTerrain,terrainStepEffort} from './terrainPhysics';
 
 export const PURPOSES=['survive','recover','learn','explore','connect','care',
   'work','create','reflect'] as const;
@@ -456,7 +457,8 @@ export function findMortalRoute(w:World,a:Agent,target:{x:number;y:number},
       const x=cx+dx,y=cy+dy,index=y*w.width+x;
       if(!walkable(x,y)||closed.has(index))continue;
       if(dx&&dy&&!walkable(cx+dx,cy)&&!walkable(cx,cy+dy))continue;
-      const tentative=(scores.get(current)??0)+(dx&&dy?1.414:1);
+      const tentative=(scores.get(current)??0)+(dx&&dy?1.414:1)*
+        terrainStepEffort(w,current,index);
       if(tentative>=(scores.get(index)??Infinity))continue;
       scores.set(index,tentative);previous.set(index,current);
       if(!open.includes(index))open.push(index);
@@ -523,6 +525,12 @@ export function advanceMindDay(previous:World,day:number,
           const old=a.y*w.width+a.x;
           removeResident(occupied,old,a.id);addResident(occupied,next,a.id);
           a.x=next%w.width;a.y=Math.floor(next/w.width);
+          if(hasPhysicalTerrain(w)){
+            const climb=terrainStepEffort(w,old,next);
+            a.energy=round(clamp(a.energy-(climb-1)*.28));
+            if(a.dailyLife)a.dailyLife.fatigue=round(clamp(
+              a.dailyLife.fatigue+(climb-1)*.45));
+          }
           c.route!.cursor++;c.blockedDays=0;
           c.trail.push(next);if(c.trail.length>24)c.trail.shift();
           progressed=distance(a,target)<=1;
