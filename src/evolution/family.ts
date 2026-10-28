@@ -46,11 +46,12 @@ export function ancestryLabel(a:Ancestry):string{
   return 'Mixed '+parts.slice(0,3).map(s=>SPECIES_INFO[s].name.slice(0,-1)).join(' / ');
 }
 export function traitProfile(a:Ancestry){
-  const blend=(key:'lifespan'|'maturity'|'fertility'|'wander'|'metabolism')=>
+  const blend=(key:'lifespan'|'maturity'|'fertility'|'wander'|'metabolism'|
+    'strength'|'speed')=>
     SPECIES.reduce((sum,s)=>sum+SPECIES_INFO[s][key]*a[s],0);
   return {lifespan:blend('lifespan'),maturity:blend('maturity'),
     fertility:blend('fertility'),wander:blend('wander'),
-    metabolism:blend('metabolism')};
+    metabolism:blend('metabolism'),strength:blend('strength'),speed:blend('speed')};
 }
 const SPECIES_COMPATIBILITY:Record<Species,Record<Species,number>>={
   human:{human:1,elf:.82,dwarf:.78,demon:.57},

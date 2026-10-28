@@ -26,6 +26,8 @@ import {advanceInstitutions,cloneInstitutions,validInstitutions,
   type Institutions} from './institutions';
 import {addResident,removeResident,residentIndex,settlementSafetyLimit,
   tileCapacity} from './density';
+import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
+  type AncientSite,type KnowledgeState,type LearnedTopic,type Topic} from './knowledge';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -39,18 +41,18 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
-  work?:WorkAssignment};
+  work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean};
 export type Bond={id:number;a:number;b:number;since:number;
   stage:'courting'|'partner'|'ended';strength:number;ended?:number;
   lastBirthYear?:number;children:number[]};
 export type LifeMoment={year:number;
   kind:'arrival'|'birth'|'courtship'|'partner'|'separation'|'parenthood'|
     'death'|'founding'|'renamed'|'adoption'|'mentorship'|'career'|
-    'independence'|'divine';text:string;relatedIds?:number[]};
+    'independence'|'divine'|'discovery';text:string;relatedIds?:number[]};
 export type LineageRecord={id:number;species:Species;ancestry:Ancestry;
   genes:Genes;born:number;died?:number;generation:number;name?:string;house?:string;
   moments?:LifeMoment[];parents?:[number,number];children:number[];partnerIds:number[];
-  divineOrigins?:number[]};
+  divineOrigins?:number[];knownKnowledge?:LearnedTopic[]};
 export type SettlementLegacy={id:number;species:Species;name:string;
   x:number;y:number;founded:number;collapsed?:number;founderId?:number};
 export type WorldCodex={favoritePeople:number[];favoriteSettlements:number[];
@@ -58,10 +60,11 @@ export type WorldCodex={favoritePeople:number[];favoriteSettlements:number[];
 export type Tile={biome:Biome;food:number};
 export type Settlement={id:number;species:Species;name:string;x:number;y:number;
   founded:number;population:number;stores:number;emptyYears:number;
-  infrastructure?:SettlementInfrastructure;economy?:SettlementEconomy};
+  infrastructure?:SettlementInfrastructure;economy?:SettlementEconomy;
+  archives?:Topic[]};
 export type WorldEvent={id:number;year:number;
   type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|
-    'trade'|'guild'|'diplomacy';
+    'trade'|'guild'|'diplomacy'|'knowledge';
   message:string};
 export type DeathCause='old_age'|'starvation'|'exposure'|'ill_health';
 export const DEATH_CAUSES:DeathCause[]=['old_age','starvation','exposure','ill_health'];
@@ -87,24 +90,29 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   ruins?:RuinSite[];trails?:Trail[];deposits?:ResourceDeposit[];
   shipments?:Shipment[];nextShipmentId?:number;
   transport?:TransportNetwork;tradeRelations?:TradeRelation[];
-  institutions?:Institutions};
+  institutions?:Institutions;knowledge?:KnowledgeState;ancientSites?:AncientSite[]};
 export const SPECIES:Species[]=['human','elf','dwarf','demon'];
 export const BIOMES:Biome[]=['plains','forest','mountain','cave','wasteland','volcanic','water'];
 export const SPECIES_INFO:Record<Species,{name:string;symbol:string;color:string;
   lifespan:number;maturity:number;fertility:number;wander:number;metabolism:number;
+  strength:number;speed:number;
   preferred:Biome[];intro:string}>={
   human:{name:'Humans',symbol:'H',color:'#f2c38c',lifespan:79,maturity:16,
-    fertility:.31,wander:.60,metabolism:9.5,preferred:['plains','forest'],
+    fertility:.31,wander:.60,metabolism:9.5,strength:1,speed:1,
+    preferred:['plains','forest'],
     intro:'Adaptable wanderers · fast generations'},
   elf:{name:'Elves',symbol:'E',color:'#83e7bc',lifespan:245,maturity:36,
-    fertility:.072,wander:.18,metabolism:7.5,preferred:['forest'],
+    fertility:.072,wander:.18,metabolism:7.5,strength:.92,speed:1.12,
+    preferred:['forest'],
     intro:'Forest guardians · slow generations'},
   dwarf:{name:'Dwarves',symbol:'D',color:'#aebdff',lifespan:166,maturity:27,
-    fertility:.115,wander:.12,metabolism:8.5,preferred:['mountain','cave'],
+    fertility:.115,wander:.12,metabolism:8.5,strength:1.25,speed:.85,
+    preferred:['mountain','cave'],
     intro:'Mountain dwellers · enduring strongholds'},
   demon:{name:'Demons',symbol:'Δ',color:'#e39afa',lifespan:146,maturity:23,
-    fertility:.175,wander:.32,metabolism:9.1,preferred:['wasteland','volcanic'],
-    intro:'Borderland survivors · harsh terrain'},
+    fertility:.175,wander:.42,metabolism:9.1,strength:1.85,speed:1.75,
+    preferred:['wasteland','volcanic'],
+    intro:'Powerful, swift explorers · formidable physical endurance'},
 };
 export const BIOME_INFO:Record<Biome,{name:string;color:string;food:number;growth:number}>={
   plains:{name:'Plains',color:'#536c55',food:7.5,growth:1.8},
@@ -235,8 +243,10 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     codex:{favoritePeople:[],favoriteSettlements:[],settlements:[]},divine:divineState(),
     ruins:[],trails:[],deposits:[],shipments:[],nextShipmentId:1,
     transport:{roads:[],bridges:[]},tradeRelations:[],
-    institutions:{guilds:[],nextGuildId:1,accords:[]}};
+    institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
+    ancientSites:[]};
   world.deposits=createDeposits(world);
+  world.ancientSites=generateAncientSites(world);
   const occupied=new Set<number>();
   for(const s of SPECIES){
     const info=SPECIES_INFO[s];
@@ -295,6 +305,7 @@ export function stepWorld(previous:World):World{
   const world:World={...previous,year:previous.year+1,
     tiles:previous.tiles.map(t=>({...t})),
     agents:previous.agents.map(a=>({...a,
+      knowledge:a.knowledge?.map(k=>({...k})),
       development:a.development?cloneDevelopment(a.development):undefined,
       work:a.work?{...a.work}:undefined,
       blessings:activeEffects(a,previous.year+1).map(e=>({...e})),
@@ -306,10 +317,12 @@ export function stepWorld(previous:World):World{
     }:undefined})),
     settlements:previous.settlements.map(s=>({...s,infrastructure:s.infrastructure?
       cloneInfrastructure(s.infrastructure):undefined,
-      economy:s.economy?cloneEconomy(s.economy):undefined})),
+      economy:s.economy?cloneEconomy(s.economy):undefined,
+      archives:s.archives?[...s.archives]:undefined})),
     bonds:previous.bonds.map(b=>({...b,children:[...b.children]})),
     lineage:previous.lineage.map(r=>({...r,children:[...r.children],
-      partnerIds:[...r.partnerIds],divineOrigins:r.divineOrigins?[...r.divineOrigins]:undefined})),
+      partnerIds:[...r.partnerIds],divineOrigins:r.divineOrigins?[...r.divineOrigins]:undefined,
+      knownKnowledge:r.knownKnowledge?.map(k=>({...k}))})),
     events:[...previous.events],history:[...previous.history],
     codex:previous.codex?{
       favoritePeople:[...previous.codex.favoritePeople],
@@ -335,7 +348,10 @@ export function stepWorld(previous:World):World{
     nextShipmentId:previous.nextShipmentId??1,
     transport:previous.transport?cloneTransport(previous.transport):undefined,
     tradeRelations:previous.tradeRelations?.map(r=>({...r}))??[],
-    institutions:previous.institutions?cloneInstitutions(previous.institutions):undefined};
+    institutions:previous.institutions?cloneInstitutions(previous.institutions):undefined,
+    knowledge:previous.knowledge?{firsts:previous.knowledge.firsts.map(k=>({...k}))}:
+      {firsts:[]},
+    ancientSites:previous.ancientSites?.map(s=>({...s,visitors:[...s.visitors]}))};
   prepareDevelopment(world);
   regrowDeposits(world);
   for(const s of world.settlements){
@@ -390,7 +406,7 @@ export function stepWorld(previous:World):World{
     a.age++;
     a.mind=planMind(world,a,residents,partnerPositions,closeContacts,
       biomeSuitability,traitProfile,permanentHomes);
-    const travel=clamp(info.wander*a.genes.curiosity*world.settings.wandering*
+    const travel=clamp(info.wander*info.speed*a.genes.curiosity*world.settings.wandering*
       divineFactor(a,'courage',world.year),0,.94);
     const destination=a.mind.target;
     const motivated=!!destination&&distance(a,destination)>1;
@@ -429,7 +445,7 @@ export function stepWorld(previous:World):World{
         a.x=chosen.x;a.y=chosen.y;
         enter(offset(world.width,a.x,a.y),a.id);
         movementSteps.push(offset(world.width,a.x,a.y));
-        a.energy-=1.5;
+        a.energy-=1.5/info.speed;
       }
     }
     const current=world.tiles[offset(world.width,a.x,a.y)];
@@ -468,6 +484,7 @@ export function stepWorld(previous:World):World{
     const ration=voyage?Math.min(.8,voyage.provisions??0):0;
     if(voyage)voyage.provisions=round(Math.max(0,(voyage.provisions??0)-ration));
     const nourishment=gathered*(comfortable?13.4:10.5)*
+      (1+Math.max(0,info.strength-1)*.18)*
       (1+(divineFactor(a,'luck',world.year)-1)*.18);
     a.energy=round(clamp(a.energy+nourishment+ration*15-dailyCost-
       Math.max(0,a.age/info.lifespan-.7)*1.3,0,100));
@@ -476,8 +493,9 @@ export function stepWorld(previous:World):World{
     if(a.energy<32)a.health-=2.5+(32-a.energy)*.21;
     else{
       const well=finishedWells.some(b=>distance(a,b)<=5);
-      a.health=Math.min(100,a.health+(1.45+(well?.27:0))*a.genes.vigor*
-        divineFactor(a,'health',world.year));
+      const remedies=(knows(a,'herbalism')?.25:0)+(knows(a,'medicine')?.55:0);
+      a.health=Math.min(100,a.health+(1.45+(well?.27:0)+remedies)*a.genes.vigor*
+        Math.sqrt(info.strength)*divineFactor(a,'health',world.year));
     }
     if(stage==='infant'&&!care.providerId)a.health-=1.65;
     if(juvenile&&!care.shelter)a.health-=stage==='infant'?.45:.09;
@@ -487,7 +505,9 @@ export function stepWorld(previous:World):World{
     const senescence=ageRatio>.84?
       Math.min(.9,Math.pow((ageRatio-.84)/.30,2)*.20):0;
     let cause:DeathCause|null=null;
-    if(a.energy<=0||a.health<=0){
+    if(a.mortalWound){
+      cause='ill_health';
+    }else if(a.energy<=0||a.health<=0){
       cause=a.energy<30?'starvation':suitability<.45?'exposure':'ill_health';
     }else if(ageRatio>1.22||random(state)<senescence){
       cause='old_age';
@@ -502,7 +522,8 @@ export function stepWorld(previous:World):World{
       record.deaths++;record.causes[cause]++;
       record.ageAtDeathSum+=a.age;
       appendLifeMoment(world,a.id,{year:world.year,kind:'death',
-        text:'Died at age '+a.age+' ('+DEATH_LABELS[cause].toLowerCase()+').'},
+        text:a.mortalWound?'Died from wounds sustained in an ancient ruin.':
+          'Died at age '+a.age+' ('+DEATH_LABELS[cause].toLowerCase()+').'},
       lifeRecords);
       if(juvenile)record.juvenileDeaths++;
     }else{
@@ -584,6 +605,9 @@ export function stepWorld(previous:World):World{
     }
     return true;
   });
+  // Real discoveries, contact-based teaching, preserved writings and dangerous
+  // site expeditions precede economic work for the year.
+  advanceKnowledge(world,()=>random(state));
   // Labor competes across farming, extraction, crafts, trade and construction.
   advanceEconomy(world,movementSteps);
   advanceInstitutions(world);
@@ -757,6 +781,7 @@ export function isWorld(value:unknown):value is World{
         (a.mind.lastScarcity!==undefined&&!checkMemory(a.mind.lastScarcity))||
         (a.mind.lastGoodFood!==undefined&&!checkMemory(a.mind.lastGoodFood))))||
       (a.development!==undefined&&!checkDevelopment(a.development)))return false;
+    if(a.mortalWound!==undefined&&typeof a.mortalWound!=='boolean')return false;
     const index=offset(width,a.x,a.y);
     const voyage=captains.get(a.id);
     const aboard=voyage&&voyage.route[voyage.progress]===index;
@@ -810,7 +835,7 @@ export function isWorld(value:unknown):value is World{
           m.year<=year&&
           ['arrival','birth','courtship','partner','separation','parenthood','death',
             'founding','renamed','adoption','mentorship','career',
-            'independence','divine'].includes(m.kind)&&
+            'independence','divine','discovery'].includes(m.kind)&&
           typeof m.text==='string'&&m.text.length<=220&&
           (m.relatedIds===undefined||(Array.isArray(m.relatedIds)&&
             m.relatedIds.length<=20&&m.relatedIds.every(id=>Number.isSafeInteger(id)&&id>0))))))||
@@ -878,7 +903,7 @@ export function isWorld(value:unknown):value is World{
   }
   if(!w.agents.every(a=>records.has(a.id))||!validDivinity(w as World)||
     !validConstruction(w as World)||!validDeposits(w as World)||
-    !validInstitutions(w as World))return false;
+    !validInstitutions(w as World)||!validKnowledge(w as World))return false;
   if(!w.history.every(p=>{
     const valid=Number.isInteger(p.year)&&p.year>=0&&
       Number.isInteger(p.total)&&p.total>=0&&
@@ -904,7 +929,7 @@ export function isWorld(value:unknown):value is World{
   if(!w.events.every(e=>Number.isSafeInteger(e.id)&&
     Number.isInteger(e.year)&&e.year>=0&&
     ['world','birth','death','settlement','collapse','milestone','bond','hybrid',
-      'trade','guild','diplomacy']
+      'trade','guild','diplomacy','knowledge']
       .includes(e.type)&&typeof e.message==='string'&&e.message.length<500))
     return false;
   return true;

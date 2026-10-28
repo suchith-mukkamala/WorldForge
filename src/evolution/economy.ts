@@ -4,6 +4,7 @@
  */
 import type {Agent,Settlement,World} from './engine';
 import {traitProfile} from './family';
+import {knows} from './knowledge';
 import {MATERIALS,prepareInfrastructure,type Material,type Ore} from './construction';
 import {bridgeTiles,caravanPace,considerTradeBridge,findTradeRoute} from './transport';
 import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
@@ -176,13 +177,18 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
     for(const a of adults){
       if(assigned.has(a.id))continue;
       const d=a.development,skill=d?.skills;
-      const bonus={farmer:(skill?.foraging??0)*.07+(d?.career==='forager'?9:0),
+      const bonus={farmer:(skill?.foraging??0)*.07+(d?.career==='forager'?9:0)+
+          (knows(a,'agriculture')?8:0),
         woodcutter:(skill?.foraging??0)*.055+(d?.career==='forager'?7:0),
-        miner:(skill?.craft??0)*.06+(d?.career==='artisan'?8:0),
+        miner:(skill?.craft??0)*.06+(d?.career==='artisan'?8:0)+
+          (knows(a,'stonecraft')?5:0),
         builder:(skill?.craft??0)*.08+(d?.career==='artisan'?11:0)+
+          (knows(a,'engineering')?6:0)+
           (activeSite?Math.max(0,19-distance(a,activeSite)*4):0),
-        artisan:(skill?.craft??0)*.09+(d?.career==='artisan'?14:0),
-        trader:(skill?.diplomacy??0)*.09+(d?.career==='trader'?16:0),
+        artisan:(skill?.craft??0)*.09+(d?.career==='artisan'?14:0)+
+          (knows(a,'metallurgy')?8:0),
+        trader:(skill?.diplomacy??0)*.09+(d?.career==='trader'?16:0)+
+          (knows(a,'navigation')?5:0),
       }[slot.job];
       const score=bonus+a.energy*.03+(d?.values.community??50)*.008+
         ((a.id*17+w.year*7)%13)*.001;
@@ -206,8 +212,10 @@ function farmAndFeed(w:World,s:Settlement,residents:Agent[]):void{
     const tile=w.tiles[farm.y*w.width+farm.x];
     const fertile=tile.biome==='plains'?1.2:tile.biome==='forest'?1:
       ['wasteland','volcanic'].includes(tile.biome)?.55:.8;
+    const technique=knows(a,'agriculture')?1.24:.55;
+    const irrigation=knows(a,'irrigation')?1.25:1;
     produced+=Math.min(4.6,(1.25+(a.development?.skills.foraging??0)*.018)*
-      fertile*w.settings.resourceLevel*
+      fertile*w.settings.resourceLevel*technique*irrigation*
       (e.specialty==='agriculture'?1.2:1));
     a.energy=rounded(Math.max(1,a.energy-.4));
   }
@@ -237,7 +245,9 @@ function makeTools(s:Settlement,residents:Agent[]):void{
     setStock(s,'iron',ore-.3);setStock(s,'wood',wood-.5);
     setStock(s,'tools',stockOf(s,'tools')+
       (1+(a.development?.skills.craft??0)*.012)*
-      (s.economy?.specialty==='industry'?1.2:1));
+      (s.economy?.specialty==='industry'?1.2:1)*
+      (knows(a,'metallurgy')?1.3:1)*
+      traitProfile(a.ancestry).strength);
     a.energy=rounded(Math.max(1,a.energy-.45));
   }
 }

@@ -4,6 +4,7 @@ import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
   settlementStage,type Building,type RuinSite} from './construction';
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
 import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
+import {TOPIC_INFO} from './knowledge';
 import {bridgeTiles,roadTiles} from './transport';
 import {accordBetween} from './institutions';
 import {pixelRectsFor} from './pixelArt';
@@ -344,6 +345,13 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
                 treasury {g.treasury.toFixed(1)} coins
               </p>):<p>Local workers have not yet formed a guild.</p>}
             </div>
+          </section>}
+          {place&&<section className="evo-knowledge-town" aria-label="Settlement knowledge">
+            <strong>✧ COMMUNITY MEMORY & WRITTEN ARCHIVES</strong>
+            {place.archives?.length?<p>{place.archives.map(topic=>
+              TOPIC_INFO[topic].name).join(' · ')}</p>:
+              <p>No written knowledge preserved yet. Communities need literate
+                residents and a completed communal hall to keep lasting records.</p>}
           </section>}
           <div className="evo-city-map-top"><strong>LOCAL VIEW · REAL BUILDING LOCATIONS</strong>
             <label htmlFor="evo-city-zoom">MAP ZOOM <input id="evo-city-zoom"

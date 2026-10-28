@@ -45,9 +45,11 @@ function advanceMonthlyTravel(w:World,month:number):World{
   let moved=false;
   for(let i=0;i<agents.length;i++){
     const a=agents[i];
+    const speed=traitProfile(a.ancestry).speed;
     if(a.work?.tradeId||!a.mind||
-      // One real local move per quarter keeps intercity travel gradual.
-      (a.id+month+w.year)%3!==0)continue;
+      // Swift peoples travel on more months than slower peoples. All movement
+      // remains on the real grid and respects bridges and neighborhood space.
+      (a.id*5+month+w.year)%6>=Math.round(Math.min(5,2*speed)))continue;
     const target=a.mind.target;
     const exploring=!target&&a.mind.goal==='explore'&&
       a.age>=traitProfile(a.ancestry).maturity;

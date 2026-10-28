@@ -3,6 +3,7 @@
  */
 import type {Agent,Settlement,Species,World} from './engine';
 import {traitProfile} from './family';
+import {knows} from './knowledge';
 import {harvestDeposit,type ResourceDeposit,
   type ResourceKind} from './resources';
 import {hasHarbor} from './shipping';
@@ -275,7 +276,9 @@ function gather(w:World,s:Settlement,residents:Agent[],
     const expertise=s.economy?.specialty==='forestry'&&kind==='wood'||
       s.economy?.specialty==='mining'&&kind!=='wood'&&kind!=='clay';
     const yieldAmount=harvestDeposit(best,Math.min(quota-available,
-      (1.05+(a.development?.skills.foraging??0)*.015)*(expertise?1.18:1)));
+      (1.05+(a.development?.skills.foraging??0)*.015)*(expertise?1.18:1)*
+      traitProfile(a.ancestry).strength*
+      (knows(a,'stonecraft')&&kind!=='wood'?1.22:1)));
     if(kind==='wood'||kind==='stone'||kind==='clay')
       i.stock[kind]=round(i.stock[kind]+yieldAmount);
     else i.oreStock![kind]=round(i.oreStock![kind]+yieldAmount);
@@ -292,8 +295,10 @@ function build(w:World,s:Settlement,residents:Agent[]):void{
     const crew=workers.filter(a=>!employed.has(a.id)&&distance(a,b)<=2);
     if(!crew.length)continue; // Nobody builds remotely from the town center.
     const laborPool=crew.reduce((total,a)=>total+
-      (a.mind?.goal==='build'?1.65:.7)+
-      (a.development?.skills.craft??0)*.018,0)*(workshop?1.3:1)*
+      ((a.mind?.goal==='build'?1.65:.7)+
+      (a.development?.skills.craft??0)*.018)*
+      traitProfile(a.ancestry).strength*
+      (knows(a,'engineering')?1.25:1),0)*(workshop?1.3:1)*
       ((s.economy?.tools??0)>=.1?1.18:1);
     if(s.economy&&s.economy.tools>=.1)
       s.economy.tools=round(Math.max(0,s.economy.tools-.12));
