@@ -40,7 +40,9 @@ export function isVisuallyIndoors(agent:Agent,scene:PopulationScene):boolean{
   const available=scene.indoor.get(agent.y*scene.width+agent.x);
   if(!available)return false;
   const today=agent.cognition?.today?.action;
-  if(today&&today!=='idle'&&available.has(today))return true;
+  // An active daily decision (especially travel) overrides the older
+  // weekly routine, so someone departing a workshop is visible outdoors.
+  if(today&&today!=='idle')return available.has(today);
   const routine=agent.dailyLife?.activity;
   return !!routine&&available.has(routine);
 }
@@ -57,11 +59,10 @@ export function renderedPopulation(agents:readonly Agent[],scene:PopulationScene
   const focus=agents.find(a=>a.id===view.focusId)??agents.find(a=>
     !!view.selected&&a.x===view.selected.x&&a.y===view.selected.y);
   const candidates=agents.filter(a=>
+    a.id!==focus?.id&&
     a.x>=bounds.minX&&a.x<=bounds.maxX&&
     a.y>=bounds.minY&&a.y<=bounds.maxY&&
-    a.id===focus?.id||(
-      a.x>=bounds.minX&&a.x<=bounds.maxX&&
-      a.y>=bounds.minY&&a.y<=bounds.maxY&&!isVisuallyIndoors(a,scene)));
+    !isVisuallyIndoors(a,scene));
   candidates.sort((a,b)=>priority(a.id)-priority(b.id)||a.id-b.id);
   const cells=new Map<number,number>(),visible:Agent[]=[];
   for(const agent of candidates){
