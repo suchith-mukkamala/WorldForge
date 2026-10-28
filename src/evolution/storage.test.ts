@@ -49,5 +49,9 @@ describe('v1.2.1: autosave and older-save compatibility',()=>{
       saveDatabaseWorld(compactWorld(later),200),
     ]);
     expect(await loadDatabaseSnapshot()).toEqual({world:later,savedAt:200});
+    // If a newer checkpoint is truncated, restore the previous complete one.
+    expect(records.has('previous-world')).toBe(true);
+    records.set('current-world',{raw:'{not valid json',savedAt:300});
+    expect(await loadDatabaseSnapshot()).toEqual({world:start,savedAt:100});
   });
 });
