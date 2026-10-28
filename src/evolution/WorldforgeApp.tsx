@@ -3,6 +3,7 @@ import type {ChangeEvent,SetStateAction} from 'react';
 import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas} from './WorldCanvas';
+import {elevationAt} from './topography';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import {cameraScrollTarget} from './motion';
@@ -124,7 +125,7 @@ export function WorldforgeApp(){
   const playback=TIME_RATES.find(rate=>rate.id===timeRate)??TIME_RATES[2];
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
-  const [overlay,setOverlay]=useState<'terrain'|'resources'|'deposits'>('terrain');
+  const [overlay,setOverlay]=useState<'terrain'|'resources'|'deposits'|'elevation'>('terrain');
   const [zoom,setZoom]=useState(1);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
@@ -291,6 +292,7 @@ export function WorldforgeApp(){
   },[followId,world.agents]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
+  const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
   const resource=displayed?world.deposits?.find(d=>d.index===
     displayed.y*world.width+displayed.x):undefined;
   const settlement=displayed?world.settlements.find(s=>(s.x===displayed.x&&
@@ -587,10 +589,11 @@ export function WorldforgeApp(){
             </select>
             <label htmlFor="evo-overlay">MAP LAYER</label>
             <select id="evo-overlay" value={overlay}
-              onChange={e=>setOverlay(e.target.value as 'terrain'|'resources'|'deposits')}>
+              onChange={e=>setOverlay(e.target.value as 'terrain'|'resources'|'deposits'|'elevation')}>
               <option value="terrain">Biomes</option>
               <option value="resources">Food levels</option>
               <option value="deposits">Trees & ore deposits</option>
+              <option value="elevation">Elevation & contours</option>
             </select>
           </div>
           <div className="evo-map-scroll" ref={mapScrollRef}>
@@ -608,7 +611,7 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
+              HEIGHTMAP IN MAP LAYERS · ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -644,7 +647,8 @@ export function WorldforgeApp(){
                 <span className="evo-biome-swatch"
                   style={{background:BIOME_INFO[tile.biome].color}}/>
                 <div><strong>{BIOME_INFO[tile.biome].name}</strong>
-                  <small>Food available: {tile.food.toFixed(1)} units</small></div>
+                  <small>Food available: {tile.food.toFixed(1)} units
+                    {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
               </div>
               {resource&&<div className="evo-biome-info">
                 <span className="evo-biome-swatch" style={{background:

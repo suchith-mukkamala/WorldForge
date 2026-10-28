@@ -3,9 +3,10 @@ import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
-import {paintBuilding,paintDeposit,paintPerson,paintTerrain,spriteKey,
+import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
   paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
+import {topographyForWorld} from './topography';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
@@ -16,7 +17,7 @@ export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
   followId=null,onFollowPosition,onDiagnostics,
 }:{
-  world:World;brush:Brush;overlay:'terrain'|'resources'|'deposits';
+  world:World;brush:Brush;overlay:'terrain'|'resources'|'deposits'|'elevation';
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
   zoom?:number;speed?:number;followId?:number|null;
@@ -26,7 +27,7 @@ export function WorldCanvas({
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const backgroundStamp=useRef<{
-    tiles:World['tiles'];settlementKey:string;
+    tiles:World['tiles'];topography:World['topography'];settlementKey:string;
     ruins:World['ruins'];deposits:World['deposits'];
     ancientSites:World['ancientSites'];
     transport:World['transport'];zoom:number;overlay:string;seed:number;
@@ -66,6 +67,7 @@ export function WorldCanvas({
       (overlay==='resources'||!stamp||stamp.tiles.length!==world.tiles.length||
         stamp.tiles.some((tile,i)=>tile.biome!==world.tiles[i].biome));
     const sceneryChanged=!stamp||landChanged||
+      stamp.topography!==world.topography||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
@@ -75,10 +77,18 @@ export function WorldCanvas({
     if(sceneryChanged){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
+    const heights=topographyForWorld(world).heights;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
       const px=x*CELL,py=y*CELL;
-      paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
+      if(overlay!=='elevation')
+        paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
+      const index=y*W+x,h=heights[index];
+      paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
+        south:y<H-1?heights[index+W]:h,
+        west:x>0?heights[index-1]:h,
+        east:x<W-1?heights[index+1]:h},
+        tile.biome,overlay==='elevation'?'elevation':'terrain');
       if(overlay==='resources'&&tile.biome!=='water'){
         const fullness=Math.min(1,tile.food/Math.max(1,biome.food*world.settings.resourceLevel));
         ctx.fillStyle=fullness>.66?'rgba(117,255,176,.34)':
@@ -172,7 +182,8 @@ export function WorldCanvas({
         paintBuilding(ctx,b);
       }
     }
-    backgroundStamp.current={tiles:world.tiles,settlementKey,
+    backgroundStamp.current={tiles:world.tiles,
+      topography:world.topography,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
       zoom,overlay,seed:world.settings.seed,width:canvas.width,height:canvas.height};
@@ -367,7 +378,8 @@ export function WorldCanvas({
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,
-    overlay,selected,zoom,speed,followId,onFollowPosition,onDiagnostics]);
+    overlay,selected,zoom,speed,followId,onFollowPosition,onDiagnostics,
+    world.topography]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);

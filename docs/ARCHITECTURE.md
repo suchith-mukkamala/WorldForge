@@ -22,7 +22,7 @@ WorldForge is a deterministic single-player browser simulation. The saved `World
 
 ## Future terrain implementation
 
-Add optional/migrated elevation fields to world data first, without immediately blocking routes in older saves. Use spatial IDs and coordinate transforms shared across world-map and future 2.5D renderers. Physical slopes, cliffs, water, and passability must eventually be engine-owned and tested at every valid route step. A 2.5D camera should render this data without running its own parallel simulation.
+Elevation fields are optional, validated v1.9 fields in new world data; older worlds use seeded lazy reconstruction. Do not block routes in old saves merely because heights now exist. Use spatial IDs and coordinate transforms shared across world-map and future 2.5D renderers. Physical slopes, cliffs, water, and passability must eventually be engine-owned and tested at every valid route step. A 2.5D camera should render this data without running its own parallel simulation.
 
 ## Future trait and species implementation
 

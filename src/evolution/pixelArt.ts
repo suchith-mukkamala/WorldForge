@@ -256,6 +256,51 @@ export function paintTerrain(ctx:CanvasRenderingContext2D,biome:string,
   }
 }
 
+/** Pixel-scale directional relief and a dedicated contour heightmap.
+ * Presentation only: shades are based on persisted terrain values, not
+ * additional RNG or the camera. Small 6px pixels retain the retro look.
+ */
+export function paintRelief(ctx:CanvasRenderingContext2D,
+  x:number,y:number,height:number,
+  neighbors:{north:number;east:number;south:number;west:number},
+  biome:string,mode:'terrain'|'elevation'='terrain'):void{
+  const px=x*6,py=y*6;
+  const p=(color:string,dx:number,dy:number,width:number,depth:number)=>{
+    ctx.fillStyle=color;ctx.fillRect(px+dx,py+dy,width,depth);
+  };
+  if(mode==='elevation'){
+    const colors=['#234966','#3b7182','#5d866b','#74936a','#8c9a72',
+      '#b19f7c','#9b918b','#bcc1c4','#e8e7d9'];
+    const band=biome==='water'?0:Math.min(8,Math.floor(height/30));
+    p(colors[band],0,0,6,6);
+    // A hairline every 30 height units conveys real geological contours.
+    const contour=(a:number)=>Math.floor(a/30)<Math.floor(height/30);
+    if(contour(neighbors.north))p('#f1e7ca',0,0,6,1);
+    if(contour(neighbors.west))p('#eadbb4',0,1,1,5);
+    if(height>185&&biome!=='water')p('#f4f2dd',2,2,2,2);
+    return;
+  }
+  // Simple north-west sun lighting and south-east occlusion. Adjacent
+  // heights come from the world grid, not invented sprite geometry.
+  const north=height-neighbors.north,west=height-neighbors.west;
+  const south=height-neighbors.south,east=height-neighbors.east;
+  if(north>9)p('rgba(238,229,190,.36)',0,0,6,1);
+  if(west>10)p('rgba(233,231,192,.25)',0,1,1,4);
+  if(south>8)p('rgba(15,29,43,.37)',0,5,6,1);
+  if(east>9)p('rgba(18,29,47,.34)',5,1,1,4);
+  if(north< -14)p('rgba(19,32,47,.38)',0,0,6,1);
+  if(west< -14)p('rgba(21,35,47,.3)',0,1,1,4);
+  // Subtle high-altitude snow and rocky transitions without altering biomes.
+  if(height>=188&&biome==='mountain'){
+    p('#e3e8df',2,0,2,1);
+    if(height>=203)p('#d6dfe0',1,2,3,1);
+  }
+  if(biome!=='water'&&(neighbors.north<48||neighbors.west<48)&&
+    height<95)p('rgba(227,200,146,.52)',1,0,4,1);
+  if(biome==='water'&&neighbors.north>48)
+    p('rgba(181,226,217,.64)',0,0,6,1);
+}
+
 export function paintDeposit(ctx:CanvasRenderingContext2D,kind:ResourceKind,
   x:number,y:number,amount:number,capacity:number):void{
   if(amount<.1)return;
