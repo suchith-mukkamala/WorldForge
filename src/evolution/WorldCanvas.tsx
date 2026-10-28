@@ -5,6 +5,7 @@ import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
 import {paintBuilding,paintDeposit,paintPerson,paintTerrain,spriteKey,
   paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
+import {populationScene,renderedPopulation} from './populationVisibility';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
@@ -188,14 +189,20 @@ export function WorldCanvas({
     prior.current={year:world.year,day,seed:world.settings.seed,positions:current};
     for(const id of [...facing.current.keys()])if(!current.has(id))facing.current.delete(id);
     if(spriteCache.current.size>6500)spriteCache.current.clear();
-    const ordered=[...world.agents].sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id);
-    const populationByTile=new Map<number,number>();
-    const visualSlot=new Map<number,number>();
-    for(const a of ordered){
-      const index=a.y*W+a.x;
-      visualSlot.set(a.id,populationByTile.get(index)??0);
-      populationByTile.set(index,(populationByTile.get(index)??0)+1);
-    }
+    // Presentation-only visibility data, cached for this world update.
+    const scene=populationScene(world);
+    const scrollParent=canvas.parentElement;
+    const bounds=()=>{
+      const screen=canvas.getBoundingClientRect();
+      const width=screen.width||canvas.width,height=screen.height||canvas.height;
+      const x=(scrollParent?.scrollLeft??0)/width*W;
+      const y=(scrollParent?.scrollTop??0)/height*H;
+      const w=(scrollParent?.clientWidth??width)/width*W;
+      const h=(scrollParent?.clientHeight??height)/height*H;
+      return {minX:Math.max(0,Math.floor(x)-3),minY:Math.max(0,Math.floor(y)-3),
+        maxX:Math.min(W-1,Math.ceil(x+w)+3),
+        maxY:Math.min(H-1,Math.ceil(y+h)+3)};
+    };
     const offsets=[[0,0],[-2,-2],[2,-2],[-2,2],[2,2],[-3,0],[3,0],
       [0,-3]] as const;
     const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
@@ -211,8 +218,19 @@ export function WorldCanvas({
       visible.drawImage(background,0,0);
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
-      const tracked=followId!==null?ordered.find(a=>a.id===followId):
-        selected?ordered.find(a=>a.x===selected.x&&a.y===selected.y):undefined;
+      // Cull sprites outside the camera; preserve tracked character and tile.
+      const ordered=renderedPopulation(world.agents,scene,
+        {bounds:bounds(),zoom,focusId:followId,selected});
+      const visualSlot=new Map<number,number>();
+      const populationByTile=new Map<number,number>();
+      for(const a of ordered){
+        const tile=a.y*W+a.x;
+        visualSlot.set(a.id,populationByTile.get(tile)??0);
+        populationByTile.set(tile,(populationByTile.get(tile)??0)+1);
+      }
+      const tracked=followId!==null?world.agents.find(a=>a.id===followId):
+        selected?world.agents.find(a=>a.x===selected.x&&a.y===selected.y):
+        undefined;
       if(zoom>=3&&tracked?.cognition?.trail.length){
         const points=tracked.cognition.trail.map(id=>
           ({x:id%W,y:Math.floor(id/W)}));
@@ -317,10 +335,16 @@ export function WorldCanvas({
       }
       previouslyWalking=active;
       if(active||animatingCloseup)handle=requestAnimationFrame(draw);
+      else handle=0;
     };
     draw(now);
-    // Calendar days that do not change the map reuse this composed frame.
-    return ()=>cancelAnimationFrame(handle);
+    // Recalculate visibility after scrolling, without changing world state.
+    const onScroll=()=>{if(!handle)handle=requestAnimationFrame(draw);};
+    scrollParent?.addEventListener('scroll',onScroll,{passive:true});
+    return ()=>{
+      scrollParent?.removeEventListener('scroll',onScroll);
+      cancelAnimationFrame(handle);
+    };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,
     overlay,selected,zoom,speed,followId,onFollowPosition]);
