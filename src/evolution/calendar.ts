@@ -8,6 +8,7 @@ import {traitProfile} from './family';
 import {knows} from './knowledge';
 import {addResident,removeResident,residentIndex,tileCapacity} from './density';
 import {advanceWeeklyLife} from './dailyLife';
+import {advanceMindDay,cloneCognition,createDayContext} from './mindII';
 
 export const DAYS_PER_YEAR=365;
 export const MONTH_LENGTHS=[31,28,31,30,31,30,31,31,30,31,30,31] as const;
@@ -44,12 +45,22 @@ function advanceMonthlyTravel(w:World,month:number):World{
     .map(b=>b.index)??[]);
   // Share unchanged agent objects; only travelers need fresh immutable records.
   const agents=[...w.agents];
+  const trackMovement=(a:World['agents'][number],to:{x:number;y:number})=>{
+    if(!a.cognition)return {...a,...to};
+    const cognition=cloneCognition(a.cognition),index=to.y*w.width+to.x;
+    if(cognition.trail.at(-1)!==index){
+      cognition.trail.push(index);
+      if(cognition.trail.length>24)cognition.trail.shift();
+    }
+    return {...a,...to,cognition};
+  };
   let moved=false;
   for(let i=0;i<agents.length;i++){
     const a=agents[i];
     const speed=traitProfile(a.ancestry).speed*
       (knows(a,'navigation')?1.2:1);
-    if(a.work?.tradeId||!a.mind||
+    if(a.work?.tradeId||a.cognition?.agenda.some(p=>p.status==='active'&&
+      p.steps[p.cursor]?.kind==='travel')||!a.mind||
       // Swift peoples travel on more months than slower peoples. All movement
       // remains on the real grid and respects bridges and neighborhood space.
       (a.id*5+month+w.year)%6>=Math.round(Math.min(5,2*speed)))continue;
@@ -75,7 +86,7 @@ function advanceMonthlyTravel(w:World,month:number):World{
       if(!next)continue;
       removeResident(residents,old,a.id);
       addResident(residents,next.y*w.width+next.x,a.id);
-      agents[i]={...a,x:next.x,y:next.y};moved=true;continue;
+      agents[i]=trackMovement(a,next);moved=true;continue;
     }
     if(!target)continue;
     const dx=Math.sign(target.x-a.x),dy=Math.sign(target.y-a.y);
@@ -95,34 +106,33 @@ function advanceMonthlyTravel(w:World,month:number):World{
     if(!next)continue;
     removeResident(residents,old,a.id);
     addResident(residents,next.y*w.width+next.x,a.id);
-    agents[i]={...a,x:next.x,y:next.y};moved=true;
+    agents[i]=trackMovement(a,next);moved=true;
   }
   return moved?{...w,agents}:w;
 }
 
-/** Advance an exact number of simulated days, independent of UI playback rate.
- * Yearly biology/economy still runs once at the boundary; social choices run
- * weekly, while movement happens at month boundaries. Older saves with no
- * dayOfYear start on Jan 1. Every time rate crosses identical boundaries.
+/** Advance an exact number of simulated days with daily plans, weekly social
+ * routines, monthly legacy travel and annual demographics/economics. The same
+ * ordered boundaries are crossed regardless of UI playback increment.
  */
 export function advanceWorldDays(start:World,days:number):World{
   const count=Math.max(0,Math.min(365*200,Math.trunc(days)));
   if(!count||start.year>=9999)return start;
   let w=start,remaining=count;
+  let dayContext=createDayContext(w);
   while(remaining>0&&w.year<9999){
-    const day=w.dayOfYear??0;
-    const {end,month}=monthEnd(day);
-    const nextWeek=Math.min(364,(Math.floor(day/7)+1)*7);
-    const boundary=Math.min(end,nextWeek>day?nextWeek:DAYS_PER_YEAR);
-    const elapsed=Math.min(remaining,boundary-day);
-    remaining-=elapsed;
-    const nextDay=day+elapsed;
-    w={...w,dayOfYear:nextDay===DAYS_PER_YEAR?0:nextDay};
+    const nextDay=(w.dayOfYear??0)+1;
+    remaining--;
     if(nextDay===DAYS_PER_YEAR){
-      w=stepWorld(w);
+      w=stepWorld({...w,dayOfYear:0});
+      dayContext=createDayContext(w);
     }else{
+      w=advanceMindDay(w,nextDay,dayContext);
+      w={...w,dayOfYear:nextDay};
       if(nextDay%7===0)w=advanceWeeklyLife(w,nextDay);
-      if(nextDay===end)w=advanceMonthlyTravel(w,month);
+      const {end,month}=monthEnd(nextDay-1);
+      if(nextDay===end){w=advanceMonthlyTravel(w,month);
+        dayContext=createDayContext(w);}
     }
   }
   return w;

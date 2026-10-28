@@ -20,8 +20,17 @@ for(const seed of seeds){
   }
   const routines=world.agents.filter(a=>a.dailyLife).length;
   const talking=world.agents.filter(a=>a.dailyLife?.encounters.length).length;
+  const agendas=world.agents.filter(a=>a.cognition?.agenda.length).length;
+  const noPlans=world.agents.filter(a=>!a.cognition?.agenda.length).length;
+  const interrupted=world.agents.reduce((n,a)=>n+
+    (a.cognition?.history.filter(h=>h.outcome==='interrupted').length??0),0);
+  const completed=world.agents.reduce((n,a)=>n+
+    (a.cognition?.history.filter(h=>h.outcome==='completed').length??0),0);
+  const exploredPaths=world.agents.filter(a=>
+    (a.cognition?.trail.length??0)>2).length;
   console.log(JSON.stringify({seed,year:world.year,living:world.agents.length,
     species:population(world),towns:world.settlements.length,
     agentsWithRoutines:routines,agentsWithSocialHistory:talking,
+    agendas,noPlans,completed,interrupted,exploredPaths,
     elapsedMs:Date.now()-started,valid:true}));
 }

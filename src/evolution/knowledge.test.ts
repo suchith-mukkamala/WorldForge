@@ -196,8 +196,10 @@ describe('WorldForge v1.3: demonic physical advantages',()=>{
         reason:'Exploring the far side of the valley.'};
       return w;
     };
-    const h=advanceWorldDays(make('human'),184);
-    const d=advanceWorldDays(make('demon'),184);
+    // The daily Mind Engine lets both reach a nine-tile destination well
+    // before six months. Compare them during the journey, not after arrival.
+    const h=advanceWorldDays(make('human'),12);
+    const d=advanceWorldDays(make('demon'),12);
     expect(d.agents[0].x-x).toBeGreaterThan(h.agents[0].x-x);
     expect(isWorld(h)).toBe(true);
     expect(isWorld(d)).toBe(true);
