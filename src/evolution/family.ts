@@ -11,6 +11,7 @@ import {
   type LineageRecord,type Species,type World,
 } from './engine';
 import {appendLifeMoment,makeLifeRecord,personName} from './identity';
+import {birthPotentialRank} from './traitRanks';
 import {initialMind} from './mind';
 import {divineFactor} from './divine';
 import {residentIndex} from './density';
@@ -80,6 +81,7 @@ export function inheritedGenes(a:Genes,b:Genes,rand:()=>number):Genes{
 export function livingRecord(a:Agent):LineageRecord{
   return {id:a.id,species:a.species,ancestry:{...a.ancestry},
     genes:{...a.genes},born:a.born,generation:a.generation,
+    potentialRank:a.potentialRank,
     parents:a.parents?[...a.parents]:undefined,
     children:[],partnerIds:[]};
 }
@@ -288,6 +290,7 @@ export function offspringFromBonds(
       energy:77,health:94,genes:inheritedGenes(a.genes,b.genes,rand),
       generation:Math.max(a.generation,b.generation)+1,parents:[a.id,b.id],
       mind:initialMind(world.year)};
+    baby.potentialRank=birthPotentialRank(world.settings.seed,baby.id,baby.genes);
     newborns.push(baby);bond.children.push(baby.id);
     bond.lastBirthYear=world.year;
     a.energy=Math.max(1,Math.round((a.energy-9)*100)/100);

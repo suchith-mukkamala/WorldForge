@@ -7,6 +7,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 ## What you can do
 
 - Generate deterministic fantasy worlds with humans, elves, dwarves and demons.
+- Discover **Innate Potential Ranks (v2.1.1)** in the People directory, individual inspector and family records. Each birth receives a stable rank from F through SSS, including S+ and SS+, with rare high-ranked potential. Filter the roster by minimum potential rank to discover exceptional people. A separate training grade reports what an individual has actually practiced so far. F-rank ability is not worthless; high potential is not automatic mastery. Existing worlds receive a deterministic compatible fallback without rerolling simulation randomness. Named innate gifts, awakening and trait effects are upcoming patches.
 - Switch instantly between the original **top-down 2D** map and a raised **pixel-art 2.5D** landscape. Hills, cliffs, towns and people share the same heightfield and stay selectable in either view, with no graphics-card-heavy 3D engine.
 - Use the **Orbit Camera (v2.07)** in the raised view: turn through all 360° in 15° steps (or use the quick 45° buttons), tilt toward the horizon at 18°, use classic 30° or look down from 55°, and reset instantly. All land tiles, real cliffs, trees, people, structures, rivers, outlines and click-to-inspect geometry rotate as one scene. Height and orbit settings stay purely visual, with no impact on physics or saves.
 - See **Relief & Scale (v2.06)** in the raised view: adjust **HEIGHT** between natural, dramatic (default) and monumental elevation exaggeration. Layered rock faces, a visible landmass edge, stronger sunlit slopes, ridge contours and irregular vegetation make peaks and valleys read as *height*, not just differently colored texture. People are now one pixel wide and four pixels tall in the raised landscape; overhead-map figures are also much smaller, dwarfed by trees and growing homes. Relief changes only the picture—not the world, physics, saves, or pathfinding.
@@ -82,8 +83,8 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current:** v2.07 — Orbit Camera. Keep the v2.06 dramatic relief, layered cliffs and tiny mortal scale, now with a 360° rotatable and tilt-adjustable raised view. Tile selection and all sprite layers share one projected geometry; no simulation or save data is changed. The GitHub Actions workflow publishes compiled Vite output under `/WorldForge/`.
-- **Next:** v2.1 innate traits, potential, ranks and awakening, followed by v2.2 training/mastery and v2.3 legendary awakenings.
+- **Current:** v2.1.1 — Innate Potential Rank Foundation. Full F–SSS ladder, rare seeded birth potential, permanent lineage records, current practice grades and visible profiles. Existing saves and v2.07 orbitable maps remain compatible; no mythical trait powers are granted yet. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
+- **Next:** v2.1.2 one innate trait per person, v2.1.3 age-scaled awakening, followed by inherited affinities and Mind Engine effects. Then v2.2 lifetime training and v2.3 legendary awakenings.
 - **Future visual direction:** Continue developing the Pokémon Black & White–inspired pixel-art perspective into a richer layered environment with camera movement and animated exploration. Later, optional mortal descent, procedurally generated planets, separate realms and interplanetary travel. The current 2.5D view is a lightweight isometric renderer, **not** free-camera 3D or mortal-play mode.
 
 ## Architecture

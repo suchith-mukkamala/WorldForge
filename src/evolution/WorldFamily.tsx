@@ -7,6 +7,7 @@ import {
 } from './family';
 import {personName,isPersonFavorite,cleanIdentityName} from './identity';
 import {PixelPortrait} from './PixelPortrait';
+import {RankProfile} from './RankProfile';
 
 type Props={world:World;focusId:number|null;onChoose:(id:number)=>void;
   onShowOnMap:(id:number)=>void;onFavorite:(id:number)=>void;
@@ -152,6 +153,7 @@ export function WorldFamily({world,focusId,onChoose,onShowOnMap,
               <div><small>VIGOR GENE</small><strong>{current.genes.vigor.toFixed(2)}×</strong></div>
               <div><small>SOCIAL GENE</small><strong>{current.genes.social.toFixed(2)}×</strong></div>
             </div>
+            <RankProfile seed={world.settings.seed} person={person??current}/>
             <div className="evo-ancestry-heading"><strong>ANCESTRY</strong>
               <span>{hybridFraction(current.ancestry)>.01?'✧ MIXED HERITAGE':'PURE-LINE FOUNDER'}</span></div>
             <div className="evo-ancestry-bar" role="img"
