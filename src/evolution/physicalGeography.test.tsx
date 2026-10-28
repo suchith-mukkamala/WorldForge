@@ -3,7 +3,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import {advanceWorldDays} from './calendar';
 import {DepthCanvas} from './DepthCanvas';
-import {depthCanvasSize,projectDepth,tileFromHit,tileHitColor} from './depthProjection';
+import {depthCanvasSize,depthDrop,projectDepth,RELIEF_LEVELS,
+  tileFromHit,tileHitColor} from './depthProjection';
 import {createWorld,isWorld,type World} from './engine';
 import {findMortalRoute} from './mindII';
 import {compactWorld,readSavedWorld} from './storage';
@@ -105,6 +106,34 @@ describe('v2.0 — terrain that physically matters and a selectable depth view',
     expect(html).toContain('role="grid"');
     expect(html).toContain('tabindex="0"');
     expect(JSON.stringify(world)).toBe(before);
+  });
+
+  it('exaggerates visible relief without changing height data or losing canvas room',()=>{
+    const world=createWorld({seed:2006,size:'small'});
+    const original=JSON.stringify(world);
+    const lower=48,upper=208;
+    const naturalLow=projectDepth(world,7,9,lower,RELIEF_LEVELS.natural);
+    const naturalHigh=projectDepth(world,7,9,upper,RELIEF_LEVELS.natural);
+    const dramaticLow=projectDepth(world,7,9,lower,RELIEF_LEVELS.dramatic);
+    const dramaticHigh=projectDepth(world,7,9,upper,RELIEF_LEVELS.dramatic);
+    const monumentalLow=projectDepth(world,7,9,lower,RELIEF_LEVELS.monumental);
+    const monumentalHigh=projectDepth(world,7,9,upper,RELIEF_LEVELS.monumental);
+    expect(naturalLow.y-naturalHigh.y).toBe(20);
+    expect(dramaticLow.y-dramaticHigh.y).toBe(50);
+    expect(monumentalLow.y-monumentalHigh.y).toBe(80);
+    expect(depthDrop(upper,lower,RELIEF_LEVELS.monumental)).toBe(80);
+    expect(depthDrop(lower,upper,RELIEF_LEVELS.monumental)).toBe(0);
+    expect(depthCanvasSize(world,4).height).toBeGreaterThan(
+      depthCanvasSize(world,1).height);
+    const highest=projectDepth(world,0,0,255,4);
+    expect(highest.y).toBeGreaterThan(0);
+    expect(JSON.stringify(world)).toBe(original);
+    const html=renderToStaticMarkup(createElement(DepthCanvas,{
+      world,brush:{kind:'inspect'},overlay:'terrain',selected:null,
+      onSelect:()=>{},onEdit:()=>{},relief:4,
+    }));
+    expect(html).toContain('exaggerated cliffs');
+    expect(html).toContain(`height="${depthCanvasSize(world,4).height}"`);
   });
 
   it('keeps calendar stepping deterministic with the v2.0 terrain rules',()=>{

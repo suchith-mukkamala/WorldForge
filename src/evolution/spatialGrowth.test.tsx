@@ -57,7 +57,8 @@ describe('v2.05 — unequal footprints, free sprite movement and growing homes',
       rectangles.push({width,kind:String(painter.fillStyle)});
     }} as unknown as CanvasRenderingContext2D;
     paintDepthPerson(painter,a,{x:22,y:22});
-    expect(rectangles.some(r=>r.width===3)).toBe(true);
+    expect(rectangles.length).toBeGreaterThan(0);
+    expect(rectangles.every(r=>r.width===1)).toBe(true);
     rectangles.length=0;
     paintDepthTree(painter,{x:22,y:22},false);
     expect(rectangles.some(r=>r.width===6)).toBe(true);
