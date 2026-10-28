@@ -5,7 +5,7 @@ import type {Agent,Species} from './engine';
 import {traitProfile} from './family';
 import {ARCHITECTURE,type Building} from './construction';
 import {RESOURCE_COLORS,type ResourceKind} from './resources';
-import type {Facing} from './motion';
+import type {Facing,SpritePose} from './motion';
 import type {AncientKind} from './knowledge';
 
 export const PERSON_SPRITE_WIDTH=16;
@@ -108,7 +108,8 @@ export function spriteKey(person:PixelPerson):string{
 
 /** Draw at native 16 × 22 pixel resolution; scale with nearest-neighbor only. */
 export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
-  ox=0,oy=0,facing:Facing='south',stride:0|1=0):void{
+  ox=0,oy=0,facing:Facing='south',stride:0|1|2|3=0,
+  pose:SpritePose='idle'):void{
   const c=appearanceFor(person),p=(color:string,x:number,y:number,w:number,h:number)=>{
     ctx.fillStyle=color;ctx.fillRect(ox+x,oy+y,w,h);
   };
@@ -181,24 +182,45 @@ export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
     p('#a36f67',side===1?11:4,top+7,1,1);
     p(c.trim,side===1?11:4,13,1,4-short);
   }
-  if(stride===1){
-    // Two-frame alternating gait with subtle arm counter-swing.
+  if(stride===1||stride===3){
+    // Four-step gait: alternating foot contact and arm counter-swing.
     p('#282d3a',4,18,4,3);p(c.boots,3,19,4,2);
     p('#282d3a',9,17,4,3);p(c.boots,10,18,4,2);
     p(skin,2,15-short,2,2);p(skin,12,17-short,2,2);
+  }
+  if(stride===2){
+    p(ink,4,17,4,3);p(c.boots,5,19,4,2);
+    p(ink,9,18,4,3);p(c.boots,8,19,4,2);
+    p(skin,3,17-short,2,2);p(skin,11,15-short,2,2);
+  }
+  if(stride===3){
+    p(c.boots,4,19,4,2);p(c.boots,11,19,3,2);
+    p(skin,3,17-short,2,2);
+  }
+  if(pose==='study'){
+    p('#3e536e',2,13,5,5);p('#e8d6a3',3,13,3,4);
+    p('#a28e6a',5,14,1,2);
+  }else if(pose==='work'){
+    p('#b4a3a0',13,12,2,7);p('#e9c58b',12,11,4,3);
+  }else if(pose==='talk'){
+    p(skin,12,12,2,4);p('#f7ebc2',14,top+1,2,2);
+  }else if(pose==='rest'){
+    p(c.hair,5,top+3,7,2);p('#a36e67',6,top+6,4,1);
+  }else if(pose==='explore'){
+    p(skin,12,12,2,3);p('#f7d79a',13,11,2,2);
   }
 }
 
 export type PixelRect={x:number;y:number;width:number;height:number;color:string};
 /** Native SVG can use the same sprite commands without bitmap upscaling. */
 export function pixelRectsFor(person:PixelPerson,facing:Facing='south',
-  stride:0|1=0):PixelRect[]{
+  stride:0|1|2|3=0,pose:SpritePose='idle'):PixelRect[]{
   const pixels:PixelRect[]=[];
   const recorder={fillStyle:'',fillRect(x:number,y:number,width:number,height:number){
     pixels.push({x,y,width,height,color:recorder.fillStyle});
   }};
   paintPerson(recorder as unknown as CanvasRenderingContext2D,
-    person,0,0,facing,stride);
+    person,0,0,facing,stride,pose);
   return pixels;
 }
 

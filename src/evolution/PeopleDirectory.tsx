@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {lazy,Suspense,useEffect,useMemo,useState} from 'react';
 import {SPECIES,SPECIES_INFO,type LineageRecord,type Species,type World} from './engine';
 import {ancestryLabel,traitProfile} from './family';
 import {TOPIC_INFO} from './knowledge';
@@ -11,6 +11,7 @@ import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
 import {ACTIVITY_LABELS} from './dailyLife';
+const LifeViewer=lazy(()=>import('./LifeViewer').then(m=>({default:m.LifeViewer})));
 
 type Props={world:World;selectedId:number|null;onOpen:(id:number)=>void;
   onFavorite:(id:number)=>void;onRename:(id:number,name:string)=>void;
@@ -180,8 +181,8 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
             </div>
           </section>
           {alive&&<section className="evo-section-card evo-mind-profile">
-            <div className="evo-card-heading"><strong>◈ MIND ENGINE I</strong>
-              <span>AUTONOMOUS INTENTION</span></div>
+            <div className="evo-card-heading"><strong>◈ ANNUAL INTENTION</strong>
+              <span>BASE MIND ENGINE</span></div>
             <div className="evo-mind-profile-body">
               <span className="evo-overline">CURRENT GOAL</span>
               <h3>{alive.mind?GOAL_LABELS[alive.mind.goal]:'Awakening'}</h3>
@@ -196,9 +197,13 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 These are simulated rules, not generated dialogue.</small>
             </div>
           </section>}
+          {alive&&<Suspense fallback={<section className="evo-section-card">
+            <p>Reading this person's intentions…</p></section>}>
+            <LifeViewer world={world} person={alive}/>
+          </Suspense>}
           {alive?.dailyLife&&<section className="evo-section-card evo-daily-profile">
             <div className="evo-card-heading"><strong>◈ A LIFE IN PROGRESS</strong>
-              <span>V1.6 / PERSONAL ROUTINES</span></div>
+              <span>WEEKLY ROUTINES · V1.6+</span></div>
             <div className="evo-daily-body">
               <span className="evo-overline">THIS WEEK · Y{alive.dailyLife.year}
                 {' '}DAY {alive.dailyLife.day}</span>

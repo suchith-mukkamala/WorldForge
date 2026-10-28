@@ -1,0 +1,32 @@
+.evo-life-viewer-body{display:grid;gap:18px;padding:18px 20px 22px;color:#cbd9e6}
+.evo-life-viewer-intro{margin:0;line-height:1.6;color:#aebfd2}
+.evo-life-viewer h4{font-size:.8rem;letter-spacing:.09em;color:#b9d6cb;margin:0 0 10px}
+.evo-life-current{padding:16px;border-radius:11px;background:linear-gradient(125deg,#243b48,#1a283a);border:1px solid #405f68}
+.evo-life-current h3{font-size:1.25rem;margin:5px 0 8px;color:#f0deaa}
+.evo-life-current p{margin:0;line-height:1.5}
+.evo-life-emotions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.evo-life-emotions label{display:grid;grid-template-columns:1fr auto;gap:4px;font-size:.75rem}
+.evo-life-emotions progress{grid-column:1/-1;width:100%;height:8px;accent-color:#a9dabc}
+.evo-life-plans{display:grid;gap:13px}
+.evo-life-subhead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.evo-life-subhead h4{margin:0}.evo-life-subhead small{color:#93aabc}
+.evo-life-plan{border-radius:12px;border:1px solid #36465a;background:#192738;padding:14px 15px}
+.evo-life-plan-head{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#f0e0bd}
+.evo-plan-status{font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;border-radius:12px;padding:4px 9px;background:#415266;color:#eff6ff}
+.evo-plan-status.is-active{background:#1e615a;color:#bcf6df}
+.evo-plan-status.is-paused{background:#69483b;color:#ffe6ac}
+.evo-life-plan>p{font-size:.81rem;line-height:1.5;color:#9fb4c6}
+.evo-plan-interruption{color:#ffd1a2!important}
+.evo-plan-steps{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:7px}
+.evo-plan-steps li{display:grid;grid-template-columns:18px minmax(0,1fr)auto;gap:8px;align-items:start;padding:8px;border-radius:7px;background:#213249}
+.evo-plan-steps li>span{color:#83cbb3}.evo-plan-steps li.is-ahead{opacity:.63}
+.evo-plan-steps b{font-size:.8rem;color:#e4e9eb}.evo-plan-steps small{display:block;color:#adc0d0;font-size:.7rem;line-height:1.4}
+.evo-plan-steps em{font-style:normal;font-size:.65rem;color:#9db2c4}
+.evo-plan-steps progress{display:block;width:100%;height:5px;margin-top:6px;accent-color:#8ac8bf}
+.evo-life-history>div{border-left:2px solid #425e63;margin:8px 0;padding:4px 0 6px 12px}
+.evo-life-history small{font-size:.7rem;color:#8cc7b7;text-transform:uppercase}
+.evo-life-history p{margin:4px 0;font-size:.82rem;line-height:1.5}
+.evo-life-history span{font-size:.73rem;color:#91abc2}
+.evo-life-trail{font-size:.78rem;line-height:1.7;padding:10px;background:#203344;border-radius:8px}
+.evo-life-viewer-body>small{color:#8ea9bd;font-size:.7rem;line-height:1.5}
+@media(max-width:670px){.evo-life-emotions{grid-template-columns:1fr}.evo-life-viewer-body{padding:15px 12px}}

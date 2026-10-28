@@ -3,6 +3,16 @@ export type Facing='north'|'south'|'east'|'west';
 export type Point={x:number;y:number};
 export type Motion={from:Point;to:Point;start:number;duration:number;
   facing:Facing};
+export type SpritePose='idle'|'walk'|'work'|'talk'|'study'|'rest'|'explore';
+/** Saved intentions choose a pose; the renderer alone chooses animation frames. */
+export function actionPose(action?:string):SpritePose{
+  if(!action||action==='idle')return 'idle';
+  if(['travel','observe'].includes(action))return 'explore';
+  if(['talk','share','help','socialize'].includes(action))return 'talk';
+  if(['practice','prepare','study','reflect'].includes(action))return 'study';
+  if(action==='rest')return 'rest';
+  return 'work';
+}
 
 export function directionBetween(from:Point,to:Point,
   fallback:Facing='south'):Facing{
@@ -19,13 +29,13 @@ export function canAnimate(from:Point,to:Point):boolean{
 }
 
 export function motionFrame(motion:Motion,now:number):Point&{
-  progress:number;walking:boolean;stride:0|1;facing:Facing}{
+  progress:number;walking:boolean;stride:0|1|2|3;facing:Facing}{
   const progress=Math.max(0,Math.min(1,
     (now-motion.start)/Math.max(1,motion.duration)));
   const walking=progress<1;
   return {x:motion.from.x+(motion.to.x-motion.from.x)*progress,
     y:motion.from.y+(motion.to.y-motion.from.y)*progress,
-    progress,walking,stride:walking&&Math.floor(progress*4)%2===1?1:0,
+    progress,walking,stride:walking?Math.floor(progress*4)%4 as 0|1|2|3:0,
     facing:motion.facing};
 }
 

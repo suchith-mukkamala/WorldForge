@@ -5,7 +5,7 @@ import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
 import {paintBuilding,paintDeposit,paintPerson,paintTerrain,spriteKey,
   paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
-import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
+import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
 export const WORLD_CELL_SIZE=6;
@@ -45,7 +45,13 @@ export function WorldCanvas({
     const ctx=background.getContext('2d');if(!ctx)return;
     const W=world.width,H=world.height;
     const stamp=backgroundStamp.current;
-    const sceneryChanged=!stamp||stamp.tiles!==world.tiles||
+    // Food-only updates can occur every simulated day. Repaint the resource
+    // heatmap when appropriate, but avoid rasterizing all scenery again when
+    // every actual biome and structure is unchanged.
+    const landChanged=stamp?.tiles!==world.tiles&&
+      (overlay==='resources'||!stamp||stamp.tiles.length!==world.tiles.length||
+        stamp.tiles.some((tile,i)=>tile.biome!==world.tiles[i].biome));
+    const sceneryChanged=!stamp||landChanged||
       stamp.settlements!==world.settlements||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
@@ -157,6 +163,7 @@ export function WorldCanvas({
       ancientSites:world.ancientSites,
       zoom,overlay,seed:world.settings.seed,width:canvas.width,height:canvas.height};
     }
+    else if(stamp)stamp.tiles=world.tiles;
     const current=new Map(world.agents.map(a=>[a.id,{x:a.x,y:a.y}]));
     const previous=prior.current;
     const now=performance.now();
@@ -191,14 +198,46 @@ export function WorldCanvas({
     }
     const offsets=[[0,0],[-2,-2],[2,-2],[-2,2],[2,2],[-3,0],[3,0],
       [0,-3]] as const;
-    let handle=0,lastFrame=-Infinity;
+    const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
+    let handle=0,lastFrame=-Infinity,previouslyWalking=false;
     const draw=(timestamp:number)=>{
       // Animation is presentation-only and capped to limit large-world GPU work.
-      if(timestamp-lastFrame<1000/24){handle=requestAnimationFrame(draw);return;}
+      if(timestamp-lastFrame<1000/(previouslyWalking?24:5)){
+        handle=requestAnimationFrame(draw);return;
+      }
       lastFrame=timestamp;
       visible.clearRect(0,0,canvas.width,canvas.height);
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0);
+      // Visible footprints come from actual adjacent positions in the world,
+      // never a guessed line between two distant yearly snapshots.
+      const tracked=followId!==null?ordered.find(a=>a.id===followId):
+        selected?ordered.find(a=>a.x===selected.x&&a.y===selected.y):undefined;
+      if(zoom>=3&&tracked?.cognition?.trail.length){
+        const points=tracked.cognition.trail.map(id=>
+          ({x:id%W,y:Math.floor(id/W)}));
+        visible.save();visible.strokeStyle='rgba(248,220,145,.75)';
+        visible.lineWidth=1.2;visible.beginPath();
+        for(let i=1;i<points.length;i++){
+          if(Math.max(Math.abs(points[i].x-points[i-1].x),
+            Math.abs(points[i].y-points[i-1].y))!==1)continue;
+          visible.moveTo(points[i-1].x*CELL+3,points[i-1].y*CELL+3);
+          visible.lineTo(points[i].x*CELL+3,points[i].y*CELL+3);
+        }
+        visible.stroke();
+        const route=tracked.cognition.route;
+        if(route&&route.indices.length>route.cursor+1){
+          visible.beginPath();visible.setLineDash([2,3]);
+          visible.strokeStyle='rgba(129,218,207,.7)';
+          for(let i=route.cursor+1;i<route.indices.length;i++){
+            const from=route.indices[i-1],to=route.indices[i];
+            visible.moveTo((from%W)*CELL+3,Math.floor(from/W)*CELL+3);
+            visible.lineTo((to%W)*CELL+3,Math.floor(to/W)*CELL+3);
+          }
+          visible.stroke();
+        }
+        visible.restore();
+      }
       const positions=new Map<number,Point>();
       let active=false;
       for(const a of ordered){
@@ -216,17 +255,20 @@ export function WorldCanvas({
           continue;
         }
         const direction=frame?.facing??facing.current.get(a.id)??'south';
-        const stride=frame?.stride??0;
-        const key=spriteKey(a)+':'+direction+':'+stride;
+        const focus=selected?.x===a.x&&selected?.y===a.y||followId===a.id;
+        const resting=focus&&!frame?.walking&&animatingCloseup;
+        const stride=frame?.stride??(resting&&Math.floor(timestamp/650)%4===1?2:0);
+        const pose=frame?.walking?'walk':actionPose(
+          a.cognition?.today?.action??a.dailyLife?.activity);
+        const key=spriteKey(a)+':'+direction+':'+stride+':'+pose;
         let sprite=spriteCache.current.get(key);
         if(!sprite){
           sprite=document.createElement('canvas');
           sprite.width=PERSON_SPRITE_WIDTH;sprite.height=PERSON_SPRITE_HEIGHT;
           const painter=sprite.getContext('2d');
-          if(painter)paintPerson(painter,a,0,0,direction,stride);
+          if(painter)paintPerson(painter,a,0,0,direction,stride,pose);
           spriteCache.current.set(key,sprite);
         }
-        const focus=selected?.x===a.x&&selected?.y===a.y;
         const width=focus&&zoom>=5?16:zoom>=5?12:9;
         const height=focus&&zoom>=5?22:zoom>=5?17:13;
         visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
@@ -273,7 +315,8 @@ export function WorldCanvas({
         const tracked=positions.get(followId);
         if(tracked)onFollowPosition?.(tracked.x,tracked.y);
       }
-      if(active)handle=requestAnimationFrame(draw);
+      previouslyWalking=active;
+      if(active||animatingCloseup)handle=requestAnimationFrame(draw);
     };
     draw(now);
     // Calendar days that do not change the map reuse this composed frame.

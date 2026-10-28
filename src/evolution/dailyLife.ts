@@ -15,8 +15,11 @@ export const ACTIVITY_LABELS:Record<Activity,string>={
   craft:'Personal project',reflect:'Reflecting',
 };
 export type Encounter={year:number;day:number;withId:number;
-  kind:'conversation'|'mentorship'|'friendship'|'disagreement';detail:string};
-export type Familiarity={personId:number;meetings:number};
+  kind:'conversation'|'mentorship'|'friendship'|'disagreement'|'comfort'|
+    'shared_goal'|'debate'|'reconciliation';
+  topic?:'belief'|'future'|'family'|'hardship'|'learning'|'exploration';
+  detail:string};
+export type Familiarity={personId:number;meetings:number;regard?:number};
 export type DailyLife={activity:Activity;reason:string;year:number;day:number;
   fatigue:number;socialNeed:number;morale:number;
   acquaintances:Familiarity[];encounters:Encounter[]};
@@ -41,12 +44,17 @@ export function validDailyLife(d:DailyLife,year:number):boolean{
     Array.isArray(d.acquaintances)&&d.acquaintances.length<=6&&
     new Set(d.acquaintances.map(c=>c.personId)).size===d.acquaintances.length&&
     d.acquaintances.every(c=>c&&Number.isSafeInteger(c.personId)&&c.personId>0&&
-      Number.isInteger(c.meetings)&&c.meetings>=1&&c.meetings<=999)&&
+      Number.isInteger(c.meetings)&&c.meetings>=1&&c.meetings<=999&&
+      (c.regard===undefined||Number.isFinite(c.regard)&&
+        c.regard>=-100&&c.regard<=100))&&
     Array.isArray(d.encounters)&&d.encounters.length<=6&&
     d.encounters.every(e=>e&&Number.isInteger(e.year)&&e.year>=0&&e.year<=year&&
       Number.isInteger(e.day)&&e.day>=0&&e.day<=364&&
       Number.isSafeInteger(e.withId)&&e.withId>0&&
-      ['conversation','mentorship','friendship','disagreement'].includes(e.kind)&&
+      ['conversation','mentorship','friendship','disagreement','comfort',
+        'shared_goal','debate','reconciliation'].includes(e.kind)&&
+      (e.topic===undefined||['belief','future','family','hardship',
+        'learning','exploration'].includes(e.topic))&&
       typeof e.detail==='string'&&e.detail.length<=140);
 }
 
@@ -84,17 +92,19 @@ function decide(a:Agent,week:number,youngInHome:Set<number>):[Activity,string]{
   return ['forage','Maintaining personal food security.'];
 }
 
-function acquaintance(a:Agent,bId:number):number{
+function acquaintance(a:Agent,bId:number,delta:number):number{
   const contacts=a.dailyLife!.acquaintances;
   const existing=contacts.find(c=>c.personId===bId);
-  if(existing){existing.meetings=Math.min(999,existing.meetings+1);return existing.meetings;}
+  if(existing){existing.meetings=Math.min(999,existing.meetings+1);
+    existing.regard=round(Math.max(-100,Math.min(100,(existing.regard??0)+delta)));
+    return existing.meetings;}
   if(contacts.length>=6)contacts.shift();
-  contacts.push({personId:bId,meetings:1});return 1;
+  contacts.push({personId:bId,meetings:1,regard:delta});return 1;
 }
 function encounter(a:Agent,b:Agent,year:number,day:number,
-  kind:Encounter['kind'],detail:string){
+  kind:Encounter['kind'],topic:Encounter['topic'],detail:string){
   const entries=a.dailyLife!.encounters;
-  entries.push({year,day,withId:b.id,kind,detail});
+  entries.push({year,day,withId:b.id,kind,topic,detail});
   if(entries.length>6)entries.shift();
 }
 
@@ -161,7 +171,8 @@ export function advanceWeeklyLife(world:World,day:number):World{
           b.development!.languages[a.species]<12||
           !['socialize','study','care','reflect','craft'].includes(
             b.dailyLife!.activity))continue;
-        const familiar=a.development.friends.includes(b.id)?15:0;
+        const regard=a.dailyLife!.acquaintances.find(c=>c.personId===b.id)?.regard??0;
+        const familiar=a.development.friends.includes(b.id)?15:regard*.07;
         const mentor=a.development.mentorId===b.id?18:0;
         const family=a.development.householdId===b.development!.householdId?12:0;
         const willingness=b.dailyLife!.activity==='socialize'?8:0;
@@ -178,29 +189,55 @@ export function advanceWeeklyLife(world:World,day:number):World{
       a.belief.faithId!==b.belief.faithId&&
       a.development.values.tradition+b.development!.values.tradition>128&&
       (week+a.id+b.id)%4===0;
-    const metA=acquaintance(a,b.id),metB=acquaintance(b,a.id);
+    const hardships=[a,b].some(person=>person.development!.memories.some(m=>
+      ['loss','hardship'].includes(m.kind)&&year-m.year<=4));
+    const comfort=!mentor&&!disagreement&&hardships&&
+      (a.development.empathy>55||b.development!.empathy>55);
+    const common=a.cognition?.agenda.find(p=>p.status==='active')?.purpose;
+    const sharedGoal=!!common&&common===b.cognition?.agenda.find(p=>
+      p.status==='active')?.purpose&&!['survive','recover'].includes(common);
+    const beliefDifference=!disagreement&&!!a.belief&&!!b.belief&&
+      a.belief.faithId!==b.belief.faithId;
+    const restored=a.dailyLife!.acquaintances.some(c=>c.personId===b.id&&
+      (c.regard??0)<-3)&&!disagreement;
+    const delta=disagreement?-1.2:comfort?1.1:sharedGoal?0.8:
+      beliefDifference?0.2:0.65;
+    const metA=acquaintance(a,b.id,delta),metB=acquaintance(b,a.id,delta);
     const friends=metA>=4&&metB>=4&&!disagreement&&
       a.development.trust>40&&b.development!.trust>40&&
       a.development.friends.length<4&&b.development!.friends.length<4&&
       !a.development.friends.includes(b.id)&&
-      !b.development!.friends.includes(a.id);
+      !b.development!.friends.includes(a.id)&&
+      (a.dailyLife!.acquaintances.find(c=>c.personId===b.id)?.regard??0)>0;
     const kind:Encounter['kind']=mentor?'mentorship':disagreement?'disagreement':
-      friends?'friendship':'conversation';
-    const detail=mentor?'Shared a skill during a personal lesson.':
-      disagreement?'Disagreed about traditions but heard another perspective.':
-      friends?'A familiar acquaintance became a friend.':
-      'Chose to exchange stories and ideas.';
-    encounter(a,b,year,day,kind,detail);
-    encounter(b,a,year,day,kind,detail);
+      friends?'friendship':comfort?'comfort':restored?'reconciliation':
+      beliefDifference?'debate':sharedGoal?'shared_goal':'conversation';
+    const topic:Encounter['topic']=mentor?'learning':disagreement||beliefDifference?
+      'belief':comfort?'hardship':sharedGoal?'future':
+      a.mind?.goal==='explore'?'exploration':'family';
+    const detail=mentor?'Asked questions and practiced a skill together.':
+      disagreement?'Defended different traditions; trust was strained.':
+      friends?'Chose to turn repeated meetings into friendship.':
+      comfort?'Listened to someone carrying recent loss or hardship.':
+      restored?'Made peace after an earlier disagreement.':
+      beliefDifference?'Compared beliefs without requiring either to convert.':
+      sharedGoal?'Discovered a shared ambition and discussed next steps.':
+      'Shared memories about family, neighbors and daily life.';
+    encounter(a,b,year,day,kind,topic,detail);
+    encounter(b,a,year,day,kind,topic,detail);
     for(const [person,other] of [[a,b],[b,a]] as const){
       person.development=cloneDevelopment(person.development!);
       person.development.trust=round(clamp(person.development.trust+
-        (disagreement?-.08:.08)));
+        (disagreement?-.12:comfort?.2:.08)));
+      person.development.values[sharedGoal?'community':beliefDifference?
+        'discovery':'community']=round(clamp(person.development.values[
+          sharedGoal?'community':beliefDifference?'discovery':'community']+
+          (disagreement?0:.035)));
       person.development.languages[other.species]=round(clamp(
         person.development.languages[other.species]+.16));
       person.dailyLife!.socialNeed=round(clamp(person.dailyLife!.socialNeed-7));
       person.dailyLife!.morale=round(clamp(person.dailyLife!.morale+
-        (disagreement?-.4:1.2)));
+        (disagreement?-.4:comfort?1.9:1.2)));
     }
     if(mentor){
       const mentorPerson=a.development.mentorId===b.id?b:a;
@@ -210,7 +247,15 @@ export function advanceWeeklyLife(world:World,day:number):World{
       student.development!.skills[skill]=round(clamp(
         student.development!.skills[skill]+.14));
     }
-    if(friends){a.development.friends.push(b.id);b.development!.friends.push(a.id);}
+    if(friends){
+      a.development.friends.push(b.id);b.development!.friends.push(a.id);
+      for(const [person,other] of [[a,b],[b,a]] as const){
+        person.development!.memories.push({year,kind:'friendship',
+          otherId:other.id,detail:'Chose a lasting friendship through repeated meetings.'});
+        if(person.development!.memories.length>18)
+          person.development!.memories=person.development!.memories.slice(-18);
+      }
+    }
   }
   return {...world,agents:people};
 }
