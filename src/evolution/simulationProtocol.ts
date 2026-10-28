@@ -3,7 +3,9 @@
  * never replace a new world, divine intervention, import, or paint operation.
  */
 import type {World} from './engine';
-export type SimulationRequest={kind:'advance';id:number;days:number;world:World};
+/** Supply world only when UI has changed it. Otherwise the worker keeps the
+ * last successfully computed state, saving one structured clone per tick. */
+export type SimulationRequest={kind:'advance';id:number;days:number;world?:World};
 export type SimulationReply=
   |{kind:'advanced';id:number;world:World;elapsedMs:number}
   |{kind:'failed';id:number;message:string};
