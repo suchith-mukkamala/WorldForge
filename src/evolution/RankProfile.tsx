@@ -2,12 +2,13 @@ import {SKILLS,type Skill} from './development';
 import type {Agent} from './engine';
 import {potentialRank,proficiencyRank,TRAIT_RANK_INFO,TRAIT_RANKS,
   type TraitRank} from './traitRanks';
+import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 
 const SKILL_NAMES:Record<Skill,string>={
   foraging:'Foraging',navigation:'Navigation',craft:'Craft',
   knowledge:'Knowledge',care:'Care',diplomacy:'Diplomacy',
 };
-type Person=Pick<Agent,'id'|'genes'|'potentialRank'> &
+type Person=Pick<Agent,'id'|'genes'|'potentialRank'|'innateTrait'> &
   Partial<Pick<Agent,'development'>>;
 
 export function RankBadge({rank}:{rank:TraitRank}){
@@ -22,6 +23,8 @@ export function RankProfile({seed,person,compact=false}:{
   seed:number;person:Person;compact?:boolean;
 }){
   const rank=potentialRank(seed,person);
+  const gift=INNATE_TRAIT_INFO[innateTrait(seed,person)];
+  const domain=TRAIT_DOMAIN_INFO[gift.domain];
   const skills=person.development?.skills;
   const lead=skills?SKILLS.reduce((best,skill)=>
     skills[skill]>skills[best]?skill:best,SKILLS[0]):null;
@@ -36,9 +39,16 @@ export function RankProfile({seed,person,compact=false}:{
           {SKILL_NAMES[lead]} · {Math.round(mastery)}/100</>:
           'Not recorded'}</strong></span>
     </div>
-    <p>Potential is not power or destiny. Training rank reflects actual
-      practiced skills, not an awakened trait. Individual innate traits
-      and age-based awakenings will follow in v2.1.2–v2.1.3.</p>
+    <div className="evo-innate-gift" style={{borderColor:domain.color}}>
+      <span className="evo-overline" style={{color:domain.color}}>
+        ✦ ONE INNATE GIFT · {domain.name.toUpperCase()}</span>
+      <strong>{gift.name}</strong>
+      <small>Possible affinity: {gift.possibility}</small>
+      <em>LATENT AT BIRTH · AWAKENING FOLLOWS IN V2.1.3</em>
+    </div>
+    <p>Potential is not power or destiny. Rank describes this gift's possible
+      strength; training rank reflects practiced skills. Gifts are
+      visible but grant no simulation bonuses before v2.1.5.</p>
     {!compact&&<small className="evo-rank-ladder">RANKS · {TRAIT_RANKS.join(' · ')}</small>}
   </div>;
 }

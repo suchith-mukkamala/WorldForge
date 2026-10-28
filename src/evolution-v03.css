@@ -28,6 +28,7 @@
 .evo-directory-filters>label input{margin-top:1px}
 .evo-directory-filter-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;margin-top:12px}
+.evo-directory-domain{margin-top:12px}
 .evo-directory-scroll{overflow:auto;max-height:min(68vh,710px);
   padding:9px;background:#101c30}
 .evo-directory-person{display:flex;align-items:center;gap:6px;
@@ -42,6 +43,7 @@
   font:12px/1.4 'Space Mono',monospace}
 .evo-directory-person-open small{color:#91b0bd;
   font:9px/1.7 'Space Mono',monospace}
+.evo-directory-person-open .evo-directory-gift-line{color:#d6bedd}
 .evo-directory-person-open:hover strong{text-decoration:underline}
 .evo-dir-species{display:block;flex:0 0 auto;width:12px;height:12px;
   border:2px solid #0a1629;box-shadow:0 0 7px #92cabc6a}

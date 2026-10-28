@@ -9,6 +9,8 @@ import {guildOf} from './institutions';
 import {PixelPortrait} from './PixelPortrait';
 import {RankBadge,RankProfile} from './RankProfile';
 import {potentialRank,TRAIT_RANKS,type TraitRank} from './traitRanks';
+import {innateTrait,INNATE_TRAIT_CATALOG,INNATE_TRAIT_INFO,
+  TRAIT_DOMAINS,TRAIT_DOMAIN_INFO,type TraitDomain} from './innateTraits';
 import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
@@ -26,6 +28,7 @@ function LifeChip({world,record,focused,onPick,onFavorite}:{
 }){
   const alive=record.died===undefined&&world.agents.some(a=>a.id===record.id);
   const favorite=isPersonFavorite(world,record.id);
+  const gift=INNATE_TRAIT_INFO[innateTrait(world.settings.seed,record)];
   return <div className={'evo-directory-person'+(focused?' is-selected':'')}>
     <button type="button" className="evo-directory-person-open"
       onClick={()=>onPick(record.id)}>
@@ -35,6 +38,8 @@ function LifeChip({world,record,focused,onPick,onFavorite}:{
         <small>#{record.id} · Gen {record.generation} · {ancestryLabel(record.ancestry)}
           · {alive?'Age '+world.agents.find(a=>a.id===record.id)?.age:'Archive'}
           {' · Potential '}<RankBadge rank={potentialRank(world.settings.seed,record)}/></small>
+        <small className="evo-directory-gift-line">✦ {gift.name} ·{' '}
+          {TRAIT_DOMAIN_INFO[gift.domain].name}</small>
       </span>
     </button>
     <button type="button" className={'evo-dir-star'+(favorite?' is-on':'')}
@@ -49,6 +54,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
   const [filter,setFilter]=useState<Filter>('all');
   const [species,setSpecies]=useState<'all'|Species>('all');
   const [minRank,setMinRank]=useState<'all'|TraitRank>('all');
+  const [traitDomain,setTraitDomain]=useState<'all'|TraitDomain>('all');
   const [activeId,setActiveId]=useState<number|null>(null);
   const [draft,setDraft]=useState('');
   const [editNotice,setEditNotice]=useState('');
@@ -64,6 +70,8 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
     const favorites=new Set(favoriteIds);
     const list=world.lineage.filter(r=>{
       if(species!=='all'&&r.species!==species)return false;
+      const gift=INNATE_TRAIT_INFO[innateTrait(world.settings.seed,r)];
+      if(traitDomain!=='all'&&gift.domain!==traitDomain)return false;
       if(minRank!=='all'&&TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))<
         TRAIT_RANKS.indexOf(minRank))return false;
       if(filter==='living'&&!living.has(r.id))return false;
@@ -71,13 +79,14 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
       if(filter==='favorites'&&!favorites.has(r.id))return false;
       if(needle&&!([
         personName(world,r),r.house??'',String(r.id),ancestryLabel(r.ancestry),
+        gift.name,TRAIT_DOMAIN_INFO[gift.domain].name,
       ].some(value=>value.toLocaleLowerCase().includes(needle))))return false;
       return true;
     });
     return list.sort((a,b)=>Number(favorites.has(b.id))-Number(favorites.has(a.id))||
       (minRank!=='all'?TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,b))-
         TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,a)):0)||b.id-a.id);
-  },[world,query,filter,species,minRank,living,favoriteIds]);
+  },[world,query,filter,species,minRank,traitDomain,living,favoriteIds]);
   const exceptional=useMemo(()=>world.lineage.filter(r=>
     TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))>=
       TRAIT_RANKS.indexOf('S')).length,[world.lineage,world.settings.seed]);
@@ -107,6 +116,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
         <span><b>{world.lineage.length}</b> in archive</span>
         <span><b>{favoriteIds.length}</b> favorites</span>
         <span><b>{exceptional}</b> S-rank+ potential</span>
+        <span><b>{INNATE_TRAIT_CATALOG.length}</b> possible gifts</span>
       </div>
     </header>
     <div className="evo-directory-layout">
@@ -115,9 +125,9 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
           <strong>THE PEOPLE DIRECTORY</strong><span>{results.length} matching</span>
         </div>
         <div className="evo-directory-filters">
-          <label htmlFor="evo-people-search">SEARCH PEOPLE / FAMILY / ID</label>
+          <label htmlFor="evo-people-search">SEARCH PEOPLE / FAMILY / GIFT / ID</label>
           <input id="evo-people-search" type="search"
-            placeholder="Search a name, lineage, species or ID"
+            placeholder="Search a name, lineage, gift, species or ID"
             value={query} onChange={e=>setQuery(e.target.value)}/>
           <div className="evo-directory-filter-row">
             <label htmlFor="evo-people-status">STATUS
@@ -145,6 +155,15 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
               </select>
             </label>
           </div>
+          <label className="evo-directory-domain" htmlFor="evo-people-domain">
+            INNATE GIFT FAMILY
+            <select id="evo-people-domain" value={traitDomain}
+              onChange={e=>setTraitDomain(e.target.value as typeof traitDomain)}>
+              <option value="all">All eight families</option>
+              {TRAIT_DOMAINS.map(domain=><option value={domain} key={domain}>
+                {TRAIT_DOMAIN_INFO[domain].name}</option>)}
+            </select>
+          </label>
         </div>
         <div className="evo-directory-scroll">
           {results.slice(0,120).map(r=><LifeChip key={r.id} record={r}
