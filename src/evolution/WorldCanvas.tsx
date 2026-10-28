@@ -9,6 +9,7 @@ import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
+import {paintTerrainDetail,terrainDetailAt} from './terrainDetails';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
@@ -104,6 +105,15 @@ export function WorldCanvas({
         west:x>0?heights[index-1]:h,
         east:x<W-1?heights[index+1]:h},
         tile.biome,overlay==='elevation'?'elevation':'terrain');
+      if(overlay==='terrain'){
+        const water=tile.biome==='water';
+        const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
+          y<H-1&&(world.tiles[index+W].biome==='water')!==water||
+          x>0&&(world.tiles[index-1].biome==='water')!==water||
+          x<W-1&&(world.tiles[index+1].biome==='water')!==water;
+        paintTerrainDetail(ctx,terrainDetailAt(tile.biome,x,y,
+          world.settings.seed,h,shore),x,y);
+      }
       if(overlay==='resources'&&tile.biome!=='water'){
         const fullness=Math.min(1,tile.food/Math.max(1,biome.food*world.settings.resourceLevel));
         ctx.fillStyle=fullness>.66?'rgba(117,255,176,.34)':

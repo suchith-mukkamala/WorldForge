@@ -12,6 +12,7 @@ import {pixelRectsFor} from './pixelArt';
 import {personName} from './identity';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
+import {terrainDetailAt,type TerrainDetail} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
@@ -20,6 +21,105 @@ const CELL=26,VIEW=19,HALF=Math.floor(VIEW/2);
 const STAGE_LABELS={encampment:'Encampment',hamlet:'Hamlet',village:'Village',
   town:'Town',city:'City'};
 const num=(n:number)=>n.toLocaleString('en-US');
+
+/** Larger hand-pixelled versions of the same seeded overworld motifs.
+ * Decorations stay behind real trees, ore, roads, structures and people.
+ */
+function TerrainScenery({detail,x,y}:{detail:TerrainDetail;x:number;y:number}){
+  const v=detail.variant,kind=detail.motif;
+  if(kind==='none')return null;
+  return <g data-terrain-motif={kind}>
+    {kind==='oak'&&<>
+      <rect x={x+4} y={y+21} width={20} height={3} fill="#243f3b"/>
+      <rect x={x+12} y={y+12} width={4} height={12} fill="#715a46"/>
+      <rect x={x+3} y={y+8} width={20} height={12} fill="#275e4c"/>
+      <rect x={x+6} y={y+4} width={14} height={12} fill="#4c926b"/>
+      <rect x={x+9+v%2} y={y+2} width={9} height={6} fill="#86be88"/>
+      <rect x={x+5} y={y+13} width={5} height={3} fill="#6baa74"/>
+    </>}
+    {kind==='pine'&&<>
+      <rect x={x+11} y={y+15} width={4} height={10} fill="#6c5144"/>
+      <path d={`M${x+13} ${y+1}l-8 11h4l-6 8h20l-6-8h4z`}
+        fill="#205746" stroke="#183b3b" strokeWidth={1}/>
+      <path d={`M${x+13} ${y+3}l-5 8h5l-6 7h6`}
+        fill="#559e75"/>
+      <rect x={x+11} y={y+5+v} width={3} height={3} fill="#8bc5a0"/>
+    </>}
+    {kind==='fern'&&<>
+      <path d={`M${x+12} ${y+23}V${y+9}M${x+12} ${y+15}l-7-5m7 8l8-7m-8 10l-6-4m6 0l6-4`}
+        stroke="#77b583" strokeWidth={2.5} fill="none"/>
+      <rect x={x+7} y={y+20} width={11} height={3} fill="#2e6e54"/>
+    </>}
+    {kind==='grass'&&<>
+      <path d={`M${x+6} ${y+23}l-3-7m3 7l4-12m-4 12l7-8M${x+20} ${y+24}l-3-10m3 10l3-6`}
+        stroke="#9abf80" strokeWidth={2} fill="none"/>
+    </>}
+    {kind==='flowers'&&<>
+      <path d={`M${x+11} ${y+23}V${y+10}M${x+11} ${y+19}l-5-3m5 1l5-4`}
+        stroke="#588d65" strokeWidth={2.5} fill="none"/>
+      <rect x={x+7} y={y+5} width={9} height={8}
+        fill={v%2?'#db9ac2':'#f0c28b'}/>
+      <rect x={x+10} y={y+8} width={3} height={3} fill="#f8ecba"/>
+    </>}
+    {kind==='pebbles'&&<>
+      <rect x={x+3} y={y+19} width={19} height={4} fill="#363e4d"/>
+      <rect x={x+5} y={y+15} width={10} height={7} fill="#7d8790"/>
+      <rect x={x+7} y={y+14} width={5} height={2} fill="#bbc0bb"/>
+      <rect x={x+17} y={y+17} width={5} height={4} fill="#9ba09b"/>
+    </>}
+    {kind==='reeds'&&<>
+      <path d={`M${x+6} ${y+24}l1-18m6 18l-2-14m7 14l2-16`}
+        stroke="#a0ba7b" strokeWidth={2.3} fill="none"/>
+      <rect x={x+6} y={y+3} width={3} height={7} fill="#cdbb79"/>
+      <rect x={x+17} y={y+5} width={3} height={6} fill="#d3c58b"/>
+    </>}
+    {(kind==='boulder'||kind==='snowstone'||kind==='scree')&&<>
+      <rect x={x+3} y={y+21} width={21} height={4} fill="#344052"/>
+      <path d={`M${x+4} ${y+21}l4-12 10-4 6 11-3 6z`}
+        fill={kind==='scree'?'#647185':'#6c8292'}/>
+      <path d={`M${x+8} ${y+9}l10-4 3 6-8 3-6 7z`}
+        fill={kind==='snowstone'?'#e2e9e6':'#aab8bd'}/>
+      <path d={`M${x+12} ${y+13}l-3 7m9-10l2 7`}
+        stroke="#45556c" strokeWidth={1.5}/>
+      {kind==='scree'&&<>
+        <rect x={x+1} y={y+20} width={6} height={4} fill="#a4a6ae"/>
+        <rect x={x+20} y={y+19} width={5} height={4} fill="#8994a4"/>
+      </>}
+      {kind==='snowstone'&&<path d={`M${x+7} ${y+12}l2-6 9-3 5 10-8-3-4 5z`}
+        fill="#f2f1e8"/>}
+    </>}
+    {kind==='crystal'&&<>
+      <path d={`M${x+5} ${y+21}l5-15 5-4 5 19z`} fill="#4a889f"/>
+      <path d={`M${x+10} ${y+6}l5-4v17l-7 3z`} fill="#9ad5d6"/>
+      <rect x={x+13} y={y+6} width={2} height={8} fill="#d6eff0"/>
+    </>}
+    {kind==='stalagmite'&&<>
+      <path d={`M${x+3} ${y+23}l6-14 3 7 4-11 7 18z`}
+        fill="#5c637b" stroke="#33394e" strokeWidth={1}/>
+      <path d={`M${x+8} ${y+11}l2 8m6-12l3 13`}
+        stroke="#aab0bc" strokeWidth={2}/>
+    </>}
+    {kind==='scrub'&&<>
+      <path d={`M${x+13} ${y+24}V${y+10}m0 6l-8-6m8 10l7-8M${x+7} ${y+12}l-1-5`}
+        stroke="#b59683" strokeWidth={2.5} fill="none"/>
+    </>}
+    {(kind==='basalt'||kind==='embers')&&<>
+      <path d={`M${x+3} ${y+23}l5-12 7 3 4-9 5 18z`}
+        fill="#3e374a" stroke="#241e35" strokeWidth={1}/>
+      <path d={`M${x+9} ${y+12}l6 2 4-9v12`} fill="#826271"/>
+      <rect x={x+15} y={y+16} width={4} height={2} fill="#ce7766"/>
+      {kind==='embers'&&<>
+        <rect x={x+6} y={y+21} width={4} height={2} fill="#f0a36d"/>
+        <rect x={x+21} y={y+19} width={2} height={3} fill="#f1c387"/>
+      </>}
+    </>}
+    {(kind==='ripples'||kind==='shorefoam')&&<>
+      <path d={`M${x+3+v} ${y+9}h10m-4 4h12m-17 6h9`}
+        stroke={kind==='shorefoam'?'#b5dad4':'#6cabc1'}
+        strokeWidth={2.3} fill="none"/>
+    </>}
+  </g>;
+}
 
 function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
   selected:boolean;onSelect:()=>void}){
@@ -107,6 +207,9 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
   const hydrology=hydrologyForWorld(world);
   const altitudeAt=(x:number,y:number)=>x>=0&&y>=0&&
     x<world.width&&y<world.height?heights[y*world.width+x]:null;
+  const biomeAt=(x:number,y:number)=>x>=0&&y>=0&&
+    x<world.width&&y<world.height?
+      world.tiles[y*world.width+x].biome:undefined;
   const originX=place.x-HALF,originY=place.y-HALF;
   const allTiles=[];
   for(let dy=0;dy<VIEW;dy++)for(let dx=0;dx<VIEW;dx++){
@@ -116,9 +219,14 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
     const elevation=altitudeAt(x,y);
     const difference=(nx:number,ny:number)=>elevation===null?0:
       elevation-(altitudeAt(nx,ny)??elevation);
+    const shore=tile?[biomeAt(x-1,y),biomeAt(x+1,y),
+      biomeAt(x,y-1),biomeAt(x,y+1)].some(b=>b!==undefined&&
+        (b==='water')!==(tile.biome==='water')):false;
     allTiles.push({id:dy*VIEW+dx,x:dx*CELL,y:dy*CELL,tile,
       elevation,dropN:difference(x,y-1),dropE:difference(x+1,y),
       dropS:difference(x,y+1),dropW:difference(x-1,y),
+      detail:tile?terrainDetailAt(tile.biome,x,y,
+        world.settings.seed,elevation??0,shore):null,
       stream:tile?hydrology.channel[y*world.width+x]:0,
       flowTo:tile?hydrology.flowTo[y*world.width+x]:-1,
       owner:tile&&land.has(y*world.width+x),route:tile&&roads.has(y*world.width+x),
@@ -166,27 +274,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
         </g>;
       })}
       {allTiles.map(p=><g key={'scenery-'+p.id}>
-        {p.tile?.biome==='forest'&&<>
-          <rect x={p.x+6} y={p.y+4} width={14} height={15} fill="#39795d"/>
-          <rect x={p.x+9} y={p.y+1} width={8} height={10} fill="#67a875"/>
-          <rect x={p.x+12} y={p.y+16} width={3} height={8} fill="#654f45"/>
-        </>}
-        {p.tile?.biome==='water'&&<>
-          <rect x={p.x+3} y={p.y+7} width={11} height={2} fill="#6faac0"/>
-          <rect x={p.x+12} y={p.y+17} width={11} height={2} fill="#3d7f9c"/>
-        </>}
-        {p.tile?.biome==='mountain'&&<>
-          {p.elevation!==null&&p.elevation>=180&&
-            <path d={`M${p.x+3} ${p.y+13}l8-9 4 7 4-4 5 8z`}
-              fill="#e0e8e2" opacity={.72}/>}
-          <rect x={p.x+5} y={p.y+13} width={17} height={10} fill="#6e8296"/>
-          <rect x={p.x+9} y={p.y+7} width={9} height={9} fill="#aebdc8"/>
-          <rect x={p.x+12} y={p.y+5} width={3} height={5} fill="#e0e8e5"/>
-        </>}
-        {p.tile?.biome==='plains'&&<>
-          <rect x={p.x+4} y={p.y+5} width={2} height={7} fill="#88b081"/>
-          <rect x={p.x+17} y={p.y+15} width={4} height={2} fill="#cfca85"/>
-        </>}
+        {p.detail&&<TerrainScenery detail={p.detail} x={p.x} y={p.y}/>}
         {p.owner&&<rect x={p.x+1} y={p.y+1} width={CELL-2} height={CELL-2}
           fill="#ffe4aa" fillOpacity={.10} stroke="#e0b976" strokeOpacity={.30}
           strokeDasharray="3 3"/>}
