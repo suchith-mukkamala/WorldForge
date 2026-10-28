@@ -2,8 +2,9 @@ import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react
 import type {ChangeEvent,SetStateAction} from 'react';
 import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
-import {WorldCanvas} from './WorldCanvas';
+import {WorldCanvas,type MapOverlay} from './WorldCanvas';
 import {elevationAt} from './topography';
+import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import {cameraScrollTarget} from './motion';
@@ -125,7 +126,7 @@ export function WorldforgeApp(){
   const playback=TIME_RATES.find(rate=>rate.id===timeRate)??TIME_RATES[2];
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
-  const [overlay,setOverlay]=useState<'terrain'|'resources'|'deposits'|'elevation'>('terrain');
+  const [overlay,setOverlay]=useState<MapOverlay>('terrain');
   const [zoom,setZoom]=useState(1);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
@@ -293,6 +294,11 @@ export function WorldforgeApp(){
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
+  const drainage=displayed?hydrologyForWorld(world):null;
+  const drainageIndex=displayed?displayed.y*world.width+displayed.x:-1;
+  const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
+  const receiving=drainageIndex>=0?drainage?.basin[drainageIndex]??-1:-1;
+  const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
   const resource=displayed?world.deposits?.find(d=>d.index===
     displayed.y*world.width+displayed.x):undefined;
   const settlement=displayed?world.settlements.find(s=>(s.x===displayed.x&&
@@ -589,11 +595,12 @@ export function WorldforgeApp(){
             </select>
             <label htmlFor="evo-overlay">MAP LAYER</label>
             <select id="evo-overlay" value={overlay}
-              onChange={e=>setOverlay(e.target.value as 'terrain'|'resources'|'deposits'|'elevation')}>
+              onChange={e=>setOverlay(e.target.value as MapOverlay)}>
               <option value="terrain">Biomes</option>
               <option value="resources">Food levels</option>
               <option value="deposits">Trees & ore deposits</option>
               <option value="elevation">Elevation & contours</option>
+              <option value="watersheds">Watersheds & rivers</option>
             </select>
           </div>
           <div className="evo-map-scroll" ref={mapScrollRef}>
@@ -611,7 +618,10 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              HEIGHTMAP IN MAP LAYERS · ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
+              HEIGHTMAP & WATERSHEDS IN MAP LAYERS · ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON</span>
+            {overlay==='watersheds'&&<span>WATERSHEDS: LAND COLORS MARK DRAINAGE BASINS
+              · BLUE LINES ARE CREEKS & RIVERS · LIGHT BLUE POOLS SHOW POTENTIAL
+              DEPRESSIONS · DISPLAY ONLY, NO MOVEMENT CHANGES</span>}
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -650,6 +660,18 @@ export function WorldforgeApp(){
                   <small>Food available: {tile.food.toFixed(1)} units
                     {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
               </div>
+              {drainage&&<div className="evo-biome-info">
+                <span className="evo-biome-swatch" style={{background:'#4aadd0'}}/>
+                <div><strong>{tile.biome==='water'?'Existing water body':
+                  streamTier===3?'River':streamTier===2?'Stream':
+                    streamTier===1?'Creek':'Drainage slope'}</strong>
+                  <small>Contributing area: {drainage.catchment[drainageIndex]}
+                    {' tiles · drains to '+(receiverIsWater?'existing water':'world edge')}
+                    {drainage.pondDepth[drainageIndex]>=6?
+                      ' · Potential depression':''}</small>
+                  <small>Derived visual hydrology; travel and biomes unchanged.</small>
+                </div>
+              </div>}
               {resource&&<div className="evo-biome-info">
                 <span className="evo-biome-swatch" style={{background:
                   RESOURCE_COLORS[resource.kind]}}/>

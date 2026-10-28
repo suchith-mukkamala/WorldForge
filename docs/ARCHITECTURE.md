@@ -24,6 +24,8 @@ WorldForge is a deterministic single-player browser simulation. The saved `World
 
 Elevation fields are optional, validated v1.9 fields in new world data; older worlds use seeded lazy reconstruction. Do not block routes in old saves merely because heights now exist. Use spatial IDs and coordinate transforms shared across world-map and future 2.5D renderers. Physical slopes, cliffs, water, and passability must eventually be engine-owned and tested at every valid route step. A 2.5D camera should render this data without running its own parallel simulation.
 
+**v1.9.3 hydrology contract:** `hydrology.ts` runs a seeded priority-flood on the authoritative (or lazily reconstructed) heights. Existing water tiles and world boundaries are outlets; flow pointers are acyclic and every cell has a receiving basin. Reverse flow accumulation classifies display-only creeks/streams/rivers and identifies closed depressions that *might* pond. The derived typed arrays are cached by immutable topography identity and deliberately **not serialized**: exporting/importing a world reproduces them exactly without inflating old saves or consuming engine RNG. Painting terrain replaces topography, invalidating the cache. Neither the new water overlay nor its channels may alter existing `Biome='water'`, routing, shipping, farming, resources or agent cognition. Such changes require separate v2.0 model/schema work and migrations.
+
 ## Future trait and species implementation
 
 Keep traits keyed by stable IDs rather than UI strings. Store rank separately from mastery; record origin events, inheritance, and evolution requirements explicitly. Extend `isWorld` validation and migrations before saving new schema fields. No future trait should rely on whether its owner is onscreen.

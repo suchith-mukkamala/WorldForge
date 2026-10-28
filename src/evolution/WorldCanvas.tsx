@@ -3,21 +3,26 @@ import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
-import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
+import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,
+  paintHydrologyStream,spriteKey,
   paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
+import {hydrologyForWorld} from './hydrology';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
+export type MapOverlay='terrain'|'resources'|'deposits'|'elevation'|'watersheds';
+const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
+  '#465766','#50545f','#3d605f','#505e54'];
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
   followId=null,onFollowPosition,onDiagnostics,
 }:{
-  world:World;brush:Brush;overlay:'terrain'|'resources'|'deposits'|'elevation';
+  world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
   zoom?:number;speed?:number;followId?:number|null;
@@ -78,13 +83,23 @@ export function WorldCanvas({
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
     const heights=topographyForWorld(world).heights;
+    const drainage=overlay==='terrain'||overlay==='watersheds'?
+      hydrologyForWorld(world):null;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
       const px=x*CELL,py=y*CELL;
-      if(overlay!=='elevation')
-        paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
       const index=y*W+x,h=heights[index];
-      paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
+      if(overlay==='watersheds'&&drainage){
+        ctx.fillStyle=tile.biome==='water'?'#285d7a':
+          BASIN_COLORS[(drainage.basin[index]>>>0)%BASIN_COLORS.length];
+        ctx.fillRect(px,py,CELL,CELL);
+        if(drainage.pondDepth[index]>=6&&tile.biome!=='water'){
+          // Potential impoundment, deliberately not converted into water.
+          ctx.fillStyle='#4b8a98';ctx.fillRect(px+1,py+1,4,4);
+        }
+      }else if(overlay!=='elevation')
+        paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
+      if(overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
         south:y<H-1?heights[index+W]:h,
         west:x>0?heights[index-1]:h,
         east:x<W-1?heights[index+1]:h},
@@ -95,6 +110,12 @@ export function WorldCanvas({
           fullness>.32?'rgba(233,202,99,.35)':'rgba(255,88,124,.45)';
         ctx.fillRect(px,py,CELL,CELL);
       }
+    }
+    if(drainage)for(let i=0;i<W*H;i++){
+      const tier=drainage.channel[i],next=drainage.flowTo[i];
+      if(!tier||next<0)continue;
+      paintHydrologyStream(ctx,i%W,Math.floor(i/W),next%W,
+        Math.floor(next/W),tier,overlay==='watersheds');
     }
     if(overlay==='deposits'||zoom>=2){
       for(const d of world.deposits??[]){

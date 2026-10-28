@@ -9,6 +9,7 @@ import {initialMind} from './mind';
 import {editDeposit} from './resources';
 import {reconcileTradeTerrain} from './economy';
 import {reconcileTransportTerrain} from './transport';
+import {generateTopography} from './topography';
 
 export const DIVINE_ASPECTS=['health','lifespan','intelligence','fertility',
   'skill_growth','luck','courage','social'] as const;
@@ -219,6 +220,9 @@ export function intervene(previous:World,action:DivineAction):World{
       wasteland:4.2,volcanic:3.7,water:0}[action.biome];
     if(food===undefined)throw Error('Unknown terrain type.');
     w.tiles[idx]={biome:action.biome,food:food*w.settings.resourceLevel};
+    // God-mode terrain changes must invalidate the same elevation/drainage
+    // fields as map-brush edits. Hydrology itself never changes the biome.
+    w.topography=generateTopography(w.width,w.height,w.tiles,w.settings.seed);
     editDeposit(w,idx);
     reconcileTradeTerrain(w,idx);
     reconcileTransportTerrain(w,idx);
