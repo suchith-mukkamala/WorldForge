@@ -58,22 +58,25 @@ export function renderedPopulation(agents:readonly Agent[],scene:PopulationScene
   const perTile=zoom>=3?2:1;
   const focus=agents.find(a=>a.id===view.focusId)??agents.find(a=>
     !!view.selected&&a.x===view.selected.x&&a.y===view.selected.y);
-  const candidates=agents.filter(a=>
-    a.id!==focus?.id&&
-    a.x>=bounds.minX&&a.x<=bounds.maxX&&
-    a.y>=bounds.minY&&a.y<=bounds.maxY&&
-    !isVisuallyIndoors(a,scene));
-  candidates.sort((a,b)=>priority(a.id)-priority(b.id)||a.id-b.id);
-  const cells=new Map<number,number>(),visible:Agent[]=[];
-  for(const agent of candidates){
-    if(agent.id===focus?.id)continue;
-    const tile=agent.y*scene.width+agent.x;
-    const used=cells.get(tile)??0;
-    if(used>=perTile)continue;
-    cells.set(tile,used+1);
-    visible.push(agent);
-    if(visible.length>=maxVisible)break;
+  const compare=(a:Agent,b:Agent)=>priority(a.id)-priority(b.id)||a.id-b.id;
+  // Select top residents per location before sorting. Crowded cities can
+  // contain thousands of agents but only 1-2 sprites appear per world tile.
+  const eligible=new Map<number,Agent[]>();
+  for(const a of agents){
+    if(a.id===focus?.id||a.x<bounds.minX||a.x>bounds.maxX||
+      a.y<bounds.minY||a.y>bounds.maxY||isVisuallyIndoors(a,scene))continue;
+    const tile=a.y*scene.width+a.x;
+    const onTile=eligible.get(tile);
+    if(!onTile){eligible.set(tile,[a]);continue;}
+    if(onTile.length<perTile){onTile.push(a);continue;}
+    let last=0;
+    for(let i=1;i<onTile.length;i++)
+      if(compare(onTile[i],onTile[last])>0)last=i;
+    if(compare(a,onTile[last])<0)onTile[last]=a;
   }
-  if(focus&&!visible.some(a=>a.id===focus.id))visible.push(focus);
+  const candidates=Array.from(eligible.values()).flat();
+  candidates.sort(compare);
+  const visible=candidates.slice(0,maxVisible);
+  if(focus)visible.push(focus);
   return visible.sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id);
 }

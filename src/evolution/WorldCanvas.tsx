@@ -15,7 +15,7 @@ import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalWorldPoint} from './spatialDetails';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
-import {paintSceneAtmosphere} from './sceneAtmosphere';
+import {updateAtmosphereLayer} from './sceneAtmosphere';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -39,6 +39,7 @@ export function WorldCanvas({
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
+  const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
   const backgroundStamp=useRef<{
     tiles:World['tiles'];topography:World['topography'];settlementKey:string;
@@ -262,6 +263,12 @@ export function WorldCanvas({
     if(spriteCache.current.size>6500)spriteCache.current.clear();
     // Presentation-only visibility data, cached for this world update.
     const scene=populationScene(world);
+    const atmosphere=atmosphereRef.current??document.createElement('canvas');
+    atmosphereRef.current=atmosphere;
+    if(atmosphere.width!==canvas.width)atmosphere.width=canvas.width;
+    if(atmosphere.height!==canvas.height)atmosphere.height=canvas.height;
+    if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
+      world.settings.seed,world.year,day,'overhead');
     const scrollParent=canvas.parentElement;
     const bounds=()=>{
       const screen=canvas.getBoundingClientRect();
@@ -276,6 +283,8 @@ export function WorldCanvas({
     };
     const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
     let handle=0,lastFrame=-Infinity,previouslyWalking=false;
+    let cachedVisible:ReturnType<typeof renderedPopulation>|null=null;
+    let lastFollowX=NaN,lastFollowY=NaN;
     let lastReport=-Infinity;
     const draw=(timestamp:number)=>{
       // Animation is presentation-only and capped to limit large-world GPU work.
@@ -287,13 +296,12 @@ export function WorldCanvas({
       visible.clearRect(0,0,canvas.width,canvas.height);
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0);
-      if(overlay==='terrain')paintSceneAtmosphere(visible,world.settings.seed,
-        world.year,world.dayOfYear??0,'overhead');
+      if(overlay==='terrain')visible.drawImage(atmosphere,0,0);
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
       // Cull sprites outside the camera; preserve tracked character and tile.
-      const ordered=renderedPopulation(world.agents,scene,
-        {bounds:bounds(),zoom,focusId:followId,selected});
+      const ordered=cachedVisible??(cachedVisible=renderedPopulation(
+        world.agents,scene,{bounds:bounds(),zoom,focusId:followId,selected}));
       const tracked=followId!==null?world.agents.find(a=>a.id===followId):
         selected?world.agents.find(a=>a.x===selected.x&&a.y===selected.y):
         undefined;
@@ -412,7 +420,11 @@ export function WorldCanvas({
       }
       if(followId!==null){
         const tracked=positions.get(followId);
-        if(tracked)onFollowPosition?.(tracked.x,tracked.y);
+        if(tracked&&(Math.abs(tracked.x-lastFollowX)>.06||
+          Math.abs(tracked.y-lastFollowY)>.06)){
+          lastFollowX=tracked.x;lastFollowY=tracked.y;
+          onFollowPosition?.(tracked.x,tracked.y);
+        }
       }
       previouslyWalking=active;
       if(onDiagnostics&&timestamp-lastReport>=1000){
@@ -420,12 +432,14 @@ export function WorldCanvas({
         onDiagnostics({drawn:ordered.length,
           frameMs:Math.max(0,performance.now()-drawStart)});
       }
-      if(active||animatingCloseup)handle=requestAnimationFrame(draw);
+      // A stationary selected person no longer forces perpetual idle repaints.
+      if(active)handle=requestAnimationFrame(draw);
       else handle=0;
     };
     draw(now);
     // Recalculate visibility after scrolling, without changing world state.
-    const onScroll=()=>{if(!handle)handle=requestAnimationFrame(draw);};
+    const onScroll=()=>{cachedVisible=null;
+      if(!handle)handle=requestAnimationFrame(draw);};
     scrollParent?.addEventListener('scroll',onScroll,{passive:true});
     return ()=>{
       scrollParent?.removeEventListener('scroll',onScroll);
