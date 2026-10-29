@@ -7,7 +7,7 @@
  */
 import {activeTraitBonus,activeTraitEffect,activeTraitPurposeBonus} from './traitEffects';
 import {RouteFrontier} from './routeFrontier';
-import {experiencePreference} from './experienceLearning';
+import {experiencePreference,stepExperiencePreference} from './experienceLearning';
 import type {Agent,World} from './engine';
 import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
@@ -42,11 +42,14 @@ export type MortalPlan={id:number;purpose:Purpose;created:DateStamp;
   retryAfter?:number;interruptions?:number};
 export type PlanOutcome={year:number;day:number;purpose:Purpose;
   outcome:'completed'|'abandoned'|'interrupted';reason:string};
+export type StepLesson=DateStamp&{purpose:Purpose;kind:StepKind;
+  result:'achieved'|'blocked'};
 export type ReasonedChoice={year:number;day:number;purpose:Purpose;
   decision:'began'|'paused'|'resumed'|'changed'|'completed';
   explanation:string;alternatives:string[]};
 export type EmotionalState={stress:number;hope:number;loneliness:number};
 export type Cognition={nextId:number;agenda:MortalPlan[];history:PlanOutcome[];
+  lessons?:StepLesson[];
   decisions:ReasonedChoice[];emotions:EmotionalState;
   lastReview?:DateStamp;today?:{year:number;day:number;action:StepKind|'idle';
     explanation:string};
@@ -66,6 +69,7 @@ export function initialCognition():Cognition{return {nextId:1,agenda:[],
   history:[],decisions:[],emotions:{stress:18,hope:55,loneliness:24},
   trail:[],blockedDays:0};}
 export function cloneCognition(c:Cognition):Cognition{return {...c,
+  lessons:c.lessons?.map(lesson=>({...lesson})),
   agenda:c.agenda.map(p=>({...p,created:{...p.created},motives:[...p.motives],
     steps:p.steps.map(s=>({...s,target:s.target?{...s.target}:undefined}))})),
   history:c.history.map(h=>({...h})),decisions:c.decisions.map(d=>({...d,
@@ -76,6 +80,7 @@ export function cloneCognition(c:Cognition):Cognition{return {...c,
   trail:[...c.trail]};}
 export function validCognition(c:Cognition,w:World):boolean{
   if(!c||!Number.isSafeInteger(c.nextId)||c.nextId<1||
+    c.lessons!==undefined&&(!Array.isArray(c.lessons)||c.lessons.length>14)||
     !Array.isArray(c.agenda)||c.agenda.length>8||
     !Array.isArray(c.history)||c.history.length>14||
     !Array.isArray(c.decisions)||c.decisions.length>18||
@@ -89,6 +94,9 @@ export function validCognition(c:Cognition,w:World):boolean{
     x>=0&&y>=0&&x<w.width&&y<w.height;
   const index=(v:number)=>Number.isInteger(v)&&v>=0&&v<w.tiles.length;
   const statement=(s:string,max=160)=>typeof s==='string'&&s.length<=max;
+  if(c.lessons&&!c.lessons.every(l=>l&&stamp(l)&&
+    PURPOSES.includes(l.purpose)&&STEP_KINDS.includes(l.kind)&&
+    ['achieved','blocked'].includes(l.result)))return false;
   if(c.lastReview&&!stamp(c.lastReview)||
     c.today&&(!stamp(c.today)||!statement(c.today.explanation)||
       ![...STEP_KINDS,'idle'].includes(c.today.action))||
@@ -226,7 +234,8 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
     const bonus=activeTraitPurposeBonus(w.settings.seed,a,m.purpose);
     // Urgent physical needs remain independent of experiential preferences.
     const learned=m.purpose==='survive'||m.purpose==='recover'?0:
-      experiencePreference(a.cognition,m.purpose,w.year);
+      experiencePreference(a.cognition,m.purpose,w.year)+
+      stepExperiencePreference(a.cognition,m.purpose,w.year);
     return {...m,score:m.score+bonus+learned,
       reasons:[...m.reasons,
         ...(bonus?['Awakened '+gift!.name+' favors this pursuit']:[]),
@@ -338,6 +347,12 @@ function urgency(a:Agent):string|undefined{
 }
 const absoluteDay=(year:number,day:number)=>year*365+day;
 function pause(c:Cognition,p:MortalPlan,at:DateStamp,reason:string,days=12){
+  const current=p.steps[p.cursor];
+  // Hunger, illness, and family emergencies are not evidence that the
+  // interrupted activity itself failed. Learn only from genuine obstruction.
+  if(current&&(reason.startsWith('A blocked route')||
+    reason.startsWith('Could not complete')))
+    rememberStep(c,at,p.purpose,current.kind,'blocked');
   p.status='paused';p.pausedBecause=reason;
   p.retryAfter=absoluteDay(at.year,at.day)+days;
   p.interruptions=Math.min(5,(p.interruptions??0)+1);
@@ -345,6 +360,12 @@ function pause(c:Cognition,p:MortalPlan,at:DateStamp,reason:string,days=12){
   record(c,at,p,'paused',reason+' Earlier steps remain remembered.');
   archive(c,at,p,'interrupted',reason);
   c.route=undefined;c.blockedDays=0;
+}
+function rememberStep(c:Cognition,at:DateStamp,purpose:Purpose,
+  kind:StepKind,result:StepLesson['result']):void{
+  const lessons=c.lessons??(c.lessons=[]);
+  lessons.push({...at,purpose,kind,result});
+  if(lessons.length>14)lessons.shift();
 }
 function complete(w:World,a:Agent,p:MortalPlan,day:number):void{
   const c=a.cognition!,at=time(w,day);
@@ -657,7 +678,9 @@ export function advanceMindDay(previous:World,day:number,
       }
     }
     if(progressed){step.done++;c.blockedDays=0;
-      if(step.done>=step.needed){active.cursor++;c.route=undefined;
+      if(step.done>=step.needed){
+        rememberStep(c,time(w,day),active.purpose,step.kind,'achieved');
+        active.cursor++;c.route=undefined;
         if(active.cursor>=active.steps.length)complete(w,a,active,day);}
     }
     if(!c.trail.length)c.trail=[a.y*w.width+a.x];
