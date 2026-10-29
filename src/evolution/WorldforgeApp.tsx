@@ -583,7 +583,7 @@ export function WorldforgeApp(){
               <summary aria-label="More time advances">MORE +</summary>
               <div className="evo-extra-steps">
                 <button onClick={()=>step(7)}>+WEEK</button>
-                <button onClick={()=>step(3650)}>+10 YEARS</button>
+                <button onClick={()=>step(3650)} title="Advance ten years">+10Y</button>
               </div>
             </details>
           </div>
