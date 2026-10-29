@@ -1,4 +1,4 @@
-import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent,SetStateAction} from 'react';
 import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
@@ -11,6 +11,8 @@ import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
+import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
+  restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
@@ -166,6 +168,7 @@ export function WorldforgeApp(){
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
+  const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
   const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
   const fileRef=useRef<HTMLInputElement>(null);
@@ -195,7 +198,64 @@ export function WorldforgeApp(){
         {x:viewport.clientWidth,y:viewport.clientHeight});
       viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
     }
-  },[mapView,reliefLevel,orbitYaw,cameraPitch,zoom]);
+  },[mapView,reliefLevel,orbitYaw,cameraPitch]);
+  // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
+  // only the map scale; regular two-finger scrolling pans both axes natively.
+  // Safari emits gesturechange, handled separately with the same anchor.
+  useEffect(()=>{
+    if(tab!=='world')return;
+    const viewport=mapScrollRef.current;
+    if(!viewport)return;
+    const requestZoom=(factor:number,clientX:number,clientY:number)=>{
+      const rect=viewport.getBoundingClientRect();
+      const x=Number.isFinite(clientX)?clientX-rect.left:rect.width/2;
+      const y=Number.isFinite(clientY)?clientY-rect.top:rect.height/2;
+      pendingZoomAnchor.current=captureWorldZoomAnchor(viewport,{
+        x:Math.max(0,Math.min(rect.width,x)),
+        y:Math.max(0,Math.min(rect.height,y)),
+      });
+      setFollowId(null);
+      setZoom(value=>boundedMapZoom(value*factor));
+    };
+    const wheel=(event:WheelEvent)=>{
+      if(!event.ctrlKey)return; // Two-finger scroll pans with native inertia.
+      event.preventDefault(); // Pinch the map, never the entire browser page.
+      requestZoom(gestureZoomFactor(event.deltaY,event.deltaMode),
+        event.clientX,event.clientY);
+    };
+    let lastSafariScale=1;
+    const startGesture=(event:Event)=>{
+      event.preventDefault();
+      lastSafariScale=1;
+    };
+    const safariGesture=(event:Event)=>{
+      const pinch=event as Event&{scale?:number;clientX?:number;clientY?:number};
+      if(!pinch.scale||pinch.scale<=0)return;
+      event.preventDefault();
+      requestZoom(pinch.scale/lastSafariScale,
+        pinch.clientX??NaN,pinch.clientY??NaN);
+      lastSafariScale=pinch.scale;
+    };
+    viewport.addEventListener('wheel',wheel,{passive:false});
+    viewport.addEventListener('gesturestart',startGesture,{passive:false});
+    viewport.addEventListener('gesturechange',safariGesture,{passive:false});
+    return ()=>{
+      viewport.removeEventListener('wheel',wheel);
+      viewport.removeEventListener('gesturestart',startGesture);
+      viewport.removeEventListener('gesturechange',safariGesture);
+    };
+  },[tab]);
+  // After the canvas changes size, restore the exact world point below the
+  // fingers instead of jumping to the top-left of the projected panorama.
+  useLayoutEffect(()=>{
+    const anchor=pendingZoomAnchor.current;
+    const viewport=mapScrollRef.current;
+    if(!anchor||!viewport)return;
+    pendingZoomAnchor.current=null;
+    const scroll=restoreWorldZoomAnchor(anchor,viewport);
+    viewport.scrollLeft=scroll.x;
+    viewport.scrollTop=scroll.y;
+  },[zoom]);
   useEffect(()=>{
     let active=true;
     loadDatabaseSnapshot().then(restored=>{
@@ -649,10 +709,10 @@ export function WorldforgeApp(){
                 title="Toggle simulation and rendering diagnostics">
                 {showDiagnostics?'◉ STATS':'◌ STATS'}
               </button>
-              <button onClick={()=>setZoom(v=>Math.max(1,v-.5))}
+              <button onClick={()=>setZoom(v=>boundedMapZoom(v-.5))}
                 disabled={zoom<=1} title="Zoom out">−</button>
               <button onClick={()=>setZoom(1)} title="Fit map to view">⌖ FIT</button>
-              <button onClick={()=>setZoom(v=>Math.min(8,v+.5))}
+              <button onClick={()=>setZoom(v=>boundedMapZoom(v+.5))}
                 disabled={zoom>=8} title="Zoom in">+</button>
             </div>
           </div>
@@ -798,7 +858,7 @@ export function WorldforgeApp(){
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
-                'FOLLOW A SELECTED PERSON · ORBIT 360° · CHANGE TILT & HEIGHT · INSPECT CLIFFS'}</span>
+                'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON · ORBIT 360°'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
