@@ -15,6 +15,10 @@ const placeAt=(w:World,x:number,y:number):Settlement=>({
   id:w.nextSettlementId++,species:'human',name:'Test Haven',x,y,founded:w.year,
   population:8,stores:23,emptyYears:0,
 });
+const dryLocation=(w:World)=>{
+  const index=w.tiles.findIndex(t=>t.biome==='plains');
+  return {x:index%w.width,y:Math.floor(index/w.width)};
+};
 function activeCommunity(seed=44){
   const w=createWorld({seed,size:'small',resourceLevel:1.2});
   const center=w.agents.find(a=>a.species==='human'&&a.age>=16)!;
@@ -77,7 +81,8 @@ describe('Evolution Lab v0.7 — living settlements and construction',()=>{
 
   it('does not produce construction labor or progress for an empty community',()=>{
     const w=createWorld({seed:77,size:'small'});
-    const s=placeAt(w,1,1);s.emptyYears=0;w.settlements.push(s);
+    const dry=dryLocation(w);
+    const s=placeAt(w,dry.x,dry.y);s.emptyYears=0;w.settlements.push(s);
     prepareInfrastructure(w);
     const idx=s.infrastructure!.land[0];
     const b:Building={id:1,type:'house',x:idx%w.width,y:Math.floor(idx/w.width),
@@ -163,7 +168,8 @@ describe('Evolution Lab v0.7 — living settlements and construction',()=>{
 
   it('preserves buildings as ruins after an uninhabited settlement collapses',()=>{
     const w=createWorld({seed:510,size:'small'});
-    const s=placeAt(w,1,1);s.emptyYears=4;w.settlements.push(s);
+    const dry=dryLocation(w);
+    const s=placeAt(w,dry.x,dry.y);s.emptyYears=4;w.settlements.push(s);
     prepareInfrastructure(w);
     const idx=s.infrastructure!.land[0];
     s.infrastructure!.buildings.push({id:1,type:'house',x:idx%w.width,
