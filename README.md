@@ -167,3 +167,10 @@ shorelines, tiny material details, brighter tree silhouettes, textured building
 tiers and **real existing transport/settlement roads**. These are presentation
 updates cached with the terrain render; no additional simulation RNG, world
 schema changes, performance-heavy NPC drawing or physics changes are required.
+
+#### Trackpad navigation (v2.1.6)
+Pinch with two fingers over the map to zoom toward the cursor (Chrome and
+Firefox ctrl-wheel gestures; native Safari gesturechange supported). Swipe
+with two fingers to pan horizontally or vertically using native scroll inertia.
+Manual gestures release the follow camera, and map magnification is limited
+to 1×–8×. Zoom buttons and keyboard-accessible map selection remain.
