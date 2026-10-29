@@ -7,6 +7,7 @@
  */
 import {activeTraitBonus,activeTraitEffect,activeTraitPurposeBonus} from './traitEffects';
 import {RouteFrontier} from './routeFrontier';
+import {experiencePreference} from './experienceLearning';
 import type {Agent,World} from './engine';
 import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
@@ -223,8 +224,14 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
   const gift=activeTraitEffect(w.settings.seed,a);
   return opportunities.map(m=>{
     const bonus=activeTraitPurposeBonus(w.settings.seed,a,m.purpose);
-    return bonus?{...m,score:m.score+bonus,
-      reasons:[...m.reasons,'Awakened '+gift!.name+' favors this pursuit']}:m;
+    // Urgent physical needs remain independent of experiential preferences.
+    const learned=m.purpose==='survive'||m.purpose==='recover'?0:
+      experiencePreference(a.cognition,m.purpose,w.year);
+    return {...m,score:m.score+bonus+learned,
+      reasons:[...m.reasons,
+        ...(bonus?['Awakened '+gift!.name+' favors this pursuit']:[]),
+        ...(learned?['Past '+(learned>0?'successes encourage':'setbacks temper')+
+          ' this pursuit']:[])]};
   });
 }
 
@@ -281,13 +288,15 @@ function itinerary(m:Motivation,context:MindContext,a:Agent):PlanStep[]{
 function record(c:Cognition,at:DateStamp,p:MortalPlan,
   decision:ReasonedChoice['decision'],explanation:string,
   alternatives:string[]=[]){
-  c.decisions.push({...at,purpose:p.purpose,decision,explanation,
+  c.decisions.push({...at,purpose:p.purpose,decision,
+    explanation:explanation.slice(0,240),
+    // Keep experiential notes within the existing v2 save validation bounds.
     alternatives:alternatives.slice(0,5)});
   if(c.decisions.length>18)c.decisions=c.decisions.slice(-18);
 }
 function archive(c:Cognition,at:DateStamp,p:MortalPlan,
   outcome:PlanOutcome['outcome'],reason:string){
-  c.history.push({...at,purpose:p.purpose,outcome,reason});
+  c.history.push({...at,purpose:p.purpose,outcome,reason:reason.slice(0,160)});
   if(c.history.length>14)c.history=c.history.slice(-14);
 }
 function emotions(a:Agent):EmotionalState{
