@@ -17,9 +17,11 @@ export const VALUES:Value[]=['community','independence','tradition','discovery']
 export type Career='forager'|'scout'|'artisan'|'scholar'|'healer'|'guardian'|'trader';
 export const CAREERS:Career[]=['forager','scout','artisan','scholar','healer','guardian','trader'];
 export type MemoryKind='care'|'hardship'|'friendship'|'mentorship'|'adoption'|
-  'discovery'|'independence'|'career'|'loss';
+  'discovery'|'independence'|'career'|'loss'|'support'|'conflict'|
+  'reconciliation'|'collaboration';
 export const MEMORY_KINDS:MemoryKind[]=['care','hardship','friendship','mentorship',
-  'adoption','discovery','independence','career','loss'];
+  'adoption','discovery','independence','career','loss','support','conflict',
+  'reconciliation','collaboration'];
 export type SocialMemory={year:number;kind:MemoryKind;otherId?:number;detail:string};
 export type Development={householdId?:number;caregiverIds:number[];
   adoptedBy?:number;friends:number[];mentorId?:number;career?:Career;
