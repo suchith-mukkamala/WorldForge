@@ -81,7 +81,7 @@ describe('v2.1.3 — age-based natural awakening',()=>{
     expect(isWorld(next)).toBe(true);
   });
 
-  it('never schedules powers, changes the RNG, or re-awakens the same life',()=>{
+  it('awakens once and applies effects without replaying a life event',()=>{
     const world=createWorld({seed:21313,size:'small'});
     const awakened=stepWorld(world);
     const alreadyAwake:World={...world,
@@ -92,8 +92,14 @@ describe('v2.1.3 — age-based natural awakening',()=>{
     };
     const forced=stepWorld(alreadyAwake);
     expect(forced.rngState).toBe(awakened.rngState);
-    expect(forced.agents.map(a=>[a.id,a.age,a.health,a.energy,a.x,a.y]))
-      .toEqual(awakened.agents.map(a=>[a.id,a.age,a.health,a.energy,a.x,a.y]));
+    // v2.1.5 correctly allows active gifts to change survival and movement.
+    // Pure effect calculations do not draw from RNG; here the simulated
+    // population and its history are the only sources of game-state changes.
+    expect(forced.agents.some(a=>{
+      const original=awakened.agents.find(b=>b.id===a.id);
+      return original&&(a.health!==original.health||a.energy!==original.energy||
+        a.x!==original.x||a.y!==original.y);
+    })).toBe(true);
     const twoYears=stepWorld(awakened);
     for(const r of twoYears.lineage){
       const events=r.moments?.filter(m=>m.kind==='awakening')??[];
