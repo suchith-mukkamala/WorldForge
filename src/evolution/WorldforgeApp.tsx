@@ -61,6 +61,9 @@ function initialWorld():World{
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture';
 const format=(n:number)=>n.toLocaleString('en-US');
+const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
+  ['low','LOW'],['classic','CLASSIC'],['high','HIGH'],
+];
 const downloadJson=(world:World)=>{
   const blob=new Blob([JSON.stringify(world)],{type:'application/json'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -685,8 +688,7 @@ export function WorldforgeApp(){
               </div>
               <div className="evo-option-group">
                 <small>CAMERA TILT</small>
-                {([['low','LOW'],['classic','CLASSIC'],['high','HIGH']]
-                  as const).map(([key,label])=>
+                {CAMERA_TILT_CHOICES.map(([key,label])=>
                   <button key={key} className={cameraPitch===key?'is-on':''}
                     aria-pressed={cameraPitch===key}
                     onClick={()=>setCameraPitch(key)}>{label}</button>)}
