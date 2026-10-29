@@ -8,6 +8,7 @@ import {cloneDevelopment,lifeStage} from './development';
 import {activeTraitBonus,activeTraitEffect} from './traitEffects';
 import {trainedSkillGain} from './skillTraining';
 import {traitProfile} from './family';
+import {relationshipScore,refusesConversation} from './socialJudgment';
 
 export const ACTIVITIES=['rest','work','forage','study','care','socialize',
   'travel','craft','reflect'] as const;
@@ -191,12 +192,17 @@ export function advanceWeeklyLife(world:World,day:number):World{
           b.development!.languages[a.species]<12||
           !['socialize','study','care','reflect','craft'].includes(
             b.dailyLife!.activity))continue;
-        const regard=a.dailyLife!.acquaintances.find(c=>c.personId===b.id)?.regard??0;
-        const familiar=a.development.friends.includes(b.id)?15:regard*.07;
+        const own=a.dailyLife!.acquaintances,other=b.dailyLife!.acquaintances;
+        if(refusesConversation(own,other,a.id,b.id)&&
+          a.development.mentorId!==b.id&&
+          (!a.development.householdId||
+            a.development.householdId!==b.development.householdId))continue;
+        const familiar=a.development.friends.includes(b.id)?15:0;
         const mentor=a.development.mentorId===b.id?18:0;
         const family=a.development.householdId===b.development!.householdId?12:0;
         const willingness=b.dailyLife!.activity==='socialize'?8:0;
         const rank=familiar+mentor+family+willingness+
+          relationshipScore(own,other,a.id,b.id)+
           activeTraitBonus(world.settings.seed,a,'social')*15-
           distance(a,b)*6+((a.id*7+b.id*13+week*17)%11)*.2;
         if(rank>score){best=b;score=rank;}
