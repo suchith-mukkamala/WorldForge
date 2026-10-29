@@ -118,3 +118,16 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 - `src/evolution/WorldforgeApp.tsx`: the current god-perspective UI.
 
 The `evolution` folder retains its historical internal name to keep the existing simulation modules and tests recognizable. It can be renamed in a future dedicated refactor.
+
+### v2.1.5 — Active Traits & Scenic Atmosphere
+
+Awakened innate gifts now cause modest, deterministic effects on actual travel,
+foraging, recovery, practice, relationships and Mind Engine priorities. Each of
+the 48 catalog gifts has an effect specialty, scaled by its persistent
+potential rank and relevant trained skills. Dormant gifts have no active
+benefits; safety and individual agency still outweigh soft trait priorities.
+
+The overhead and raised 2.5D maps feature enhanced pixel terrain, brighter
+roof and vegetation details, layered seasonal lighting, dappled cloud shadows,
+and calendar-based particles. Seasonal visuals are decorative: they do not
+create simulated weather or modify ecology, RNG state or world saves.
