@@ -15,6 +15,7 @@ import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalWorldPoint} from './spatialDetails';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
+import {paintSceneAtmosphere} from './sceneAtmosphere';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -286,6 +287,8 @@ export function WorldCanvas({
       visible.clearRect(0,0,canvas.width,canvas.height);
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0);
+      if(overlay==='terrain')paintSceneAtmosphere(visible,world.settings.seed,
+        world.year,world.dayOfYear??0,'overhead');
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
       // Cull sprites outside the camera; preserve tracked character and tile.
@@ -431,7 +434,7 @@ export function WorldCanvas({
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,
     overlay,selected,zoom,speed,followId,onFollowPosition,onDiagnostics,
-    world.topography]);
+    world.topography,world.dayOfYear]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);
