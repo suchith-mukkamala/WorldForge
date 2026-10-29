@@ -40,6 +40,8 @@ function LifeChip({world,record,focused,onPick,onFavorite}:{
           {' · Potential '}<RankBadge rank={potentialRank(world.settings.seed,record)}/></small>
         <small className="evo-directory-gift-line">✦ {gift.name} ·{' '}
           {TRAIT_DOMAIN_INFO[gift.domain].name}</small>
+        {record.awakening&&<small className="evo-directory-awakened">
+          ✧ AWAKENED · Y{record.awakening.year} · age {record.awakening.age}</small>}
       </span>
     </button>
     <button type="button" className={'evo-dir-star'+(favorite?' is-on':'')}
@@ -55,6 +57,8 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
   const [species,setSpecies]=useState<'all'|Species>('all');
   const [minRank,setMinRank]=useState<'all'|TraitRank>('all');
   const [traitDomain,setTraitDomain]=useState<'all'|TraitDomain>('all');
+  const [awakeningFilter,setAwakeningFilter]=useState<'all'|'awakened'|'dormant'>('all');
+  const [sortBy,setSortBy]=useState<'recent'|'rank'|'awakening'|'name'>('recent');
   const [activeId,setActiveId]=useState<number|null>(null);
   const [draft,setDraft]=useState('');
   const [editNotice,setEditNotice]=useState('');
@@ -72,6 +76,8 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
       if(species!=='all'&&r.species!==species)return false;
       const gift=INNATE_TRAIT_INFO[innateTrait(world.settings.seed,r)];
       if(traitDomain!=='all'&&gift.domain!==traitDomain)return false;
+      if(awakeningFilter==='awakened'&&!r.awakening)return false;
+      if(awakeningFilter==='dormant'&&r.awakening)return false;
       if(minRank!=='all'&&TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))<
         TRAIT_RANKS.indexOf(minRank))return false;
       if(filter==='living'&&!living.has(r.id))return false;
@@ -84,12 +90,20 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
       return true;
     });
     return list.sort((a,b)=>Number(favorites.has(b.id))-Number(favorites.has(a.id))||
-      (minRank!=='all'?TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,b))-
-        TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,a)):0)||b.id-a.id);
-  },[world,query,filter,species,minRank,traitDomain,living,favoriteIds]);
+      (sortBy==='rank'||sortBy==='recent'&&minRank!=='all'?
+        TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,b))-
+        TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,a)):0)||
+      (sortBy==='awakening'?(b.awakening?.year??-100000)-
+        (a.awakening?.year??-100000):0)||
+      (sortBy==='name'?personName(world,a).localeCompare(personName(world,b)):0)||
+      b.id-a.id);
+  },[world,query,filter,species,minRank,traitDomain,awakeningFilter,sortBy,
+    living,favoriteIds]);
   const exceptional=useMemo(()=>world.lineage.filter(r=>
     TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))>=
       TRAIT_RANKS.indexOf('S')).length,[world.lineage,world.settings.seed]);
+  const awakenedCount=useMemo(()=>world.lineage.filter(r=>!!r.awakening).length,
+    [world.lineage]);
   const alive=focused&&living.get(focused.id);
   const development=alive?.development;
   const guild=alive?guildOf(world,alive.id):undefined;
@@ -117,6 +131,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
         <span><b>{favoriteIds.length}</b> favorites</span>
         <span><b>{exceptional}</b> S-rank+ potential</span>
         <span><b>{INNATE_TRAIT_CATALOG.length}</b> possible gifts</span>
+        <span><b>{awakenedCount}</b> awakened lives</span>
       </div>
     </header>
     <div className="evo-directory-layout">
@@ -164,6 +179,25 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 {TRAIT_DOMAIN_INFO[domain].name}</option>)}
             </select>
           </label>
+          <div className="evo-directory-extra-row">
+            <label htmlFor="evo-people-awakening">AWAKENING
+              <select id="evo-people-awakening" value={awakeningFilter}
+                onChange={e=>setAwakeningFilter(e.target.value as typeof awakeningFilter)}>
+                <option value="all">Any state</option>
+                <option value="awakened">✦ Awakened</option>
+                <option value="dormant">◇ Dormant</option>
+              </select>
+            </label>
+            <label htmlFor="evo-people-sort">SORT DIRECTORY
+              <select id="evo-people-sort" value={sortBy}
+                onChange={e=>setSortBy(e.target.value as typeof sortBy)}>
+                <option value="recent">Newest recorded</option>
+                <option value="rank">Highest potential</option>
+                <option value="awakening">Recent awakenings</option>
+                <option value="name">Name A–Z</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div className="evo-directory-scroll">
           {results.slice(0,120).map(r=><LifeChip key={r.id} record={r}

@@ -214,6 +214,7 @@ export function intervene(previous:World,action:DivineAction):World{
       mind:initialMind(w.year)};
     restored.potentialRank=potentialRank(w.settings.seed,past);
     restored.innateTrait=innateTrait(w.settings.seed,past);
+    if(past.awakening)restored.awakening={...past.awakening};
     restored.development=initialDevelopment(restored,w.tiles[at.y*w.width+at.x].biome);
     w.agents.push(restored);past.died=undefined;
     record(w,id,'resurrect','Returned from death with a renewed adult body.',past.id);

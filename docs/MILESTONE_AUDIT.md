@@ -1,4 +1,4 @@
-# WorldForge milestone audit (selected milestones through v2.1.2)
+# WorldForge milestone audit (selected milestones through v2.1.3)
 
 WorldForge is a *simulation* rather than a scripted city painter. This audit
 distinguishes implemented foundations from aspirational features.
@@ -24,6 +24,7 @@ distinguishes implemented foundations from aspirational features.
 | v1.7 | Mind Engine II records flexible multi-step personal agendas, evidence and alternative priorities, emotional state, completed and interrupted plan histories. Explicit hunger, illness, fatigue, missing relationships, changing priorities and blocked paths trigger reconsideration. Daily work, study, caregiving, limited foraging and traversable routes have world-state consequences; weekly conversations gain distinct subjects and sentiment. The Life Viewer exposes reasoning, steps and interruptions. Four walking phases, action poses and path traces enhance close-up pixel-art inspection without influencing world state. |
 | v2.1.1 | Eleven innate potential ranks F–SSS (including S+ and SS+), explicitly weighted rarity, independent real-training proficiency ranks, non-linear future trait potency, birth-stable rank records for all creation paths and preserved ancestral archives. Old saves reconstruct latent rank deterministically; future trait names and awakening are not simulated yet. |
 | v2.1.2 | One named innate gift per person from 48 defined options in eight domains; slight gene-driven family affinities, no species-locked gifts. Birth, editor arrivals, divine summoning and resurrection preserve identity in the lineage archive. The People directory shows and filters gifts; legacy saves deterministically reconstruct identities. Gifts remain latent: age-based awakening, trait effects and subtraits are not implemented yet. |
+| v2.1.3 | Seeded age-based natural awakening opportunities scaled to effective lifespan and maturity across pure and mixed ancestries, with a non-guaranteed outcome independent of potential rank. Survivor-only awakening events, archived life moments, genealogy and resurrection persistence. Awakening timelines, dormant/awakened discovery filters and sorting, portrait glows and tiny map motes in both camera perspectives. No automated trait stat effects, subtraits or legendary evolution yet. |
 
 ## Validation
 

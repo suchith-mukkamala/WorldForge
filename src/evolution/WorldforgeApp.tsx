@@ -879,12 +879,14 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.1.2: EVERY LIFE BEGINS WITH A GIFT</strong>
-        <span>Each person is born with one innate gift from 48 possibilities
-          spanning body, senses, mind, nature, craft, social bonds, spirit and
-          survival. Their potential rank describes what that gift might grow
-          into, never what they can already do. Gifts remain latent until the
-          age-scaled awakening and real trait effects arrive in future patches.</span>
+        <strong>V2.1.3: THE MOMENT A GIFT AWAKENS</strong>
+        <span>Innate gifts can now awaken naturally as individuals grow older,
+          with timing scaled to their species or mixed ancestry. Some never
+          awaken naturally; high potential does not guarantee success. An
+          awakening becomes a permanent life-history milestone, visible in the
+          new timeline and filters. Small domain-colored motes and portrait
+          glows mark awakened characters without enlarging their sprites.
+          Active trait bonuses and evolved gifts remain future releases.</span>
       </div>
     </main>}
   </div>;

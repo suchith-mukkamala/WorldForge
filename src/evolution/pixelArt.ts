@@ -48,7 +48,7 @@ export function paintAncientSite(ctx:CanvasRenderingContext2D,
   else{p('#728f9d',2,3,2,2);}
 }
 export type PixelPerson=Pick<Agent,'id'|'species'|'ancestry'|'genes'> &
-  Partial<Pick<Agent,'age'|'work'|'development'>>;
+  Partial<Pick<Agent,'age'|'work'|'development'|'innateTrait'|'awakening'>>;
 export type AgeLook='young'|'adult'|'elder';
 export type PixelAppearance={skin:string;hair:string;eyes:string;outfit:string;
   trim:string;boots:string;accent:string;ageLook:AgeLook;secondary?:Species};

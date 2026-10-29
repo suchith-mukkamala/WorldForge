@@ -37,6 +37,7 @@ import {generateTopography,validTopography,type Topography} from './topography';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './traitRanks';
 import {birthInnateTrait,innateTrait,isInnateTrait,type InnateTraitId} from './innateTraits';
+import {naturalAwakeningPlan,isAwakeningRecord,type AwakeningRecord} from './awakening';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -50,6 +51,7 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   potentialRank?:TraitRank;
   innateTrait?:InnateTraitId;
+  awakening?:AwakeningRecord;
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
   work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean;
@@ -61,11 +63,12 @@ export type Bond={id:number;a:number;b:number;since:number;
 export type LifeMoment={year:number;
   kind:'arrival'|'birth'|'courtship'|'partner'|'separation'|'parenthood'|
     'death'|'founding'|'renamed'|'adoption'|'mentorship'|'career'|
-    'independence'|'divine'|'discovery';text:string;relatedIds?:number[]};
+    'independence'|'divine'|'discovery'|'awakening';text:string;relatedIds?:number[]};
 export type LineageRecord={id:number;species:Species;ancestry:Ancestry;
   genes:Genes;born:number;died?:number;generation:number;name?:string;house?:string;
   potentialRank?:TraitRank;
   innateTrait?:InnateTraitId;
+  awakening?:AwakeningRecord;
   moments?:LifeMoment[];parents?:[number,number];children:number[];partnerIds:number[];
   divineOrigins?:number[];knownKnowledge?:LearnedTopic[]};
 export type SettlementLegacy={id:number;species:Species;name:string;
@@ -328,6 +331,7 @@ export function stepWorld(previous:World):World{
     agents:previous.agents.map(a=>({...a,
       potentialRank:potentialRank(previous.settings.seed,a),
       innateTrait:innateTrait(previous.settings.seed,a),
+      ...(a.awakening?{awakening:{...a.awakening}}:{}),
       knowledge:a.knowledge?.map(k=>({...k})),
       visitedSites:a.visitedSites?[...a.visitedSites]:undefined,
       artifacts:a.artifacts?.map(v=>({...v})),
@@ -353,6 +357,7 @@ export function stepWorld(previous:World):World{
     lineage:previous.lineage.map(r=>({...r,
       potentialRank:potentialRank(previous.settings.seed,r),
       innateTrait:innateTrait(previous.settings.seed,r),children:[...r.children],
+      ...(r.awakening?{awakening:{...r.awakening}}:{}),
       partnerIds:[...r.partnerIds],divineOrigins:r.divineOrigins?[...r.divineOrigins]:undefined,
       knownKnowledge:r.knownKnowledge?.map(k=>({...k}))})),
     events:[...previous.events],history:[...previous.history],
@@ -572,6 +577,25 @@ export function stepWorld(previous:World):World{
   }
   world.agents=survivors;
   finalizeDeaths(world,survivors,world.year);
+  // A real lifetime event, assessed only for survivors after aging/death.
+  // No world RNG calls, no implicit stat bonuses, and no assumed awakening for
+  // people who died before the threshold or never awaken naturally.
+  const awakeningRecords=new Map(world.lineage.map(r=>[r.id,r]));
+  let awakenings=0;
+  for(const a of survivors){
+    if(a.awakening)continue;
+    const planned=naturalAwakeningPlan(world.settings.seed,a.id,a.genes,a.ancestry);
+    if(planned.age===null||a.age<planned.age)continue;
+    const awakening:AwakeningRecord={kind:'natural',age:a.age,year:world.year};
+    a.awakening=awakening;
+    const archive=awakeningRecords.get(a.id);
+    if(archive)archive.awakening={...awakening};
+    appendLifeMoment(world,a.id,{year:world.year,kind:'awakening',
+      text:'Their innate gift awakened naturally at age '+a.age+'.'},awakeningRecords);
+    awakenings++;
+  }
+  if(awakenings)log(world,'milestone',awakenings+' natural awakening'+
+    (awakenings===1?'':'s')+' occurred among the living.');
   const partnerships=growBonds(world,()=>random(state));
   if(partnerships)log(world,'bond',partnerships+' partnership'+
     (partnerships===1?'':'s')+' formed this year.');
@@ -822,6 +846,7 @@ export function isWorld(value:unknown):value is World{
       !checkAncestry(a.ancestry)||!checkGenes(a.genes)||
       (a.potentialRank!==undefined&&!isTraitRank(a.potentialRank))||
       (a.innateTrait!==undefined&&!isInnateTrait(a.innateTrait))||
+      (a.awakening!==undefined&&!isAwakeningRecord(a.awakening,a.born,w.year))||
       !Number.isFinite(a.energy)||a.energy<0||a.energy>100||
       !Number.isFinite(a.health)||a.health<=0||a.health>100||
       (a.partnerId!==undefined&&(!Number.isSafeInteger(a.partnerId)||a.partnerId<=0))||
@@ -895,6 +920,7 @@ export function isWorld(value:unknown):value is World{
       !SPECIES.includes(r.species)||!checkGenes(r.genes)||
       (r.potentialRank!==undefined&&!isTraitRank(r.potentialRank))||
       (r.innateTrait!==undefined&&!isInnateTrait(r.innateTrait))||
+      (r.awakening!==undefined&&!isAwakeningRecord(r.awakening,r.born,w.year))||
       !checkAncestry(r.ancestry)||!Number.isInteger(r.generation)||r.generation<0||
       !Number.isInteger(r.born)||
       (r.died!==undefined&&(!Number.isInteger(r.died)||r.died<r.born))||
@@ -905,7 +931,7 @@ export function isWorld(value:unknown):value is World{
           m.year<=year&&
           ['arrival','birth','courtship','partner','separation','parenthood','death',
             'founding','renamed','adoption','mentorship','career',
-            'independence','divine','discovery'].includes(m.kind)&&
+            'independence','divine','discovery','awakening'].includes(m.kind)&&
           typeof m.text==='string'&&m.text.length<=220&&
           (m.relatedIds===undefined||(Array.isArray(m.relatedIds)&&
             m.relatedIds.length<=20&&m.relatedIds.every(id=>Number.isSafeInteger(id)&&id>0))))))||
