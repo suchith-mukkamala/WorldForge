@@ -107,3 +107,25 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
   }
   return roads.size;
 }
+
+/** Minimal visual invalidation key: re-rasterize the raised road layer only
+ * when existing path tiles change, not on every advancing world snapshot. */
+export function depthRoadSignature(world:Pick<World,'settlements'|'transport'|'trails'>):
+  number{
+  let hash=2166136261;
+  const add=(value:number)=>{hash=Math.imul(hash^(value>>>0),16777619);};
+  add(world.settlements.length);
+  for(const s of world.settlements){
+    add(s.id);
+    const roads=s.infrastructure?.roads??[];
+    add(roads.length);
+    for(const index of roads)add(index);
+  }
+  const transportRoads=world.transport?.roads??[];
+  add(transportRoads.length);
+  for(const segment of transportRoads)add(segment.index);
+  const trails=world.trails??[];
+  add(trails.length);
+  for(const trail of trails)add(trail.index);
+  return hash>>>0;
+}
