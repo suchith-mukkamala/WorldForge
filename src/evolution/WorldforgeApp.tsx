@@ -46,7 +46,7 @@ export {readSavedWorld} from './storage';
 import {
   BIOME_INFO,BIOMES,DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,
   createWorld,editWorld,population,
-  type Brush,type World,type WorldSettings,type Biome,
+  type Brush,type World,type WorldSettings,
 } from './engine';
 
 function initialWorld():World{
@@ -61,16 +61,6 @@ function initialWorld():World{
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture';
 const format=(n:number)=>n.toLocaleString('en-US');
-const brushValue=(b:Brush)=>b.kind==='inspect'?'inspect':
-  b.kind==='food'?'food':b.kind==='spawn'?'spawn-'+b.species:'terrain-'+b.biome;
-const fromBrushValue=(value:string):Brush=>{
-  if(value==='food')return {kind:'food'};
-  if(value.startsWith('spawn-')&&SPECIES.includes(value.slice(6) as typeof SPECIES[number]))
-    return {kind:'spawn',species:value.slice(6) as typeof SPECIES[number]};
-  if(value.startsWith('terrain-')&&BIOMES.includes(value.slice(8) as Biome))
-    return {kind:'terrain',biome:value.slice(8) as Biome};
-  return {kind:'inspect'};
-};
 const downloadJson=(world:World)=>{
   const blob=new Blob([JSON.stringify(world)],{type:'application/json'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -184,14 +174,12 @@ export function WorldforgeApp(){
       const current=currentWorld.current;
       const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
-      const z=Math.max(1,zoom);
       const elevation=topographyForWorld(current).heights[y*w+x]??0;
       const point=projector.project(x,y,elevation);
       const scaleX=viewport.scrollWidth/projector.size.width;
       const scaleY=viewport.scrollHeight/projector.size.height;
       viewport.scrollLeft=point.x*scaleX-viewport.clientWidth/2;
       viewport.scrollTop=point.y*scaleY-viewport.clientHeight/2;
-      void z;
     }else{
       const target=cameraScrollTarget({x,y},{x:w,y:h},
         {x:viewport.scrollWidth,y:viewport.scrollHeight},
@@ -601,6 +589,9 @@ export function WorldforgeApp(){
         </div>
         <div className="evo-stat"><small>SETTLEMENTS</small>
           <strong>{world.settlements.length}</strong><span>Founded by local groups</span></div>
+        <details className="evo-extra-stats">
+          <summary>✧ MORE WORLD STATISTICS <span>HYBRIDS · BONDS · EXPEDITIONS · DISCOVERIES</span></summary>
+          <div className="evo-extra-stat-grid">
         <div className="evo-stat"><small>LIVING HYBRIDS</small>
           <strong>{hybrids}</strong><span>Mixed-species ancestry</span></div>
         <div className="evo-stat"><small>PARTNERSHIPS</small>
@@ -611,6 +602,8 @@ export function WorldforgeApp(){
           <strong>{world.knowledge?.firsts.length??0}</strong>
           <span><button onClick={()=>navigate('knowledge')}>Explore the knowledge codex ↗</button></span>
         </div>
+          </div>
+        </details>
       </section>
       <div className="evo-playground-layout">
         <section className="evo-map-card">
@@ -667,7 +660,9 @@ export function WorldforgeApp(){
                 onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
               <button className={toolPanel?'is-on':''}
                 aria-expanded={toolPanel} aria-controls="evo-world-tools"
-                onClick={()=>setToolPanel(v=>!v)}>✧ WORLD TOOLS</button>
+                onClick={()=>setToolPanel(v=>!v)}>
+                ✧ WORLD TOOLS{brush.kind==='inspect'?'':' • ACTIVE'}
+              </button>
             </div>
           </div>
           {mapView==='depth'&&advancedView&&
@@ -807,8 +802,8 @@ export function WorldforgeApp(){
             {!displayed||!tile?<div className="evo-inspector-empty">
               <div>⌖</div>
               <strong>CLICK SOMEWHERE IN THE WORLD</strong>
-              <p>Select an individual, a settlement or a terrain tile to view its
-                details. Change the Map Tool to place people or edit resources.</p>
+              <p>Choose a person, settlement, or terrain tile to inspect it.
+                World Tools opens optional editing actions.</p>
             </div>:<>
               <div className="evo-biome-info">
                 <span className="evo-biome-swatch"
