@@ -104,7 +104,7 @@ describe('v2.1.1 — potential is rare, fixed and separate from real training',(
     }));
     expect(html).toContain('LATENT POTENTIAL');
     expect(html).toContain('STRONGEST TRAINING');
-    expect(html).toContain('not power or destiny');
+    expect(html).toContain('Potential is not destiny');
     expect(html).toContain('Foraging');
     expect(html).toContain('RANKS');
     const trained={...a,development:{...a.development!,skills:{
