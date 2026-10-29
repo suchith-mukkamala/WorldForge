@@ -39,6 +39,7 @@ import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './tra
 import {birthInnateTrait,innateTrait,isInnateTrait,type InnateTraitId} from './innateTraits';
 import {naturalAwakeningPlan,isAwakeningRecord,type AwakeningRecord} from './awakening';
 import {isTraitHeritage,type TraitHeritage} from './traitHeritage';
+import {activeTraitBonus} from './traitEffects';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -452,10 +453,13 @@ export function stepWorld(previous:World):World{
     const startTile=offset(world.width,a.x,a.y);
     const tile=world.tiles[startTile];
     a.age++;
+    const mobility=activeTraitBonus(world.settings.seed,a,'movement');
+    const forageGift=activeTraitBonus(world.settings.seed,a,'foraging');
+    const recoveryGift=activeTraitBonus(world.settings.seed,a,'recovery');
     a.mind=planMind(world,a,residents,partnerPositions,closeContacts,
       biomeSuitability,traitProfile,permanentHomes);
     const travel=clamp(info.wander*info.speed*(knows(a,'navigation')?1.16:1)*
-      a.genes.curiosity*world.settings.wandering*
+      a.genes.curiosity*(1+mobility*.45)*world.settings.wandering*
       divineFactor(a,'courage',world.year),0,.94);
     const destination=a.mind.target;
     const motivated=!!destination&&distance(a,destination)>1;
@@ -497,7 +501,7 @@ export function stepWorld(previous:World):World{
         enter(offset(world.width,a.x,a.y),a.id);
         movementSteps.push(offset(world.width,a.x,a.y));
         a.energy-=terrainStepEffort(world,startTile,
-          offset(world.width,a.x,a.y))*1.5/info.speed;
+          offset(world.width,a.x,a.y))*1.5/info.speed*(1-mobility);
       }
     }
     const current=world.tiles[offset(world.width,a.x,a.y)];
@@ -535,7 +539,7 @@ export function stepWorld(previous:World):World{
     const voyage=current.biome==='water'?sailors.get(a.id):undefined;
     const ration=voyage?Math.min(.8,voyage.provisions??0):0;
     if(voyage)voyage.provisions=round(Math.max(0,(voyage.provisions??0)-ration));
-    const nourishment=gathered*(comfortable?13.4:10.5)*
+    const nourishment=gathered*(comfortable?13.4:10.5)*(1+forageGift)*
       (1+Math.max(0,info.strength-1)*.18)*
       (1+(divineFactor(a,'luck',world.year)-1)*.18);
     a.energy=round(clamp(a.energy+nourishment+ration*15-dailyCost-
@@ -546,7 +550,8 @@ export function stepWorld(previous:World):World{
     else{
       const well=finishedWells.some(b=>distance(a,b)<=5);
       const remedies=(knows(a,'herbalism')?.25:0)+(knows(a,'medicine')?.55:0);
-      a.health=Math.min(100,a.health+(1.45+(well?.27:0)+remedies)*a.genes.vigor*
+      a.health=Math.min(100,a.health+(1.45+(well?.27:0)+remedies)*
+        (1+recoveryGift)*a.genes.vigor*
         Math.sqrt(info.strength)*divineFactor(a,'health',world.year));
     }
     if(stage==='infant'&&!care.providerId)a.health-=1.65;
