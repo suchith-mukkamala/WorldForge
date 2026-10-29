@@ -7,6 +7,8 @@ import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
+import {buildingTier,type Building} from './construction';
+import type {Agent} from './engine';
 import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
@@ -195,16 +197,34 @@ function renderTerrain(w:World,overlay:MapOverlay,
   }
 }
 
-function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
-  selected:{x:number;y:number}|null,zoom:number,
-  positions:Map<number,Point>,walking:Set<number>,projector:Projector){
-  const heights=topographyForWorld(w).heights;
-  const actors:{order:number;paint:()=>void}[]=[];
+type DepthActor={order:number;paint:()=>void};
+type BuildingSpriteCache=Map<string,HTMLCanvasElement>;
+/** A fixed 64px atlas slot holds every current building silhouette, including
+ * tier-3 roofs. Rendering the expensive pixel geometry once per appearance
+ * replaces dozens of fillRects per building on each walk-animation frame. */
+function paintCachedBuilding(ctx:CanvasRenderingContext2D,b:Building,
+  p:Pt,cache:BuildingSpriteCache):void{
+  const key=[b.type,b.stage,b.culture,buildingTier(b)].join(':');
+  let sprite=cache.get(key);
+  if(!sprite){
+    sprite=document.createElement('canvas');
+    sprite.width=64;sprite.height=64;
+    const painter=sprite.getContext('2d');
+    if(painter){painter.imageSmoothingEnabled=false;
+      paintDepthBuilding(painter,b,{x:32,y:54});}
+    if(cache.size>160)cache.clear();
+    cache.set(key,sprite);
+  }
+  ctx.drawImage(sprite,Math.round(p.x)-32,Math.round(p.y)-54);
+}
+/** Geometry and structures are immutable throughout an animation. Build
+ * projected actors only when the world or camera changes. */
+function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
+  projector:Projector,cache:BuildingSpriteCache):DepthActor[]{
+  const heights=topographyForWorld(w).heights,actors:DepthActor[]=[];
   for(const s of w.settlements){
     const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
     actors.push({order:p.y+.2,paint:()=>{
-      // A compact town banner identifies the settlement; actual structures
-      // occupy their separate addresses and evolve independently below.
       ctx.fillStyle='#21364a';ctx.fillRect(p.x-1,p.y-9,2,9);
       ctx.fillStyle=SPECIES_INFO[s.species].color;
       ctx.fillRect(p.x-6,p.y-12,11,4);
@@ -212,13 +232,18 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     }});
     for(const b of s.infrastructure?.buildings??[]){
       const bp=projector.project(b.x,b.y,heights[b.y*w.width+b.x]);
-      actors.push({order:bp.y+.4,paint:()=>paintDepthBuilding(ctx,b,bp)});
+      actors.push({order:bp.y+.4,paint:()=>paintCachedBuilding(ctx,b,bp,cache)});
     }
   }
-  const agents=renderedPopulation(w.agents,populationScene(w),{
-    bounds:{minX:0,minY:0,maxX:w.width-1,maxY:w.height-1},
-    selected,zoom:Math.max(1,zoom),maxVisible:350});
-  for(const a of agents){
+  return actors;
+}
+function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
+  selected:{x:number;y:number}|null,zoom:number,
+  positions:Map<number,Point>,walking:Set<number>,projector:Projector,
+  structures:DepthActor[],visibleAgents:readonly Agent[]):void{
+  const heights=topographyForWorld(w).heights;
+  const actors:DepthActor[]=[...structures];
+  for(const a of visibleAgents){
     const pos=positions.get(a.id)??{x:a.x,y:a.y};
     const p=projector.project(pos.x,pos.y,heights[a.y*w.width+a.x]);
     actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id),
@@ -251,6 +276,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<HTMLCanvasElement|null>(null);
+  const buildingSpritesRef=useRef<BuildingSpriteCache>(new Map());
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number}|null>(null);
@@ -310,6 +336,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       motionsRef.current=moving;
     }
     priorRef.current={seed:world.settings.seed,year:world.year,day,positions};
+    const structures=prepareDepthStructures(ctx,world,projector,
+      buildingSpritesRef.current);
+    const visibleAgents=renderedPopulation(world.agents,populationScene(world),{
+      bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
+      selected,zoom:Math.max(1,zoom),maxVisible:350});
     let frameHandle=0;
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -322,7 +353,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
         interpolated.set(id,frame??target);
         if(frame?.walking)walking.add(id);
       }
-      paintInhabitants(ctx,world,selected,zoom,interpolated,walking,projector);
+      paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
+        projector,structures,visibleAgents);
       if(walking.size)frameHandle=requestAnimationFrame(draw);
     };
     draw(now);
