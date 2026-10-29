@@ -80,3 +80,20 @@ export function paintSceneAtmosphere(ctx:CanvasRenderingContext2D,
   }
   ctx.restore();
 }
+
+/** Rasterize only when the calendar or canvas size changes. Reusing one
+ * transparent layer prevents dozens of gradient/particle paint operations
+ * on every walk-animation frame and while scrolling a large world.
+ * The cache lives only in rendering memory, never in saved worlds. */
+const atmosphereStamps=new WeakMap<HTMLCanvasElement,string>();
+export function updateAtmosphereLayer(canvas:HTMLCanvasElement,
+  seed:number,year:number,day:number,view:'overhead'|'depth'):boolean{
+  const stamp=[seed,year,day,view,canvas.width,canvas.height].join(':');
+  if(atmosphereStamps.get(canvas)===stamp)return false;
+  const ctx=canvas.getContext('2d');
+  if(!ctx)return false;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  paintSceneAtmosphere(ctx,seed,year,day,view);
+  atmosphereStamps.set(canvas,stamp);
+  return true;
+}
