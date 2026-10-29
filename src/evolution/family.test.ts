@@ -73,7 +73,9 @@ describe('Evolution Lab v0.2 · genetics and compatibility',()=>{
   });
   it('establishes persistent mutual courtship and eventually a partnership',()=>{
     const w=createWorld({starting:{human:0,elf:0,dwarf:0,demon:0}});
-    const x=12,y=12;
+    const index=w.tiles.findIndex((t,i)=>t.biome==='plains'&&
+      i%w.width<w.width-1&&w.tiles[i+1].biome==='plains');
+    const x=index%w.width,y=Math.floor(index/w.width);
     const a=editWorld(w,x,y,{kind:'spawn',species:'human'});
     const b=editWorld(a,x+1,y,{kind:'spawn',species:'elf'});
     const ready:World={...b,agents:b.agents.map(agent=>({
