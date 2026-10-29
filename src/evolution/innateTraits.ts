@@ -4,6 +4,7 @@
  * Selection never consumes the shared simulation RNG or privileges a species.
  */
 import type {Genes} from './engine';
+import type {TraitHeritage} from './traitHeritage';
 
 export const TRAIT_DOMAINS=[
   'body','senses','mind','nature','craft','social','spirit','survival',
@@ -100,13 +101,16 @@ export function traitDomainWeight(domain:TraitDomain,genes:Genes):number{
   };
   return .25+Math.max(.5,Math.min(1.5,affinity[domain]))**2;
 }
-export function birthInnateTrait(seed:number,id:number,genes:Genes):InnateTraitId{
+export function birthInnateTrait(seed:number,id:number,genes:Genes,
+  heritage?:TraitHeritage):InnateTraitId{
   const genetic=Math.imul(Math.round(genes.vigor*1000),0x85ebca6b)^
     Math.imul(Math.round(genes.curiosity*1000),0x27d4eb2d)^
     Math.imul(Math.round(genes.fertility*1000),0x165667b1)^
     Math.imul(Math.round(genes.social*1000),0x9e3779b1);
   const roll=mix(seed^Math.imul(id,0x51ed2705)^genetic^0x5f3759df)/4294967296;
-  const weights=TRAIT_DOMAINS.map(domain=>traitDomainWeight(domain,genes));
+  const weights=TRAIT_DOMAINS.map(domain=>traitDomainWeight(domain,genes)+
+    (heritage?(heritage.parentDomains.filter(d=>d===domain).length*.95+
+      (heritage.affinity===domain?.42:0)):0));
   const total=weights.reduce((n,weight)=>n+weight,0);
   let draw=roll*total;
   let domain:TraitDomain=TRAIT_DOMAINS.at(-1)!;
