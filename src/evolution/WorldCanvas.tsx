@@ -16,6 +16,7 @@ import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
 import {mortalWorldPoint} from './spatialDetails';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
+import {personSpriteSize} from './personSpriteScale';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -364,10 +365,10 @@ export function WorldCanvas({
           if(painter)paintPerson(painter,a,0,0,direction,stride,pose);
           spriteCache.current.set(key,sprite);
         }
-        // Larger portrait sprites live in the close-up inspector. On the map,
-        // people remain visibly dwarfed by a house even at high camera zoom.
-        const width=focus&&zoom>=5?5:zoom>=5?4:3;
-        const height=focus&&zoom>=5?8:zoom>=5?6:5;
+        // Far away: cheap map symbols. Close up: recognizable pixel people.
+        // The atlas is cached by identity, direction and animation frame, so
+        // changing zoom only alters blit size, not animation or simulation.
+        const {width,height}=personSpriteSize(zoom,focus);
         visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
         if(a.awakening){
           // Tiny, non-colliding pixel motes show awakened gifts without making
