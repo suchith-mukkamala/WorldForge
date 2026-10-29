@@ -655,7 +655,11 @@ export function WorldforgeApp(){
                 ['deposits','RESOURCES'],['elevation','HEIGHT'],
                 ['watersheds','RIVERS']] as const).map(([key,label])=>
                 <button key={key} className={overlay===key?'is-on':''}
-                  aria-pressed={overlay===key} onClick={()=>setOverlay(key)}>
+                  aria-pressed={overlay===key} onClick={()=>setOverlay(key)}
+                  title={key==='watersheds'?'Watersheds & rivers':
+                    key==='terrain'?'Biomes':key==='elevation'?
+                    'Elevation & contours':key==='deposits'?
+                    'Trees & ore deposits':'Food levels'}>
                   {label}</button>)}
             </div>
             <div className="evo-toolbar-drawers">
