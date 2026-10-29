@@ -42,6 +42,7 @@ describe('v2.1.5 — earned effects and scenic overhaul',()=>{
     const world=createWorld({seed:21516,size:'small'});
     const base=world.agents[0];
     const adult={...base,age:45,health:100,energy:95,work:undefined,
+      mind:{...base.mind!,goal:'vocation' as const},
       innateTrait:'pattern_seeker' as const,
       awakening:{kind:'natural' as const,age:22,year:0},
       dailyLife:{...initialDailyLife(),fatigue:0,socialNeed:0}};
