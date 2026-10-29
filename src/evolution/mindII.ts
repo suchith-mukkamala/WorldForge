@@ -5,6 +5,7 @@
  * Every decision can be reconsidered; interruption does not erase an earlier
  * intention. An agent may also prefer living without an explicit agenda.
  */
+import {activeTraitBonus,activeTraitEffect,activeTraitPurposeBonus} from './traitEffects';
 import type {Agent,World} from './engine';
 import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
@@ -170,7 +171,7 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
     distance(a,x)-distance(a,y))[0];
   const target=a.mind?.target;
   const workplace=a.work?workplaces.get(a.work.settlementId):undefined;
-  return [
+  const opportunities:Motivation[]=[
     {purpose:'survive',score:(energy<65?(65-energy)*2+39:5)+
       (memory?12:0),
       reasons:['Energy '+Math.round(energy)+'/100',memory?
@@ -218,6 +219,12 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
       reasons:[a.belief?'A chosen faith':'Still forming personal beliefs',
         'Tradition value '+Math.round(d?.values.tradition??50)+'/100']},
   ];
+  const gift=activeTraitEffect(w.settings.seed,a);
+  return opportunities.map(m=>{
+    const bonus=activeTraitPurposeBonus(w.settings.seed,a,m.purpose);
+    return bonus?{...m,score:m.score+bonus,
+      reasons:[...m.reasons,'Awakened '+gift!.name+' favors this pursuit']}:m;
+  });
 }
 
 const step=(kind:StepKind,reason:string,needed=2,
@@ -506,7 +513,9 @@ export function advanceMindDay(previous:World,day:number,
     const targetPerson=step.personId?byId.get(step.personId):undefined;
     const target=targetPerson&&step.kind==='travel'?targetPerson:step.target;
     if(step.kind==='travel'){
-      const interval=Math.max(1,Math.round(3/traitProfile(a.ancestry).speed));
+      const interval=Math.max(1,Math.round(3/(
+        traitProfile(a.ancestry).speed*(1+
+          activeTraitBonus(w.settings.seed,a,'movement')*.5))));
       if(!target){progressed=true;c.route=undefined;}
       else if(distance(a,target)<=1){progressed=true;c.route=undefined;}
       else if(day%interval===a.id%interval){
@@ -527,7 +536,8 @@ export function advanceMindDay(previous:World,day:number,
           a.x=next%w.width;a.y=Math.floor(next/w.width);
           if(hasPhysicalTerrain(w)){
             const climb=terrainStepEffort(w,old,next);
-            a.energy=round(clamp(a.energy-(climb-1)*.28));
+            a.energy=round(clamp(a.energy-(climb-1)*.28*(1-
+              activeTraitBonus(w.settings.seed,a,'movement'))));
             if(a.dailyLife)a.dailyLife.fatigue=round(clamp(
               a.dailyLife.fatigue+(climb-1)*.45));
           }
@@ -549,12 +559,15 @@ export function advanceMindDay(previous:World,day:number,
       if(food>=.18){
         if(tiles===previous.tiles)tiles=[...previous.tiles];
         tiles[index]={...tiles[index],food:round(Math.max(0,food-.14))};
-        a.energy=round(clamp(a.energy+.65));progressed=true;
+        a.energy=round(clamp(a.energy+.65*(1+
+          activeTraitBonus(w.settings.seed,a,'foraging'))));progressed=true;
       }
     }else if(step.kind==='rest'){
-      a.energy=round(clamp(a.energy+.12));
+      a.energy=round(clamp(a.energy+.12*(1+
+        activeTraitBonus(w.settings.seed,a,'recovery'))));
       if(a.dailyLife){a.dailyLife={...a.dailyLife,
-        fatigue:round(clamp(a.dailyLife.fatigue-.7))};}
+        fatigue:round(clamp(a.dailyLife.fatigue-.7*(1+
+          activeTraitBonus(w.settings.seed,a,'recovery'))))};}
       progressed=true;
     }else if(step.kind==='practice'||step.kind==='observe'||
       step.kind==='work'||step.kind==='help'){
@@ -563,7 +576,11 @@ export function advanceMindDay(previous:World,day:number,
       const skill=step.kind==='practice'?'knowledge':
         step.kind==='observe'?'navigation':step.kind==='help'?'care':
         a.work?.job==='farmer'?'foraging':'craft';
-      a.development.skills[skill]=round(clamp(a.development.skills[skill]+.035));
+      const specialty=skill==='knowledge'?'learning':
+        skill==='navigation'?'exploration':skill==='care'?'care':
+        skill==='foraging'?'foraging':'craft';
+      a.development.skills[skill]=round(clamp(a.development.skills[skill]+
+        .035*(1+activeTraitBonus(w.settings.seed,a,specialty))));
       if(step.kind==='observe'){
         const here=w.tiles[a.y*w.width+a.x].biome;
         if(!a.development.knownBiomes.includes(here))

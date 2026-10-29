@@ -235,24 +235,33 @@ export function paintTerrain(ctx:CanvasRenderingContext2D,biome:string,
     p('#275643',1,2,4,4);p('#438d64',1,1,4,3);
     p('#76b177',2,0,2,2);p('#745b43',3,4,1,2);
     if(h%3===0)p('#b0ce8a',1,2,1,1);
+    p('#214838',0,5,2,1);p('#5b9b6c',0,1,2,1);
+    if(h%7===0)p('#e6c98e',4,1,1,1);
   }else if(biome==='water'){
     p('#28546e',0,5,6,1);p('#5195b7',h%3,1,3,1);
     if(h%4===0)p('#88bcd0',3,3,2,1);
+    p('#1f4965',1,4,3,1);if(h%9===0)p('#b2d9d8',1,2,2,1);
   }else if(biome==='mountain'){
     p('#606b81',0,5,6,1);p('#79879b',1,2,4,3);
     p('#b7c5ca',2,0,2,2);p('#dbe2de',3,0,1,1);
+    p('#4e5d72',4,4,2,2);p('#d6d7cf',1,1,1,1);
   }else if(biome==='cave'){
     p('#1d2636',1,2,4,4);p('#45435a',0,0,6,1);
     p('#67738c',2,4,1,1);if(h%2)p('#82aeb7',4,4,1,2);
+    p('#a1acba',1,0,1,1);p('#2a3948',3,3,2,1);
   }else if(biome==='volcanic'){
     p('#513a4f',0,5,6,1);p('#a95659',1,1,4,2);
     p('#e9a26d',h%3+1,3,2,1);p('#472c40',4,0,1,2);
+    p('#39273d',0,0,2,2);p('#ffbe77',3,4,1,1);
   }else if(biome==='plains'){
     p('#7fa576',h%4,1,1,3);p('#c3c489',2,4,2,1);
     if(h%5===0){p('#e5ce9b',4,2,1,1);p('#597c64',4,3,1,1);}
+    p('#416e5b',0,5,2,1);p('#aec18b',4,0,1,2);
+    if(h%7===0)p('#d1a6b0',1,1,1,1);
   }else if(biome==='wasteland'){
     p('#876b74',h%3,4,3,1);p('#b9959a',4,1,1,2);
     if(h%4===0)p('#d5ab9d',1,2,2,1);
+    p('#614d62',0,5,3,1);p('#c6a28f',2,0,1,1);
   }
 }
 
@@ -399,6 +408,11 @@ export function paintBuilding(ctx:CanvasRenderingContext2D,b:Building):void{
     p('#ded0a8',1-tier,7-wallHeight,width-2,1);
     p('#443746',3,5,2,4);
     p('#f2d99a',width-4-tier,4,2,2);
+    p('#fae5af',width-4-tier,4,1,1);
+    p('#5d4a51',1-tier,9-wallHeight+1,width,1);
+    for(let ridge=2;ridge<width-2;ridge+=3)
+      p('#e6c99b',ridge-tier,7-wallHeight,1,1);
+    p('#a9977f',0,10,Math.min(width,6),1);
     if(tier>=3){
       p(style.roof,2,-wallHeight-1,width-4,3);
       p('#d9c9ab',2,-wallHeight+2,width-4,2);
@@ -413,6 +427,9 @@ export function paintBuilding(ctx:CanvasRenderingContext2D,b:Building):void{
   p('#293344',0,5,12,5);p(style.wall,1,4,10,5);
   const roofSize=b.type==='communal'?10:8;
   p(style.roof,1,2,roofSize,3);p('#e0c6a0',3,1,roofSize-3,1);
+  p('#f0d5aa',1,2,roofSize,1);p('#3d4450',0,9,12,1);
+  for(let shingle=2;shingle<roofSize;shingle+=3)
+    p('rgba(31,42,56,.38)',shingle,3,1,1);
   if(b.type==='communal'){
     p(style.wall,4,-3,4,6);p(style.roof,3,-4,6,2);
     p('#e5d5aa',5,-1,2,2);
@@ -424,7 +441,10 @@ export function paintBuilding(ctx:CanvasRenderingContext2D,b:Building):void{
     p('#d5b58a',7,6,1,3);
   }else{
     p('#3b3342',5,6,3,3);p('#e4c88c',2,5,2,2);
-    if(b.type==='house')p('#d9bda2',9,0,2,3);
+    if(b.type==='house'){
+      p('#d9bda2',9,0,2,3);p('#ffe7af',2,5,2,2);
+      p('#8a7766',9,1,1,2);p('#7f8d80',2,10,2,1);
+    }
   }
   p(style.trim,1,4,1,3);
 }

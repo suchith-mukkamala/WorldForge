@@ -7,6 +7,7 @@ import {DepthCanvas} from './DepthCanvas';
 import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
+import {sceneAtmosphere} from './sceneAtmosphere';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
@@ -662,6 +663,13 @@ export function WorldforgeApp(){
             </>}
           </div>
           <MapLayerLegend overlay={overlay}/>
+          {overlay==='terrain'&&<div className="evo-season-visual" role="note"
+            aria-label="Visual world season">
+            <span className="evo-season-icon" aria-hidden="true">✦</span>
+            <span><strong>{sceneAtmosphere(world.dayOfYear??0).season.toUpperCase()}</strong>
+              <small>Seasonal light · layered scenery · pixel atmosphere</small></span>
+            <span className="evo-season-dot" aria-hidden="true"/>
+          </div>}
           {!hasPhysicalTerrain(world)&&<div className="evo-terrain-upgrade" role="note">
             <div><strong>CLASSIC TERRAIN RULES</strong>
               <span>This older world keeps its original routes and farming.

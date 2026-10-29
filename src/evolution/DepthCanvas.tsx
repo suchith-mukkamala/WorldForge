@@ -8,6 +8,7 @@ import {terrainDetailAt} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
 import {mortalWorldPoint} from './spatialDetails';
+import {paintSceneAtmosphere} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Motion,type Point} from './motion';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
@@ -147,14 +148,27 @@ function renderTerrain(w:World,overlay:MapOverlay,
       // while leaving the shape of hills and cliffs easy to distinguish.
       const vegetationHash=(Math.imul(x+w.settings.seed,73856093)^
         Math.imul(y+w.settings.seed,19349663))>>>0;
-      if(overlay==='terrain'&&vegetationHash%9===0){
+      if(overlay==='terrain'&&vegetationHash%7===0){
         const detail=terrainDetailAt(biome,x,y,w.settings.seed,height);
         if(detail.motif==='oak'||detail.motif==='pine'){
           paintDepthTree(ctx,p,detail.motif==='pine');
         }else if(['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
-          ctx.fillStyle=detail.motif==='snowstone'?'#ecf1e5':
-            detail.motif==='crystal'?'#9cddd5':'#aeb2b5';
-          ctx.fillRect(p.x-1,p.y-4,3,3);
+          ctx.fillStyle='rgba(10,25,35,.32)';
+          ctx.fillRect(p.x-3,p.y,7,2);
+          ctx.fillStyle=detail.motif==='snowstone'?'#dce5e8':
+            detail.motif==='crystal'?'#5dc5c5':
+            detail.motif==='basalt'?'#4b4456':'#83949b';
+          ctx.fillRect(p.x-2,p.y-4,6,4);
+          ctx.fillStyle=detail.motif==='crystal'?'#d4f6e7':'#ecdfc6';
+          ctx.fillRect(p.x-1,p.y-6,3,3);
+          ctx.fillStyle='#465466';ctx.fillRect(p.x+2,p.y-1,2,1);
+        }else if(['flowers','grass','reeds','fern','scrub'].includes(detail.motif)){
+          ctx.fillStyle=biome==='wasteland'?'#9c9279':'#427b5d';
+          ctx.fillRect(p.x-2,p.y-2,5,2);
+          ctx.fillStyle=detail.motif==='flowers'?'#e9c88a':
+            detail.motif==='reeds'?'#bad6a0':'#83b98b';
+          ctx.fillRect(p.x-1,p.y-4,1,3);
+          ctx.fillRect(p.x+2,p.y-3,1,2);
         }
       }
       if(overlay==='watersheds'&&drainage&&
@@ -295,6 +309,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
+      if(overlay==='terrain')paintSceneAtmosphere(ctx,world.settings.seed,
+        world.year,world.dayOfYear??0,'depth');
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
       for(const [id,target] of positions){
         const motion=motionsRef.current.get(id);

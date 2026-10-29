@@ -143,7 +143,7 @@ describe('v2.1.2 — one distinct birth gift per person',()=>{
     expect(profile).toContain(trait.name);
     expect(profile).toContain(trait.possibility);
     expect(profile).toContain('LATENT AT BIRTH');
-    expect(profile).toContain('no simulation bonuses');
+    expect(profile).toContain('Dormant gifts grant no bonuses');
     const directory=renderToStaticMarkup(createElement(PeopleDirectory,{
       world,selectedId:a.id,onOpen:()=>{},onFavorite:()=>{},
       onRename:()=>{},onFindOnMap:()=>{},
