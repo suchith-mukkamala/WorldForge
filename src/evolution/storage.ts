@@ -66,7 +66,12 @@ export async function loadDatabaseSnapshot():Promise<{world:World;savedAt:number
   }finally{db.close();}
 }
 let saveQueue=Promise.resolve();
-export function saveDatabaseWorld(raw:string,savedAt=Date.now()):Promise<void>{
+// Only the app's canonical compactWorld() writer may mark its own recent
+// successfully committed payload as trusted. Unrecognized/external data is
+// fully validated before being promoted to a recoverable backup.
+let lastCommittedCanonical:string|null=null;
+export function saveDatabaseWorld(raw:string,savedAt=Date.now(),
+  canonical=false):Promise<void>{
   const write=async()=>{
     const db=await database();
     try{
@@ -81,7 +86,8 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now()):Promise<void>{
               (entry as {raw:unknown}).raw:null;
           // Preserve a backup only for a recognized checkpoint, avoiding
           // unnecessary writes of corrupt or non-world data.
-          if(typeof old==='string'&&readSavedWorld(old))
+          if(typeof old==='string'&&
+            (old===lastCommittedCanonical||readSavedWorld(old)))
             store.put(entry,WORLD_PREVIOUS_RECORD);
           store.put({raw,savedAt},WORLD_RECORD);
         };
@@ -90,6 +96,7 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now()):Promise<void>{
         transaction.onerror=()=>reject(transaction.error);
         transaction.onabort=()=>reject(transaction.error);
       });
+      lastCommittedCanonical=canonical?raw:null;
     }finally{db.close();}
   };
   const result=saveQueue.then(write);
@@ -127,8 +134,12 @@ export function compactWorld(world:World):string{
   const {tiles,...rest}=world;
   const core={schemaVersion:WORLD_SCHEMA_VERSION,world:rest,
     terrain:encodeTiles(tiles)};
-  return JSON.stringify({format:'evo-packed-v3',...core,
-    checksum:checksum(JSON.stringify(core))});
+  // Build the large world JSON only once. The original save performed two
+  // full JSON.stringify passes: first for checksum, then for final envelope.
+  // The envelope retains exactly the same field order and checksum bytes.
+  const encoded=JSON.stringify(core);
+  return '{"format":"evo-packed-v3",'+encoded.slice(1,-1)+
+    ',"checksum":"'+checksum(encoded)+'"}';
 }
 function isRecord(input:unknown):input is Record<string,unknown>{
   return !!input&&typeof input==='object'&&!Array.isArray(input);
