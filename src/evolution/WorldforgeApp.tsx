@@ -1,4 +1,4 @@
-import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent,SetStateAction} from 'react';
 import {shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
@@ -8,6 +8,11 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
 import {sceneAtmosphere} from './sceneAtmosphere';
+import {createDepthProjector} from './depthProjection';
+import {topographyForWorld} from './topography';
+import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
+import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
+  restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
@@ -43,7 +48,7 @@ export {readSavedWorld} from './storage';
 import {
   BIOME_INFO,BIOMES,DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,
   createWorld,editWorld,population,
-  type Brush,type World,type WorldSettings,type Biome,
+  type Brush,type World,type WorldSettings,
 } from './engine';
 
 function initialWorld():World{
@@ -58,16 +63,9 @@ function initialWorld():World{
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture';
 const format=(n:number)=>n.toLocaleString('en-US');
-const brushValue=(b:Brush)=>b.kind==='inspect'?'inspect':
-  b.kind==='food'?'food':b.kind==='spawn'?'spawn-'+b.species:'terrain-'+b.biome;
-const fromBrushValue=(value:string):Brush=>{
-  if(value==='food')return {kind:'food'};
-  if(value.startsWith('spawn-')&&SPECIES.includes(value.slice(6) as typeof SPECIES[number]))
-    return {kind:'spawn',species:value.slice(6) as typeof SPECIES[number]};
-  if(value.startsWith('terrain-')&&BIOMES.includes(value.slice(8) as Biome))
-    return {kind:'terrain',biome:value.slice(8) as Biome};
-  return {kind:'inspect'};
-};
+const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
+  ['low','LOW'],['classic','CLASSIC'],['high','HIGH'],
+];
 const downloadJson=(world:World)=>{
   const blob=new Blob([JSON.stringify(world)],{type:'application/json'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -149,17 +147,28 @@ export function WorldforgeApp(){
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
-  const [mapView,setMapView]=useState<'overhead'|'depth'>('overhead');
+  const [mapView,setMapView]=useState<'overhead'|'depth'>(()=>{
+    try{return readWorldPerspective(
+      typeof window==='undefined'?null:window.localStorage);}
+    catch{return 'depth';}
+  });
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
-  const [zoom,setZoom]=useState(1);
+  const [zoom,setZoom]=useState(mapView==='depth'?1.5:1);
+  const [advancedView,setAdvancedView]=useState(false);
+  const [toolPanel,setToolPanel]=useState(false);
+  useEffect(()=>{
+    try{writeWorldPerspective(window.localStorage,mapView);}
+    catch{/* Privacy settings can block browser storage. */}
+  },[mapView]);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
+  const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
   const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
   const fileRef=useRef<HTMLInputElement>(null);
@@ -171,11 +180,87 @@ export function WorldforgeApp(){
     const viewport=mapScrollRef.current;
     if(!viewport)return;
     const w=currentWorld.current.width,h=currentWorld.current.height;
-    const target=cameraScrollTarget({x,y},{x:w,y:h},
-      {x:viewport.scrollWidth,y:viewport.scrollHeight},
-      {x:viewport.clientWidth,y:viewport.clientHeight});
-    viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
-  },[]);
+    if(mapView==='depth'){
+      const current=currentWorld.current;
+      const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
+        {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
+      const tx=Math.max(0,Math.min(w-1,Math.floor(x)));
+      const ty=Math.max(0,Math.min(h-1,Math.floor(y)));
+      const elevation=topographyForWorld(current).heights[ty*w+tx]??0;
+      const point=projector.project(x,y,elevation);
+      const scaleX=viewport.scrollWidth/projector.size.width;
+      const scaleY=viewport.scrollHeight/projector.size.height;
+      viewport.scrollLeft=point.x*scaleX-viewport.clientWidth/2;
+      viewport.scrollTop=point.y*scaleY-viewport.clientHeight/2;
+    }else{
+      const target=cameraScrollTarget({x,y},{x:w,y:h},
+        {x:viewport.scrollWidth,y:viewport.scrollHeight},
+        {x:viewport.clientWidth,y:viewport.clientHeight});
+      viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
+    }
+  },[mapView,reliefLevel,orbitYaw,cameraPitch]);
+  // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
+  // only the map scale; regular two-finger scrolling pans both axes natively.
+  // Safari emits gesturechange, handled separately with the same anchor.
+  useEffect(()=>{
+    if(tab!=='world')return;
+    const viewport=mapScrollRef.current;
+    if(!viewport)return;
+    const requestZoom=(factor:number,clientX:number,clientY:number)=>{
+      const rect=viewport.getBoundingClientRect();
+      const x=Number.isFinite(clientX)?clientX-rect.left:rect.width/2;
+      const y=Number.isFinite(clientY)?clientY-rect.top:rect.height/2;
+      pendingZoomAnchor.current=captureWorldZoomAnchor(viewport,{
+        x:Math.max(0,Math.min(rect.width,x)),
+        y:Math.max(0,Math.min(rect.height,y)),
+      });
+      setFollowId(null);
+      setZoom(value=>boundedMapZoom(value*factor));
+    };
+    const wheel=(event:WheelEvent)=>{
+      if(!event.ctrlKey){
+        // Trackpad two-finger scrolling pans naturally with browser inertia.
+        // A manual navigation gesture also releases the follow camera.
+        if(event.deltaX||event.deltaY)setFollowId(null);
+        return;
+      }
+      event.preventDefault(); // Pinch the map, never the entire browser page.
+      requestZoom(gestureZoomFactor(event.deltaY,event.deltaMode),
+        event.clientX,event.clientY);
+    };
+    let lastSafariScale=1;
+    const startGesture=(event:Event)=>{
+      event.preventDefault();
+      lastSafariScale=1;
+    };
+    const safariGesture=(event:Event)=>{
+      const pinch=event as Event&{scale?:number;clientX?:number;clientY?:number};
+      if(!pinch.scale||pinch.scale<=0)return;
+      event.preventDefault();
+      requestZoom(pinch.scale/lastSafariScale,
+        pinch.clientX??NaN,pinch.clientY??NaN);
+      lastSafariScale=pinch.scale;
+    };
+    viewport.addEventListener('wheel',wheel,{passive:false});
+    viewport.addEventListener('gesturestart',startGesture,{passive:false});
+    viewport.addEventListener('gesturechange',safariGesture,{passive:false});
+    return ()=>{
+      viewport.removeEventListener('wheel',wheel);
+      viewport.removeEventListener('gesturestart',startGesture);
+      viewport.removeEventListener('gesturechange',safariGesture);
+    };
+  },[tab,storageReady]);
+  // After the canvas changes size, restore the exact world point below the
+  // fingers instead of jumping to the top-left of the projected panorama.
+  useLayoutEffect(()=>{
+    const anchor=pendingZoomAnchor.current;
+    const viewport=mapScrollRef.current;
+    if(!anchor||!viewport)return;
+    pendingZoomAnchor.current=null;
+    const scroll=restoreWorldZoomAnchor(anchor,viewport);
+    viewport.scrollLeft=scroll.x;
+    viewport.scrollTop=scroll.y;
+  },[zoom]);
   useEffect(()=>{
     let active=true;
     loadDatabaseSnapshot().then(restored=>{
@@ -355,7 +440,7 @@ export function WorldforgeApp(){
     setPlaying(false);
     setFollowId(null);
     setSelected({x:place.x,y:place.y});setSelectedAgentId(null);
-    setMapView('overhead');setZoom(3);setTab('world');setMapFocus(-1);
+    setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
   };
   const openSettlement=(id:number)=>{
     setSelectedSettlementId(id);setTab('settlements');
@@ -364,11 +449,12 @@ export function WorldforgeApp(){
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
-    setMapView('overhead');setZoom(4);setFollowId(id);setTab('world');setMapFocus(id);
+    setZoom(v=>Math.max(2,v));setFollowId(id);
+    setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
     setPlaying(false);setSelected({x,y});setSelectedAgentId(null);
-    setFollowId(null);setMapView('overhead');setZoom(3);setTab('world');setMapFocus(-1);
+    setFollowId(null);setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
   };
   useEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
@@ -377,6 +463,19 @@ export function WorldforgeApp(){
     if(target)centerCamera(target.x,target.y);
     setMapFocus(null);
   },[tab,mapFocus,zoom,centerCamera]);
+  // The raised camera's full projected canvas may be much wider than the
+  // viewport. Center it on entry; otherwise first-time users see only the
+  // empty skyline at the top-left of a large panorama.
+  useEffect(()=>{
+    if(!storageReady||tab!=='world'||mapView!=='depth'||mapFocus!==null)return;
+    const frame=window.requestAnimationFrame(()=>{
+      const point=selected??{x:Math.floor(world.width/2),
+        y:Math.floor(world.height/2)};
+      centerCamera(point.x,point.y);
+    });
+    return ()=>window.cancelAnimationFrame(frame);
+  },[storageReady,tab,mapView,world.width,world.height,world.settings.seed,
+    centerCamera]);
   useEffect(()=>{
     const target=followId===null?null:world.agents.find(a=>a.id===followId);
     if(tab==='world'&&target)centerCamera(target.x,target.y);
@@ -405,7 +504,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
-    setZoom(1);setNotice('New world created with seed '+settings.seed+'.');
+    setZoom(mapView==='depth'?1.5:1);
+    setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
     const legacyDimensions=world.width!==({
@@ -436,7 +536,8 @@ export function WorldforgeApp(){
       setPlaying(false);setWorld(obj);setTab('world');
       setSavedDate(null);
       setFollowId(null);
-      setSelected(null);setSelectedAgentId(null);setZoom(1);setBrush({kind:'inspect'});
+      setSelected(null);setSelectedAgentId(null);
+      setZoom(mapView==='depth'?1.5:1);setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
@@ -483,15 +584,17 @@ export function WorldforgeApp(){
         <button role="tab" aria-selected={tab==='powers'}
           className={tab==='powers'?'active':''} onClick={()=>navigate('powers')}>
           ⚡ POWERS</button>
-        <select className="evo-more-pages" aria-label="More WorldForge pages"
-          value={['creator','family','codex','history'].includes(tab)?tab:''}
-          onChange={e=>navigate(e.target.value as Tab)}>
-          <option value="" disabled>MORE PAGES ▾</option>
-          <option value="creator">✧ WORLD CREATOR</option>
-          <option value="family">♡ FAMILIES</option>
-          <option value="codex">✦ DIVINE CODEX</option>
-          <option value="history">≋ HISTORY</option>
-        </select>
+        <details className="evo-nav-more">
+          <summary>✧ ARCHIVES</summary>
+          <div className="evo-nav-more-panel">
+            {([['creator','✧ WORLD CREATOR'],['family','♡ FAMILIES'],
+              ['codex','✦ DIVINE CODEX'],['history','≋ HISTORY']] as const)
+              .map(([page,title])=><button key={page}
+                className={tab===page?'active':''}
+                aria-current={tab===page?'page':undefined}
+                onClick={()=>navigate(page)}>{title}</button>)}
+          </div>
+        </details>
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}
         {savedDate&&<small> · SAVED Y{savedDate.year} {MONTH_NAMES[savedDate.month]}
@@ -538,17 +641,30 @@ export function WorldforgeApp(){
           <button className={playing?'playing evo-play-main':'evo-play-main'}
             disabled={!world.agents.length||world.year>=9999}
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
-          <button onClick={()=>step(1)} title="Advance one simulated day">+DAY</button>
-          <button onClick={()=>step(7)} title="Advance one simulated week">+WEEK</button>
-          <button onClick={()=>step(30)} title="Advance thirty simulated days">+MONTH</button>
-          <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
-          <button onClick={()=>step(3650)} title="Advance ten simulated years">+10Y</button>
-          <label htmlFor="evo-play-speed">PACE
-            <select id="evo-play-speed" value={timeRate}
-              onChange={e=>setTimeRate(e.target.value as TimeRate)}>
-              {TIME_RATES.map(v=><option value={v.id} key={v.id}>{v.label}</option>)}
-            </select>
-          </label>
+          <div className="evo-step-actions" role="group"
+            aria-label="Advance the world clock">
+            <button onClick={()=>step(1)} title="Advance one simulated day">+DAY</button>
+            <button onClick={()=>step(30)} title="Advance thirty simulated days">+MONTH</button>
+            <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
+            <details className="evo-more-steps">
+              <summary aria-label="More time advances">MORE +</summary>
+              <div className="evo-extra-steps">
+                <button onClick={()=>step(7)}>+WEEK</button>
+                <button onClick={()=>step(3650)} title="Advance ten years">+10Y</button>
+              </div>
+            </details>
+          </div>
+          <div className="evo-pace-panel" role="group" aria-label="Playback pace">
+            <small>PACE</small>
+            {TIME_RATES.map(rate=><button key={rate.id}
+              className={timeRate===rate.id?'is-on':''}
+              aria-pressed={timeRate===rate.id}
+              title={rate.label}
+              onClick={()=>setTimeRate(rate.id)}>
+                {rate.id==='sixteen'?'16×':rate.id==='four'?'4×':
+                  rate.id==='season'?'SEASON':rate.id.toUpperCase()}
+              </button>)}
+          </div>
         </div>
       </header>
       <section className="evo-stats" aria-label="Live world statistics">
@@ -562,6 +678,9 @@ export function WorldforgeApp(){
         </div>
         <div className="evo-stat"><small>SETTLEMENTS</small>
           <strong>{world.settlements.length}</strong><span>Founded by local groups</span></div>
+        <details className="evo-extra-stats">
+          <summary>✧ MORE WORLD STATISTICS <span>HYBRIDS · BONDS · EXPEDITIONS · DISCOVERIES</span></summary>
+          <div className="evo-extra-stat-grid">
         <div className="evo-stat"><small>LIVING HYBRIDS</small>
           <strong>{hybrids}</strong><span>Mixed-species ancestry</span></div>
         <div className="evo-stat"><small>PARTNERSHIPS</small>
@@ -572,6 +691,8 @@ export function WorldforgeApp(){
           <strong>{world.knowledge?.firsts.length??0}</strong>
           <span><button onClick={()=>navigate('knowledge')}>Explore the knowledge codex ↗</button></span>
         </div>
+          </div>
+        </details>
       </section>
       <div className="evo-playground-layout">
         <section className="evo-map-card">
@@ -581,14 +702,13 @@ export function WorldforgeApp(){
             </div>
             <div className="evo-map-actions">
               <button className={'evo-follow-camera'+(followId!==null?' is-on':'')}
-                aria-pressed={followId!==null} disabled={!agent||mapView==='depth'}
-                title={mapView==='depth'?'Follow camera uses the overhead map':
-                  followId!==null?'Stop following the selected person':
+                aria-pressed={followId!==null} disabled={!agent}
+                title={followId!==null?'Stop following the selected person':
                   'Follow the selected person while they travel'}
                 onClick={()=>{
                   if(followId!==null){setFollowId(null);return;}
                   if(!agent)return;
-                  setFollowId(agent.id);setZoom(v=>Math.max(3,v));
+                  setFollowId(agent.id);setZoom(v=>Math.max(mapView==='depth'?2:3,v));
                   setMapFocus(agent.id);
                 }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
               <button onClick={()=>setShowDiagnostics(v=>!v)}
@@ -596,86 +716,113 @@ export function WorldforgeApp(){
                 title="Toggle simulation and rendering diagnostics">
                 {showDiagnostics?'◉ STATS':'◌ STATS'}
               </button>
-              <button onClick={()=>setZoom(v=>Math.max(1,v-.5))}
+              <button onClick={()=>setZoom(v=>boundedMapZoom(v-.5))}
                 disabled={zoom<=1} title="Zoom out">−</button>
-              <button onClick={()=>setZoom(1)} title="Fit map to view">⌖ FIT</button>
-              <button onClick={()=>setZoom(v=>Math.min(8,v+.5))}
+              <button onClick={()=>setZoom(1)} title="Reset map zoom to 1×">⌖ FIT</button>
+              <button onClick={()=>setZoom(v=>boundedMapZoom(v+.5))}
                 disabled={zoom>=8} title="Zoom in">+</button>
             </div>
           </div>
-          <div className="evo-map-toolbar">
-            <label htmlFor="evo-brush">MAP TOOL</label>
-            <select id="evo-brush" value={brushValue(brush)}
-              onChange={e=>setBrush(fromBrushValue(e.target.value))}>
-              <option value="inspect">⌖ Inspect tile or individual</option>
-              <optgroup label="Place individuals">
-                {SPECIES.map(s=><option value={'spawn-'+s} key={s}>
-                  + Place {SPECIES_INFO[s].name.slice(0,-1)}
-                </option>)}
-              </optgroup>
-              <optgroup label="World editing">
-                <option value="food">✿ Replenish tile food</option>
-                {BIOMES.map(b=><option value={'terrain-'+b} key={b}>
-                  Paint {BIOME_INFO[b].name}
-                </option>)}
-              </optgroup>
-            </select>
-            <label htmlFor="evo-overlay">MAP LAYER</label>
-            <select id="evo-overlay" value={overlay}
-              onChange={e=>setOverlay(e.target.value as MapOverlay)}>
-              <option value="terrain">Biomes</option>
-              <option value="resources">Food levels</option>
-              <option value="deposits">Trees & ore deposits</option>
-              <option value="elevation">Elevation & contours</option>
-              <option value="watersheds">Watersheds & rivers</option>
-            </select>
-            <label htmlFor="evo-map-view">VIEW</label>
-            <select id="evo-map-view" value={mapView}
-              aria-label="Map perspective"
-              onChange={e=>{
-                const next=e.target.value as 'overhead'|'depth';
-                setMapView(next);setFollowId(null);setZoom(1);
-              }}>
-              <option value="overhead">Top-down · 2D</option>
-              <option value="depth">Raised terrain · 2.5D</option>
-            </select>
-            {mapView==='depth'&&<>
-              <label htmlFor="evo-relief">HEIGHT</label>
-              <select id="evo-relief" value={reliefLevel}
-                aria-label="Terrain relief exaggeration"
-                onChange={e=>setReliefLevel(e.target.value as ReliefLevel)}>
-                <option value="natural">Natural · 1×</option>
-                <option value="dramatic">Dramatic · 2.5×</option>
-                <option value="monumental">Monumental · 4×</option>
-              </select>
-              <div className="evo-orbit-controls" role="group"
+          <div className="evo-map-toolbar evo-map-commandbar">
+            <div className="evo-view-switch" role="group" aria-label="Map perspective">
+              <button className={mapView==='depth'?'is-on':''}
+                aria-pressed={mapView==='depth'}
+                onClick={()=>{setMapView('depth');setFollowId(null);setZoom(1.5);}}>
+                ◈ 2.5D WORLD</button>
+              <button className={mapView==='overhead'?'is-on':''}
+                aria-pressed={mapView==='overhead'}
+                onClick={()=>{setMapView('overhead');setZoom(1);}}>
+                ▦ OVERHEAD</button>
+            </div>
+            <div className="evo-layer-chips" role="group" aria-label="Map layers">
+              {([['terrain','WORLD'],['resources','FOOD'],
+                ['deposits','RESOURCES'],['elevation','HEIGHT'],
+                ['watersheds','RIVERS']] as const).map(([key,label])=>
+                <button key={key} className={overlay===key?'is-on':''}
+                  aria-pressed={overlay===key} onClick={()=>setOverlay(key)}
+                  title={key==='watersheds'?'Watersheds & rivers':
+                    key==='terrain'?'Biomes':key==='elevation'?
+                    'Elevation & contours':key==='deposits'?
+                    'Trees & ore deposits':'Food levels'}>
+                  {label}</button>)}
+            </div>
+            <div className="evo-toolbar-drawers">
+              {mapView==='depth'&&<button className={advancedView?'is-on':''}
+                aria-expanded={advancedView} aria-controls="evo-camera-panel"
+                onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
+              <button className={toolPanel?'is-on':''}
+                aria-expanded={toolPanel} aria-controls="evo-world-tools"
+                onClick={()=>setToolPanel(v=>!v)}>
+                ✧ WORLD TOOLS{brush.kind==='inspect'?'':' • ACTIVE'}
+              </button>
+            </div>
+          </div>
+          {mapView==='depth'&&advancedView&&
+            <div id="evo-camera-panel" className="evo-map-options evo-camera-panel">
+              <div className="evo-option-group">
+                <small>RELIEF</small>
+                {([['natural','NATURAL'],['dramatic','DRAMATIC'],
+                  ['monumental','MONUMENTAL']] as const).map(([key,label])=>
+                  <button key={key} className={reliefLevel===key?'is-on':''}
+                    aria-pressed={reliefLevel===key}
+                    onClick={()=>setReliefLevel(key)}>{label}</button>)}
+              </div>
+              <div className="evo-option-group">
+                <small>CAMERA TILT</small>
+                {CAMERA_TILT_CHOICES.map(([key,label])=>
+                  <button key={key} className={cameraPitch===key?'is-on':''}
+                    aria-pressed={cameraPitch===key}
+                    onClick={()=>setCameraPitch(key)}>{label}</button>)}
+              </div>
+              <div className="evo-option-group evo-orbit-controls" role="group"
                 aria-label="Orbit camera controls">
-                <label htmlFor="evo-orbit">ORBIT</label>
-                <button type="button" aria-label="Rotate camera 45 degrees left"
+                <small>ORBIT</small>
+                <button aria-label="Rotate camera 45 degrees left"
                   title="Orbit left 45°"
                   onClick={()=>setOrbitYaw(yaw=>(yaw+315)%360)}>↶</button>
                 <input id="evo-orbit" type="range" min="0" max="345" step="15"
                   aria-label="Camera rotation in degrees" value={orbitYaw}
                   onChange={e=>setOrbitYaw(Number(e.target.value))}/>
-                <button type="button" aria-label="Rotate camera 45 degrees right"
+                <button aria-label="Rotate camera 45 degrees right"
                   title="Orbit right 45°"
                   onClick={()=>setOrbitYaw(yaw=>(yaw+45)%360)}>↷</button>
                 <output htmlFor="evo-orbit">{orbitYaw}°</output>
-                <label htmlFor="evo-camera-tilt">TILT</label>
-                <select id="evo-camera-tilt" value={cameraPitch}
-                  aria-label="Camera viewing angle"
-                  onChange={e=>setCameraPitch(e.target.value as CameraPitch)}>
-                  <option value="low">Low · 18°</option>
-                  <option value="classic">Classic · 30°</option>
-                  <option value="high">High · 55°</option>
-                </select>
-                <button type="button" className="evo-orbit-reset"
+                <button className="evo-orbit-reset"
                   aria-label="Reset camera orientation"
-                  onClick={()=>{setOrbitYaw(0);setCameraPitch('classic');}}>
-                  RESET</button>
+                  onClick={()=>{setOrbitYaw(0);setCameraPitch('classic');
+                    setReliefLevel('dramatic');}}>RESET</button>
               </div>
-            </>}
-          </div>
+            </div>}
+          {toolPanel&&<div id="evo-world-tools"
+            className="evo-map-options evo-world-tools-panel">
+            <div className="evo-option-group">
+              <small>MAP ACTION</small>
+              <button className={brush.kind==='inspect'?'is-on':''}
+                aria-pressed={brush.kind==='inspect'}
+                onClick={()=>setBrush({kind:'inspect'})}>⌖ INSPECT</button>
+              <button className={brush.kind==='food'?'is-on':''}
+                aria-pressed={brush.kind==='food'}
+                onClick={()=>setBrush({kind:'food'})}>✿ RESTORE FOOD</button>
+            </div>
+            <div className="evo-option-group">
+              <small>ADD PEOPLE</small>
+              {SPECIES.map(species=><button key={species}
+                className={brush.kind==='spawn'&&brush.species===species?'is-on':''}
+                aria-pressed={brush.kind==='spawn'&&brush.species===species}
+                onClick={()=>setBrush({kind:'spawn',species})}>
+                + {SPECIES_INFO[species].name.toUpperCase()}</button>)}
+            </div>
+            <div className="evo-option-group">
+              <small>PAINT TERRAIN</small>
+              {BIOMES.map(biome=><button key={biome}
+                className={brush.kind==='terrain'&&brush.biome===biome?'is-on':''}
+                aria-pressed={brush.kind==='terrain'&&brush.biome===biome}
+                onClick={()=>setBrush({kind:'terrain',biome})}>
+                {BIOME_INFO[biome].name.toUpperCase()}</button>)}
+            </div>
+            <p>Choose a tool, then click a world tile. Inspect is the default;
+              terrain edits and spawning remain entirely optional.</p>
+          </div>}
           <MapLayerLegend overlay={overlay}/>
           {overlay==='terrain'&&<div className="evo-season-visual" role="note"
             aria-label="Visual world season">
@@ -705,7 +852,8 @@ export function WorldforgeApp(){
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
-                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}/>}
+                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
+                followId={followId} onFollowPosition={centerCamera}/>} 
           </div>
           <div className="evo-map-footer">
             <div className="evo-species-legend">
@@ -716,8 +864,8 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
-                'ORBIT 360° · CHANGE TILT & HEIGHT · CLICK CLIFFS TO INSPECT'}</span>
+              {mapView==='overhead'?'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
+                'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON · ORBIT 360°'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -746,8 +894,8 @@ export function WorldforgeApp(){
             {!displayed||!tile?<div className="evo-inspector-empty">
               <div>⌖</div>
               <strong>CLICK SOMEWHERE IN THE WORLD</strong>
-              <p>Select an individual, a settlement or a terrain tile to view its
-                details. Change the Map Tool to place people or edit resources.</p>
+              <p>Choose a person, settlement, or terrain tile to inspect it.
+                World Tools opens optional editing actions.</p>
             </div>:<>
               <div className="evo-biome-info">
                 <span className="evo-biome-swatch"
@@ -901,14 +1049,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.1.3: THE MOMENT A GIFT AWAKENS</strong>
-        <span>Innate gifts can now awaken naturally as individuals grow older,
-          with timing scaled to their species or mixed ancestry. Some never
-          awaken naturally; high potential does not guarantee success. An
-          awakening becomes a permanent life-history milestone, visible in the
-          new timeline and filters. Small domain-colored motes and portrait
-          glows mark awakened characters without enlarging their sprites.
-          Active trait bonuses and evolved gifts remain future releases.</span>
+        <strong>V2.1.6: A CLEARER WINDOW INTO YOUR WORLD</strong>
+        <span>The raised 2.5D view is the default, with richer natural scenery,
+          built roads, detailed settlements and more room to explore.
+          Camera options and optional world-editing tools stay out of the way
+          until needed. Awakened gifts and agent decisions still shape the
+          simulation independently of how you choose to view it.</span>
       </div>
     </main>}
   </div>;

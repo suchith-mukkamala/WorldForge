@@ -5,6 +5,8 @@ import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
+import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
+  depthRoadSignature} from './depthWorldArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
 import {buildingTier,type Building} from './construction';
@@ -80,7 +82,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
-  ctx.fillStyle='#101b2f';ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  const skyline=ctx.createLinearGradient(0,0,0,ctx.canvas.height);
+  skyline.addColorStop(0,'#10233b');
+  skyline.addColorStop(.5,'#142a3b');
+  skyline.addColorStop(1,'#091928');
+  ctx.fillStyle=skyline;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
   hit.clearRect(0,0,hit.canvas.width,hit.canvas.height);
   ctx.imageSmoothingEnabled=false;hit.imageSmoothingEnabled=false;
   const ordered=Array.from({length:W*H},(_,i)=>i);
@@ -116,7 +122,9 @@ function renderTerrain(w:World,overlay:MapOverlay,
           fy>0?corners[3]:corners[1],drop,
           fy>0?palette.left:palette.right,index);
       }
-      polygon(ctx,corners,tileColor(w,index,overlay,height,drainage));
+      polygon(ctx,corners,overlay==='terrain'?
+        surfaceColor(biome,x,y,w.settings.seed):
+        tileColor(w,index,overlay,height,drainage));
       if(overlay==='terrain'||overlay==='elevation'){
         // A northwest sun illuminates west-facing slopes; the other aspect
         // darkens. Light depends on real neighboring heights, not random art.
@@ -128,6 +136,17 @@ function renderTerrain(w:World,overlay:MapOverlay,
         if(height>=135&&biome!=='water'&&overlay==='terrain')
           polygon(ctx,corners,`rgba(224,231,222,${Math.min(.3,
             (height-125)/380).toFixed(3)})`);
+      }
+      if(overlay==='terrain'){
+        paintDepthSurfaceDetail(ctx,biome,p,x,y,w.settings.seed);
+        if(biome!=='water'&&[east,south,west,north].some((_,n)=>{
+          const at=n===0?index+1:n===1?index+W:n===2?index-1:index-W;
+          const inBounds=n===0?x<W-1:n===1?y<H-1:n===2?x>0:y>0;
+          return inBounds&&w.tiles[at].biome==='water';
+        })){
+          ctx.fillStyle='rgba(245,223,176,.58)';
+          ctx.fillRect(Math.round(p.x)-2,Math.round(p.y)-2,4,1);
+        }
       }
       ctx.strokeStyle='rgba(10,24,39,.28)';ctx.lineWidth=.6;
       ctx.beginPath();
@@ -153,7 +172,8 @@ function renderTerrain(w:World,overlay:MapOverlay,
       if(overlay==='terrain'&&vegetationHash%7===0){
         const detail=terrainDetailAt(biome,x,y,w.settings.seed,height);
         if(detail.motif==='oak'||detail.motif==='pine'){
-          paintDepthTree(ctx,p,detail.motif==='pine');
+          paintDepthTree(ctx,p,detail.motif==='pine',
+            (vegetationHash>>>5)%3);
         }else if(['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
           ctx.fillStyle='rgba(10,25,35,.32)';
           ctx.fillRect(p.x-3,p.y,7,2);
@@ -189,6 +209,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
     ctx.beginPath();ctx.moveTo(from.x,from.y);
     ctx.lineTo(to.x,to.y);ctx.stroke();
   }
+  if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
   if(overlay==='deposits')for(const d of w.deposits??[]){
     if(d.amount<=.1)continue;
     const p=projector.project(d.index%W,Math.floor(d.index/W),heights[d.index]);
@@ -266,11 +287,13 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 }
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
-  zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA}:{
+  zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,
+  followId=null,onFollowPosition}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
-  relief?:number;camera?:DepthCamera;
+  relief?:number;camera?:DepthCamera;followId?:number|null;
+  onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
@@ -279,12 +302,16 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const buildingSpritesRef=useRef<BuildingSpriteCache>(new Map());
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
-    relief:number;yaw:number;pitch:number}|null>(null);
+    relief:number;yaw:number;pitch:number;roadKey:number}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
   const projector=createDepthProjector(world,relief,camera);
   const size=projector.size;
+  // Pinch changes the canvas CSS scale continuously. Rebuilding the terrain
+  // and NPC layers on every fractional zoom would cause trackpad stutter.
+  // Only population visibility/detail thresholds require an actual repaint.
+  const zoomDetailTier=zoom>=3?3:zoom>=2?2:1;
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
@@ -304,19 +331,21 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       {willReadFrequently:true});
     if(!backdrop||!hit)return;
     const stamp=stampRef.current;
+    const roadKey=overlay==='terrain'?depthRoadSignature(world):0;
     const landChanged=stamp?.tiles!==world.tiles&&(!stamp||
       overlay==='resources'||stamp.tiles.length!==world.tiles.length||
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||landChanged||stamp.topography!==world.topography||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
-      stamp.relief!==relief||stamp.yaw!==camera.yaw||
+      stamp.relief!==relief||stamp.roadKey!==roadKey||
+      stamp.yaw!==camera.yaw||
       stamp.pitch!==camera.pitch||
       overlay==='deposits'&&stamp.deposits!==world.deposits){
       renderTerrain(world,overlay,backdrop,hit,projector);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
-      yaw:camera.yaw,pitch:camera.pitch};
+      yaw:camera.yaw,pitch:camera.pitch,roadKey};
     const positions=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
@@ -341,7 +370,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const visibleAgents=renderedPopulation(world.agents,populationScene(world),{
       bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
       selected,zoom:Math.max(1,zoom),maxVisible:350});
-    let frameHandle=0;
+    let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
@@ -355,11 +384,19 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       }
       paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
         projector,structures,visibleAgents);
+      const tracked=followId!==null?interpolated.get(followId):undefined;
+      if(tracked&&onFollowPosition&&(!lastFollow||
+        Math.abs(tracked.x-lastFollow.x)>.12||
+        Math.abs(tracked.y-lastFollow.y)>.12)){
+        lastFollow=tracked;
+        onFollowPosition(tracked.x,tracked.y);
+      }
       if(walking.size)frameHandle=requestAnimationFrame(draw);
     };
     draw(now);
     return ()=>cancelAnimationFrame(frameHandle);
-  },[world,overlay,selected,zoom,speed,relief,camera.yaw,camera.pitch]);
+  },[world,overlay,selected,zoomDetailTier,speed,relief,
+    camera.yaw,camera.pitch,followId,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };
