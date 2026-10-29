@@ -5,6 +5,7 @@
  */
 import type {Agent,World} from './engine';
 import {cloneDevelopment,lifeStage} from './development';
+import {activeTraitBonus,activeTraitEffect} from './traitEffects';
 
 export const ACTIVITIES=['rest','work','forage','study','care','socialize',
   'travel','craft','reflect'] as const;
@@ -58,7 +59,8 @@ export function validDailyLife(d:DailyLife,year:number):boolean{
       typeof e.detail==='string'&&e.detail.length<=140);
 }
 
-function decide(a:Agent,week:number,youngInHome:Set<number>):[Activity,string]{
+function decide(a:Agent,week:number,youngInHome:Set<number>,
+  seed:number):[Activity,string]{
   const d=a.development,life=a.dailyLife!,stage=lifeStage(a);
   const curiosity=d?.values.discovery??50,community=d?.values.community??50;
   if(life.fatigue>67||a.health<48)
@@ -80,6 +82,16 @@ function decide(a:Agent,week:number,youngInHome:Set<number>):[Activity,string]{
     return ['work','Fulfilling an accepted community job.'];
   if(a.work?.tradeId||a.mind?.goal==='trade'||a.mind?.goal==='return_home')
     return ['travel','Continuing a chosen journey.'];
+  const gift=activeTraitEffect(seed,a);
+  if(gift&&(week+a.id)%4===0){
+    const chosen=gift.kind==='learning'?'study':gift.kind==='craft'?'craft':
+      gift.kind==='social'?'socialize':gift.kind==='exploration'||
+      gift.kind==='movement'?'travel':gift.kind==='foraging'?'forage':
+      gift.kind==='reflection'||gift.kind==='resolve'?'reflect':
+      gift.kind==='care'&&d?.householdId&&youngInHome.has(d.householdId)?
+      'care':gift.kind==='recovery'&&life.fatigue>25?'rest':null;
+    if(chosen)return [chosen,'Choosing to practice an awakened '+gift.name+' gift.'];
+  }
   if(d?.mentorId||d?.career==='scholar'||curiosity>63&&week%3===0)
     return ['study','Choosing to develop knowledge and skills.'];
   if(a.belief&&d?.values.tradition!==undefined&&
@@ -124,12 +136,13 @@ export function advanceWeeklyLife(world:World,day:number):World{
   const people=world.agents.map(old=>{
     const a:Agent={...old,dailyLife:cloneDailyLife(old.dailyLife??initialDailyLife())};
     const life=a.dailyLife!;
-    const [activity,reason]=decide(a,week,youngInHome);
+    const [activity,reason]=decide(a,week,youngInHome,world.settings.seed);
     life.activity=activity;life.reason=reason;life.year=year;life.day=day;
     const tiring=activity==='work'?6:activity==='travel'?7:
       activity==='forage'?4:activity==='craft'?3:activity==='study'?2:
       activity==='care'?2:0;
-    life.fatigue=round(clamp(life.fatigue+tiring-(activity==='rest'?13:2)));
+    life.fatigue=round(clamp(life.fatigue+tiring-(activity==='rest'?
+      13*(1+activeTraitBonus(world.settings.seed,a,'recovery')):2)));
     life.socialNeed=round(clamp(life.socialNeed+
       (activity==='socialize'?-8:activity==='care'?-3:2)));
     life.morale=round(clamp(life.morale+
@@ -141,7 +154,10 @@ export function advanceWeeklyLife(world:World,day:number):World{
         a.work?.job==='farmer'?'foraging':a.work?.job==='builder'?'craft':
         a.work?.job==='woodcutter'?'foraging':'diplomacy';
       if(a.development){a.development=cloneDevelopment(a.development);
-        a.development.skills[skill]=round(clamp(a.development.skills[skill]+.018));}
+        const specialty=skill==='knowledge'?'learning':skill==='craft'?'craft':
+          skill==='foraging'?'foraging':'social';
+        a.development.skills[skill]=round(clamp(a.development.skills[skill]+
+          .018*(1+activeTraitBonus(world.settings.seed,a,specialty))));}
     }
     return a;
   });
@@ -176,7 +192,8 @@ export function advanceWeeklyLife(world:World,day:number):World{
         const mentor=a.development.mentorId===b.id?18:0;
         const family=a.development.householdId===b.development!.householdId?12:0;
         const willingness=b.dailyLife!.activity==='socialize'?8:0;
-        const rank=familiar+mentor+family+willingness-
+        const rank=familiar+mentor+family+willingness+
+          activeTraitBonus(world.settings.seed,a,'social')*15-
           distance(a,b)*6+((a.id*7+b.id*13+week*17)%11)*.2;
         if(rank>score){best=b;score=rank;}
       }
@@ -202,7 +219,10 @@ export function advanceWeeklyLife(world:World,day:number):World{
       (c.regard??0)<-3)&&!disagreement;
     const delta=disagreement?-1.2:comfort?1.1:sharedGoal?0.8:
       beliefDifference?0.2:0.65;
-    const metA=acquaintance(a,b.id,delta),metB=acquaintance(b,a.id,delta);
+    const aSocial=activeTraitBonus(world.settings.seed,a,'social');
+    const bSocial=activeTraitBonus(world.settings.seed,b,'social');
+    const metA=acquaintance(a,b.id,delta*(1+aSocial)),
+      metB=acquaintance(b,a.id,delta*(1+bSocial));
     const friends=metA>=4&&metB>=4&&!disagreement&&
       a.development.trust>40&&b.development!.trust>40&&
       a.development.friends.length<4&&b.development!.friends.length<4&&
