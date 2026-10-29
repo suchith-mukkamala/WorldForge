@@ -181,7 +181,9 @@ export function WorldforgeApp(){
       const current=currentWorld.current;
       const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
-      const elevation=topographyForWorld(current).heights[y*w+x]??0;
+      const tx=Math.max(0,Math.min(w-1,Math.floor(x)));
+      const ty=Math.max(0,Math.min(h-1,Math.floor(y)));
+      const elevation=topographyForWorld(current).heights[ty*w+tx]??0;
       const point=projector.project(x,y,elevation);
       const scaleX=viewport.scrollWidth/projector.size.width;
       const scaleY=viewport.scrollHeight/projector.size.height;
@@ -382,7 +384,7 @@ export function WorldforgeApp(){
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
-    setZoom(v=>Math.max(2,v));setFollowId(mapView==='overhead'?id:null);
+    setZoom(v=>Math.max(2,v));setFollowId(id);
     setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
@@ -396,6 +398,19 @@ export function WorldforgeApp(){
     if(target)centerCamera(target.x,target.y);
     setMapFocus(null);
   },[tab,mapFocus,zoom,centerCamera]);
+  // The raised camera's full projected canvas may be much wider than the
+  // viewport. Center it on entry; otherwise first-time users see only the
+  // empty skyline at the top-left of a large panorama.
+  useEffect(()=>{
+    if(!storageReady||tab!=='world'||mapView!=='depth'||mapFocus!==null)return;
+    const frame=window.requestAnimationFrame(()=>{
+      const point=selected??{x:Math.floor(world.width/2),
+        y:Math.floor(world.height/2)};
+      centerCamera(point.x,point.y);
+    });
+    return ()=>window.cancelAnimationFrame(frame);
+  },[storageReady,tab,mapView,world.width,world.height,world.settings.seed,
+    centerCamera]);
   useEffect(()=>{
     const target=followId===null?null:world.agents.find(a=>a.id===followId);
     if(tab==='world'&&target)centerCamera(target.x,target.y);
@@ -620,14 +635,13 @@ export function WorldforgeApp(){
             </div>
             <div className="evo-map-actions">
               <button className={'evo-follow-camera'+(followId!==null?' is-on':'')}
-                aria-pressed={followId!==null} disabled={!agent||mapView==='depth'}
-                title={mapView==='depth'?'Follow camera uses the overhead map':
-                  followId!==null?'Stop following the selected person':
+                aria-pressed={followId!==null} disabled={!agent}
+                title={followId!==null?'Stop following the selected person':
                   'Follow the selected person while they travel'}
                 onClick={()=>{
                   if(followId!==null){setFollowId(null);return;}
                   if(!agent)return;
-                  setFollowId(agent.id);setZoom(v=>Math.max(3,v));
+                  setFollowId(agent.id);setZoom(v=>Math.max(mapView==='depth'?2:3,v));
                   setMapFocus(agent.id);
                 }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
               <button onClick={()=>setShowDiagnostics(v=>!v)}
@@ -771,7 +785,8 @@ export function WorldforgeApp(){
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
-                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}/>}
+                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
+                followId={followId} onFollowPosition={centerCamera}/>} 
           </div>
           <div className="evo-map-footer">
             <div className="evo-species-legend">
