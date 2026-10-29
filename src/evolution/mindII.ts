@@ -484,22 +484,34 @@ export function findMortalRoute(w:World,a:Agent,target:{x:number;y:number},
 export function advanceMindDay(previous:World,day:number,
   dayContext:DayContext=createDayContext(previous)):World{
   if(!previous.agents.length)return previous;
-  // Current time is stored in the passed day, not read from a stale calendar.
+  // Copy on write: idle people retain their existing immutable snapshots.
+  // Previously *every* person and full cognition tree was cloned each day,
+  // even when no plan was due. That cost grows with population × calendar days.
   const scheduled=new Set<number>();
-  const agents=previous.agents.map(old=>{
+  const agents=[...previous.agents];
+  const indexById=new Map(agents.map((agent,i)=>[agent.id,i]));
+  const byId=new Map(agents.map(agent=>[agent.id,agent]));
+  const own=(id:number):Agent|undefined=>{
+    const old=byId.get(id);if(!old)return;
+    if(dayContext.ownedAgents.get(id)===old)return old;
+    const copy:Agent={...old,
+      cognition:old.cognition?cloneCognition(old.cognition):undefined};
+    dayContext.ownedAgents.set(id,copy);
+    agents[indexById.get(id)!]=copy;
+    byId.set(id,copy);
+    return copy;
+  };
+  for(const old of previous.agents){
     const active=old.cognition?.agenda.some(p=>p.status==='active');
     const due=day%7===1||!!active||!!urgency(old);
-    if(due&&old.development&&!old.work?.tradeId)scheduled.add(old.id);
-    if(dayContext.ownedAgents.get(old.id)===old)return old;
-    const copy={...old,cognition:old.cognition?cloneCognition(old.cognition):undefined};
-    dayContext.ownedAgents.set(old.id,copy);
-    return copy;
-  });
+    if(due&&old.development&&!old.work?.tradeId){
+      scheduled.add(old.id);
+      own(old.id);
+    }
+  }
   let w:World={...previous,agents};
-  // Rebuild only the mutable occupancy index. Terrain/capacity are immutable
-  // during a calendar day; the economy itself only updates annually.
+  // Reuse the occupancy grid and route capacity between calendar days.
   const {occupied,capacities,bridges,homes,dependents,workplaces}=dayContext;
-  const byId=new Map(agents.map(a=>[a.id,a]));
   const context:MindContext={live:byId,homes,dependents,workplaces};
   let tiles=previous.tiles;
   for(const a of agents){
@@ -538,8 +550,8 @@ export function advanceMindDay(previous:World,day:number,
             const climb=terrainStepEffort(w,old,next);
             a.energy=round(clamp(a.energy-(climb-1)*.28*(1-
               activeTraitBonus(w.settings.seed,a,'movement'))));
-            if(a.dailyLife)a.dailyLife.fatigue=round(clamp(
-              a.dailyLife.fatigue+(climb-1)*.45));
+            if(a.dailyLife)a.dailyLife={...a.dailyLife,
+              fatigue:round(clamp(a.dailyLife.fatigue+(climb-1)*.45))};
           }
           c.route!.cursor++;c.blockedDays=0;
           c.trail.push(next);if(c.trail.length>24)c.trail.shift();
@@ -592,8 +604,9 @@ export function advanceMindDay(previous:World,day:number,
           .find(person=>person&&person.id!==a.id&&!adult(person)&&
             distance(a,person)<=2&&person.energy<90);
         if(child&&a.energy>50){
+          const dependent=own(child.id)!;
           a.energy=round(clamp(a.energy-.28));
-          child.energy=round(clamp(child.energy+.28));
+          dependent.energy=round(clamp(dependent.energy+.28));
         }
         progressed=!!child;
       }else progressed=true;
