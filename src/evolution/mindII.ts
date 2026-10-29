@@ -6,6 +6,7 @@
  * intention. An agent may also prefer living without an explicit agenda.
  */
 import {activeTraitBonus,activeTraitEffect,activeTraitPurposeBonus} from './traitEffects';
+import {RouteFrontier} from './routeFrontier';
 import type {Agent,World} from './engine';
 import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
@@ -435,26 +436,22 @@ export function findMortalRoute(w:World,a:Agent,target:{x:number;y:number},
     // Capacity counts are physical occupancy, never camera-dependent.
     return index===goal||(occupied.get(index)?.length??0)<capacities[index];
   };
-  const open=[start],scores=new Map<number,number>([[start,0]]);
+  const frontier=new RouteFrontier(),scores=new Map<number,number>([[start,0]]);
   const previous=new Map<number,number>();
   const closed=new Set<number>();
   const heuristic=(index:number)=>Math.max(
     Math.abs(index%w.width-target.x),
     Math.abs(Math.floor(index/w.width)-target.y));
   let bestReached=start,bestDistance=heuristic(start);
+  frontier.addOrDecrease(start,bestDistance);
   const trace=(destination:number)=>{
     const route=[destination];let p=destination;
     while(previous.has(p)){p=previous.get(p)!;route.push(p);}
     route.reverse();return route.length<=180?route:route.slice(0,180);
   };
   let visits=0;
-  while(open.length&&visits++<limit){
-    let chosen=0,best=Infinity;
-    for(let i=0;i<open.length;i++){
-      const idx=open[i],f=(scores.get(idx)??Infinity)+heuristic(idx);
-      if(f<best){best=f;chosen=i;}
-    }
-    const current=open.splice(chosen,1)[0];
+  while(frontier.size&&visits++<limit){
+    const current=frontier.pop()!;
     if(current===goal)return trace(goal);
     const remaining=heuristic(current);
     if(remaining<bestDistance){bestDistance=remaining;bestReached=current;}
@@ -468,7 +465,7 @@ export function findMortalRoute(w:World,a:Agent,target:{x:number;y:number},
         terrainStepEffort(w,current,index);
       if(tentative>=(scores.get(index)??Infinity))continue;
       scores.set(index,tentative);previous.set(index,current);
-      if(!open.includes(index))open.push(index);
+      frontier.addOrDecrease(index,tentative+heuristic(index));
     }
   }
   // On vast maps a person first chooses a reachable intermediate segment.
