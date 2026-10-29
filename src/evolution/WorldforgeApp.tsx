@@ -798,7 +798,7 @@ export function WorldforgeApp(){
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
-                'ORBIT 360° · CHANGE TILT & HEIGHT · CLICK CLIFFS TO INSPECT'}</span>
+                'FOLLOW A SELECTED PERSON · ORBIT 360° · CHANGE TILT & HEIGHT · INSPECT CLIFFS'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -982,14 +982,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.1.3: THE MOMENT A GIFT AWAKENS</strong>
-        <span>Innate gifts can now awaken naturally as individuals grow older,
-          with timing scaled to their species or mixed ancestry. Some never
-          awaken naturally; high potential does not guarantee success. An
-          awakening becomes a permanent life-history milestone, visible in the
-          new timeline and filters. Small domain-colored motes and portrait
-          glows mark awakened characters without enlarging their sprites.
-          Active trait bonuses and evolved gifts remain future releases.</span>
+        <strong>V2.1.6: A CLEARER WINDOW INTO YOUR WORLD</strong>
+        <span>The raised 2.5D view is the default, with richer natural scenery,
+          built roads, detailed settlements and more room to explore.
+          Camera options and optional world-editing tools stay out of the way
+          until needed. Awakened gifts and agent decisions still shape the
+          simulation independently of how you choose to view it.</span>
       </div>
     </main>}
   </div>;
