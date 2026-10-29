@@ -70,6 +70,7 @@ export type LineageRecord={id:number;species:Species;ancestry:Ancestry;
   genes:Genes;born:number;died?:number;generation:number;name?:string;house?:string;
   potentialRank?:TraitRank;
   innateTrait?:InnateTraitId;
+  traitHeritage?:TraitHeritage;
   awakening?:AwakeningRecord;
   moments?:LifeMoment[];parents?:[number,number];children:number[];partnerIds:number[];
   divineOrigins?:number[];knownKnowledge?:LearnedTopic[]};
