@@ -33,6 +33,7 @@ import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
 import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
+import {visibleCoastTile} from './worldOutline';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,validTopography,type Topography} from './topography';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
@@ -216,9 +217,11 @@ function biomeAt(x:number,y:number,w:number,h:number,seed:number):Biome{
   if(Math.abs(u-river)<.012||Math.hypot((u-.62)*1.6,(v-.20)*1.2)<.05)
     return 'water';
   // Remote scorched corners are the demons' starting borderlands.
-  if(u>.82&&(v<.36||v>.72)){
-    const edge=Math.min(Math.hypot(u-.95,v-.09),Math.hypot(u-.95,v-.90));
-    return edge<.125?'volcanic':'wasteland';
+  if(u>.73&&(v<.40||v>.69)){
+    // Volcanic corners lie inside the irregular playable coastline so demons
+    // retain their home biome without requiring a rectangular land border.
+    const edge=Math.min(Math.hypot(u-.81,v-.23),Math.hypot(u-.81,v-.77));
+    return edge<.105?'volcanic':'wasteland';
   }
   const ridge=.66+.075*noise(v*9)+.025*noise(v*26);
   if(u>ridge&&v>.27&&v<.86)
@@ -257,7 +260,12 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   const settings=normalizeSettings(input),[width,height]=WORLD_SIZES[settings.size];
   const state={n:prngState(settings.seed)};
   const tiles:Tile[]=Array.from({length:width*height},(_,index)=>{
-    const biome=biomeAt(index%width,Math.floor(index/width),width,height,settings.seed);
+    const x=index%width,y=Math.floor(index/width);
+    // v2.3: new worlds are islands with seeded, irregular coasts. The same
+    // rectangular index space remains authoritative for simulation and saves.
+    // Existing worlds are not rewritten when loading older save data.
+    const biome=visibleCoastTile(x,y,width,height,'water',settings.seed)?
+      biomeAt(x,y,width,height,settings.seed):'water';
     const info=BIOME_INFO[biome];
     return {biome,food:round(info.food*settings.resourceLevel*(.75+.25*random(state)))};
   });
