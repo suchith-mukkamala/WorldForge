@@ -1,6 +1,7 @@
 /** Evolution Lab 0.1 — deterministic agent ecosystem. One tick = one year.
  *  Individuals forage, migrate, age, pair, produce mixed-ancestry offspring
  *  and form settlements. Wars, disasters and neural learning remain future work. */
+import {occupancyCounts,residentsNear,neighborhoodMask,markNeighborhood} from './spatialIndex';
 import {
   pureAncestry,traitProfile,
   finalizeDeaths,growBonds,offspringFromBonds,hybridFraction,
@@ -431,6 +432,9 @@ export function stepWorld(previous:World):World{
     .map(h=>[h.id,h.home]));
   const finishedWells=world.settlements.flatMap(s=>s.infrastructure?.buildings
     .filter(b=>b.type==='well'&&b.stage==='complete')??[]);
+  // One indexed coverage calculation replaces a distance-to-every-well
+  // scan for every individual, including large settled populations.
+  const wellCoverage=neighborhoodMask(world.width,world.height,finishedWells,5);
   const closeContacts=new Map<number,number>();
   for(const b of world.bonds){
     if(b.stage==='ended')continue;
@@ -548,7 +552,7 @@ export function stepWorld(previous:World):World{
     if(juvenile)careOutcomes.set(a.id,care);
     if(a.energy<32)a.health-=2.5+(32-a.energy)*.21;
     else{
-      const well=finishedWells.some(b=>distance(a,b)<=5);
+      const well=wellCoverage[offset(world.width,a.x,a.y)]===1;
       const remedies=(knows(a,'herbalism')?.25:0)+(knows(a,'medicine')?.55:0);
       a.health=Math.min(100,a.health+(1.45+(well?.27:0)+remedies)*
         (1+recoveryGift)*a.genes.vigor*
@@ -636,6 +640,11 @@ export function stepWorld(previous:World):World{
     (hybrids===1?'':'ren')+' born this year.');
   // Founders inspect the people actually nearby. Scanning every person for
   // every candidate would become quadratic now that there is no 850 cap.
+  const residentCounts=occupancyCounts(world.width,world.height,world.agents);
+  // Expanded settlement radii are tiny fixed-grid masks, updated immediately
+  // as new settlements are founded during this same yearly iteration.
+  const settlementCoverage=neighborhoodMask(world.width,world.height,
+    world.settlements,7);
   const communityPositions=new Map<number,Agent[]>();
   for(const a of world.agents){
     const index=offset(world.width,a.x,a.y);
@@ -647,7 +656,7 @@ export function stepWorld(previous:World):World{
     const info=SPECIES_INFO[a.species];
     if(biomeSuitability(a.ancestry,world.tiles[offset(world.width,a.x,a.y)].biome)<.55)
       continue;
-    if(world.settlements.some(s=>distance(s,a)<=7))continue;
+    if(settlementCoverage[offset(world.width,a.x,a.y)])continue;
     const nearby:Agent[]=[];
     for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
       const x=a.x+dx,y=a.y+dy;
@@ -663,12 +672,13 @@ export function stepWorld(previous:World):World{
     const founded:Settlement={id,species:a.species,name,x:a.x,y:a.y,
       founded:world.year,population:nearby.length,stores:20,emptyYears:0};
     world.settlements.push(founded);
+    markNeighborhood(settlementCoverage,world.width,world.height,founded,7);
     registerSettlement(world,founded,a.id);
     log(world,'settlement',info.name+' founded '+name+' in the '+
       BIOME_INFO[world.tiles[offset(world.width,a.x,a.y)].biome].name.toLowerCase()+'.');
   }
   world.settlements=world.settlements.filter(s=>{
-    const residents=world.agents.filter(a=>distance(a,s)<=5).length;
+    const residents=residentsNear(residentCounts,world.width,world.height,s,5);
     s.population=residents;
     const local=world.tiles[offset(world.width,s.x,s.y)];
     s.stores=round(clamp(s.stores+(residents>0?local.food*.35-residents*.13:-2),0,100));

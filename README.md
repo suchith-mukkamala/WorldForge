@@ -131,3 +131,20 @@ The overhead and raised 2.5D maps feature enhanced pixel terrain, brighter
 roof and vegetation details, layered seasonal lighting, dappled cloud shadows,
 and calendar-based particles. Seasonal visuals are decorative: they do not
 create simulated weather or modify ecology, RNG state or world saves.
+
+### v2.1.5.2 — World-Scale Performance & Saving
+
+- Yearly settlement censuses, foundation exclusion zones and well recovery
+  bonuses use exact indexed Chebyshev neighborhoods instead of repeated
+  population-by-settlement / population-by-well scans.
+- Mind Engine II's bounded A* now uses a stable indexed priority frontier,
+  preserving historical route order including ties while avoiding linear
+  scans of its open set.
+- Large autosaves encode their world core once instead of JSON serializing
+  the same world twice. Unchanged immutable snapshots are not saved again.
+- The IndexedDB rolling backup still validates unknown previous saves and
+  recovers the latest valid checkpoint, but trusts the exact prior snapshot
+  written successfully through the application's canonical encoder.
+- Gameplay, AI choices, route results, population limits, graphics, historical
+  saves and world RNG behavior are unchanged. New parity tests compare the
+  optimizations with the previous pathfinder and spatial scans.

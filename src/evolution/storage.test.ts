@@ -30,6 +30,21 @@ describe('v1.2.1: autosave and older-save compatibility',()=>{
     packed.schemaVersion=77;
     expect(readSavedWorld(JSON.stringify(packed))).toBeNull();
   });
+  it('retains the exact v3 envelope, canonical checksum and compatibility',()=>{
+    const w=createWorld({seed:215202,size:'small'});
+    const encoded=compactWorld(w),payload=JSON.parse(encoded);
+    const core={schemaVersion:payload.schemaVersion,world:payload.world,
+      terrain:payload.terrain};
+    const raw=JSON.stringify(core);
+    let hash=2166136261;
+    for(let i=0;i<raw.length;i++)
+      hash=Math.imul(hash^raw.charCodeAt(i),16777619);
+    const expected=(hash>>>0).toString(16).padStart(8,'0');
+    expect(encoded).toBe(JSON.stringify({format:'evo-packed-v3',
+      ...core,checksum:expected}));
+    expect(readSavedWorld(encoded)).toEqual(w);
+  });
+
   it('only trusts timestamps on valid browser snapshots',()=>{
     const world=createWorld({seed:409,size:'small'});
     const data=new Map([[WORLD_STORAGE_KEY,compactWorld(world)],
