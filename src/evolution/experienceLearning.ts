@@ -21,3 +21,19 @@ export function experiencePreference(c:Cognition|undefined,
   }
   return Math.round(Math.max(-12,Math.min(12,weight))*100)/100;
 }
+
+/** Specific attempts are remembered when a real plan step completes or is
+ * abandoned after obstruction. They influence later pursuits mildly without
+ * rewarding mere passage of time or persisting unbounded daily events. */
+export function stepExperiencePreference(c:Cognition|undefined,
+  purpose:Purpose,year:number):number{
+  if(!c?.lessons?.length)return 0;
+  let weight=0;
+  for(const lesson of c.lessons){
+    if(lesson.purpose!==purpose)continue;
+    const age=Math.max(0,year-lesson.year);
+    if(age>20)continue;
+    weight+=(lesson.result==='achieved'?1.5:-2.5)*(1-age/21);
+  }
+  return Math.round(Math.max(-8,Math.min(8,weight))*100)/100;
+}
