@@ -66,6 +66,7 @@ describe('v2.05 — unequal footprints, free sprite movement and growing homes',
     const {s}=readyTown();
     paintDepthBuilding(painter,s.infrastructure!.buildings[0],{x:22,y:22});
     expect(rectangles.some(r=>r.width===12)).toBe(true);
+    expect(rectangles.some(r=>r.kind==='rgba(18,37,45,.32)')).toBe(true);
   });
 
   it('uses real surplus materials and builders to upgrade a hut into a stone home',()=>{

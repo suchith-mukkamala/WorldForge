@@ -44,6 +44,7 @@ describe('v1.7 — persistent, explainable Mind Engine II',()=>{
     expect(c.decisions.some(d=>d.decision==='paused'&&
       d.explanation.toLowerCase().includes('hunger'))).toBe(true);
     expect(c.history.some(h=>h.outcome==='interrupted')).toBe(true);
+    expect(c.lessons?.some(l=>l.result==='blocked')).not.toBe(true);
     expect(isWorld(next)).toBe(true);
   });
 
