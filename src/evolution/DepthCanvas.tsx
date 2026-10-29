@@ -5,8 +5,8 @@ import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
-import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads}
-  from './depthWorldArt';
+import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
+  depthRoadSignature} from './depthWorldArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
 import {buildingTier,type Building} from './construction';
@@ -302,7 +302,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const buildingSpritesRef=useRef<BuildingSpriteCache>(new Map());
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
-    relief:number;yaw:number;pitch:number}|null>(null);
+    relief:number;yaw:number;pitch:number;roadKey:number}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
@@ -327,19 +327,21 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       {willReadFrequently:true});
     if(!backdrop||!hit)return;
     const stamp=stampRef.current;
+    const roadKey=overlay==='terrain'?depthRoadSignature(world):0;
     const landChanged=stamp?.tiles!==world.tiles&&(!stamp||
       overlay==='resources'||stamp.tiles.length!==world.tiles.length||
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||landChanged||stamp.topography!==world.topography||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
-      stamp.relief!==relief||stamp.yaw!==camera.yaw||
+      stamp.relief!==relief||stamp.roadKey!==roadKey||
+      stamp.yaw!==camera.yaw||
       stamp.pitch!==camera.pitch||
       overlay==='deposits'&&stamp.deposits!==world.deposits){
       renderTerrain(world,overlay,backdrop,hit,projector);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
-      yaw:camera.yaw,pitch:camera.pitch};
+      yaw:camera.yaw,pitch:camera.pitch,roadKey};
     const positions=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
