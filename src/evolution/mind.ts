@@ -6,6 +6,7 @@ import type {Agent,Ancestry,Biome,World} from './engine';
 import {divineFactor,mortalWhisper} from './divine';
 import {knows} from './knowledge';
 
+import {activeTraitEffect} from './traitEffects';
 export type MindGoal='forage'|'seek_safety'|'seek_family'|'seek_partner'|
   'stay_together'|'explore'|'venture'|'vocation'|'build'|'return_home'|
   'work'|'trade';
@@ -167,11 +168,13 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
   if(plan?.stage==='returning'&&distance(a,plan.home)<=2)plan=undefined;
   if(plan?.stage==='travel'&&(w.year-plan.started>45||
     !w.ancientSites?.some(s=>s.id===plan!.siteId)))plan=undefined;
+  const gift=activeTraitEffect(w.settings.seed,a);
   const expeditionReady=a.age>=maturity*.85&&a.age<lifespan*.76&&
     a.energy>77&&a.health>76&&
     (a.development?.career==='scout'||
       a.genes.curiosity*divineFactor(a,'courage',w.year)>1.08||
-      (a.development?.values.discovery??0)>57);
+      (a.development?.values.discovery??0)>57||
+      gift?.kind==='exploration'&&(a.development?.values.discovery??0)>48);
   const continuing=expeditionReady&&prior?.goal==='venture'&&prior.target&&
     w.year-prior.since<18&&distance(a,prior.target)>2;
   const construction=adult&&a.energy>=66&&a.health>=65&&
