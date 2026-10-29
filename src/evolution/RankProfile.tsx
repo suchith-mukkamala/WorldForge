@@ -4,6 +4,7 @@ import {potentialRank,proficiencyRank,TRAIT_RANK_INFO,TRAIT_RANKS,
   type TraitRank} from './traitRanks';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {awakeningWindow} from './awakening';
+import {activeTraitEffect} from './traitEffects';
 import {TRAIT_DOMAIN_INFO as HERITAGE_DOMAIN_INFO} from './innateTraits';
 
 const SKILL_NAMES:Record<Skill,string>={
@@ -28,6 +29,7 @@ export function RankProfile({seed,person,compact=false}:{
   const rank=potentialRank(seed,person);
   const gift=INNATE_TRAIT_INFO[innateTrait(seed,person)];
   const domain=TRAIT_DOMAIN_INFO[gift.domain];
+  const active=activeTraitEffect(seed,person);
   const window=awakeningWindow(person.ancestry);
   const age=person.age??(person.died===undefined?null:person.died-person.born);
   const progress=person.awakening?100:age===null?0:Math.min(100,Math.max(0,
@@ -57,6 +59,14 @@ export function RankProfile({seed,person,compact=false}:{
           ' · YEAR '+person.awakening.year:
         '◇ DORMANT · LATENT AT BIRTH · NATURAL AWAKENING NOT GUARANTEED'}</em>
     </div>
+    {active&&<div className="evo-awakening-timeline evo-active-gift"
+      aria-label="Active trait benefits">
+      <div className="evo-awakening-labels"><span>✦ ACTIVE GIFT</span>
+        <span>+{Math.round(active.strength*1000)/10}% EFFICIENCY</span></div>
+      <strong style={{color:domain.color}}>{active.label}</strong>
+      <small>Awakened {active.name} now influences real daily routines,
+        Mind Engine priorities and relevant actions. Practice improves its impact.</small>
+    </div>}
     {person.traitHeritage&&<div className="evo-awakening-timeline"
       aria-label="Inherited affinity and family resonance">
       <div className="evo-awakening-labels"><span>INHERITED AFFINITY</span>
@@ -82,9 +92,9 @@ export function RankProfile({seed,person,compact=false}:{
         'Current age '+(age??'unknown')+' · Timing differs by ancestry and chance.'}
       </small>
     </div>
-    <p>Potential is not power or destiny. Rank describes this gift's possible
-      strength; training rank reflects practiced skills; no simulation bonuses
-      are granted by awakening before trait effects arrive in v2.1.5.</p>
+    <p>Potential is not destiny. Awakened gifts now give modest, specialized
+      benefits; trained proficiency and real choices still shape the outcome.
+      Dormant gifts grant no bonuses.</p>
     {!compact&&<small className="evo-rank-ladder">RANKS · {TRAIT_RANKS.join(' · ')}</small>}
   </div>;
 }
