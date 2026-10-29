@@ -6,6 +6,8 @@
 import type {Agent,World} from './engine';
 import {cloneDevelopment,lifeStage} from './development';
 import {activeTraitBonus,activeTraitEffect} from './traitEffects';
+import {trainedSkillGain} from './skillTraining';
+import {traitProfile} from './family';
 
 export const ACTIVITIES=['rest','work','forage','study','care','socialize',
   'travel','craft','reflect'] as const;
@@ -157,7 +159,9 @@ export function advanceWeeklyLife(world:World,day:number):World{
         const specialty=skill==='knowledge'?'learning':skill==='craft'?'craft':
           skill==='foraging'?'foraging':'social';
         a.development.skills[skill]=round(clamp(a.development.skills[skill]+
-          .018*(1+activeTraitBonus(world.settings.seed,a,specialty))));}
+          trainedSkillGain(a.development.skills[skill],
+            .018*(1+activeTraitBonus(world.settings.seed,a,specialty)),
+            traitProfile(a.ancestry).lifespan)));}
     }
     return a;
   });
@@ -265,7 +269,9 @@ export function advanceWeeklyLife(world:World,day:number):World{
       const skill=mentorPerson.development!.skills.knowledge>
         mentorPerson.development!.skills.craft?'knowledge':'craft';
       student.development!.skills[skill]=round(clamp(
-        student.development!.skills[skill]+.14));
+        student.development!.skills[skill]+trainedSkillGain(
+          student.development!.skills[skill],.14,
+          traitProfile(student.ancestry).lifespan)));
     }
     if(friends){
       a.development.friends.push(b.id);b.development!.friends.push(a.id);
