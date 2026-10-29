@@ -5,6 +5,8 @@ import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
+import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads}
+  from './depthWorldArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
 import {buildingTier,type Building} from './construction';
@@ -80,7 +82,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
-  ctx.fillStyle='#101b2f';ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  const skyline=ctx.createLinearGradient(0,0,0,ctx.canvas.height);
+  skyline.addColorStop(0,'#10233b');
+  skyline.addColorStop(.5,'#142a3b');
+  skyline.addColorStop(1,'#091928');
+  ctx.fillStyle=skyline;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
   hit.clearRect(0,0,hit.canvas.width,hit.canvas.height);
   ctx.imageSmoothingEnabled=false;hit.imageSmoothingEnabled=false;
   const ordered=Array.from({length:W*H},(_,i)=>i);
@@ -116,7 +122,9 @@ function renderTerrain(w:World,overlay:MapOverlay,
           fy>0?corners[3]:corners[1],drop,
           fy>0?palette.left:palette.right,index);
       }
-      polygon(ctx,corners,tileColor(w,index,overlay,height,drainage));
+      polygon(ctx,corners,overlay==='terrain'?
+        surfaceColor(biome,x,y,w.settings.seed):
+        tileColor(w,index,overlay,height,drainage));
       if(overlay==='terrain'||overlay==='elevation'){
         // A northwest sun illuminates west-facing slopes; the other aspect
         // darkens. Light depends on real neighboring heights, not random art.
@@ -128,6 +136,17 @@ function renderTerrain(w:World,overlay:MapOverlay,
         if(height>=135&&biome!=='water'&&overlay==='terrain')
           polygon(ctx,corners,`rgba(224,231,222,${Math.min(.3,
             (height-125)/380).toFixed(3)})`);
+      }
+      if(overlay==='terrain'){
+        paintDepthSurfaceDetail(ctx,biome,p,x,y,w.settings.seed);
+        if(biome!=='water'&&[east,south,west,north].some((_,n)=>{
+          const at=n===0?index+1:n===1?index+W:n===2?index-1:index-W;
+          const inBounds=n===0?x<W-1:n===1?y<H-1:n===2?x>0:y>0;
+          return inBounds&&w.tiles[at].biome==='water';
+        })){
+          ctx.fillStyle='rgba(245,223,176,.58)';
+          ctx.fillRect(Math.round(p.x)-2,Math.round(p.y)-2,4,1);
+        }
       }
       ctx.strokeStyle='rgba(10,24,39,.28)';ctx.lineWidth=.6;
       ctx.beginPath();
@@ -153,7 +172,8 @@ function renderTerrain(w:World,overlay:MapOverlay,
       if(overlay==='terrain'&&vegetationHash%7===0){
         const detail=terrainDetailAt(biome,x,y,w.settings.seed,height);
         if(detail.motif==='oak'||detail.motif==='pine'){
-          paintDepthTree(ctx,p,detail.motif==='pine');
+          paintDepthTree(ctx,p,detail.motif==='pine',
+            (vegetationHash>>>5)%3);
         }else if(['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
           ctx.fillStyle='rgba(10,25,35,.32)';
           ctx.fillRect(p.x-3,p.y,7,2);
@@ -189,6 +209,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
     ctx.beginPath();ctx.moveTo(from.x,from.y);
     ctx.lineTo(to.x,to.y);ctx.stroke();
   }
+  if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
   if(overlay==='deposits')for(const d of w.deposits??[]){
     if(d.amount<=.1)continue;
     const p=projector.project(d.index%W,Math.floor(d.index/W),heights[d.index]);
