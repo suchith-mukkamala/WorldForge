@@ -148,3 +148,22 @@ create simulated weather or modify ecology, RNG state or world saves.
 - Gameplay, AI choices, route results, population limits, graphics, historical
   saves and world RNG behavior are unchanged. New parity tests compare the
   optimizations with the previous pathfinder and spatial scans.
+
+### v2.1.6 — 2.5D World & Clean Game Interface
+
+The raised, orbitable 2.5D world is now the **default**; an explicit overhead
+selection persists in browser view preferences independently of the world save.
+Finding a person, settlement or ancient site no longer forcibly changes map
+perspective, and the 2.5D camera can center a chosen geographic tile.
+
+The main world HUD replaces everyday dropdowns with one-click perspective and
+layer buttons, compact playback pace buttons, and a quieter three-stat overview.
+Camera controls and optional divine world editing open only when requested;
+archive pages live behind a single clear navigation expander. The layout adapts
+to smaller screens and maintains accessible button states.
+
+The static 2.5D terrain gains seeded biome color variation, illuminated
+shorelines, tiny material details, brighter tree silhouettes, textured building
+tiers and **real existing transport/settlement roads**. These are presentation
+updates cached with the terrain render; no additional simulation RNG, world
+schema changes, performance-heavy NPC drawing or physics changes are required.
