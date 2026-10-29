@@ -9,6 +9,7 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
 import {MapLayerLegend} from './MapLayerLegend';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector} from './depthProjection';
+import {project3DScreen} from './world3DProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -195,7 +196,17 @@ export function WorldforgeApp(){
     const viewport=mapScrollRef.current;
     if(!viewport)return;
     const w=currentWorld.current.width,h=currentWorld.current.height;
-    if(mapView==='depth'){
+    if(mapView==='depth'&&true3D){
+      const current=currentWorld.current;
+      const tx=Math.max(0,Math.min(w-1,Math.floor(x)));
+      const ty=Math.max(0,Math.min(h-1,Math.floor(y)));
+      const elevation=topographyForWorld(current).heights[ty*w+tx]??48;
+      const point=project3DScreen(w,h,x,y,elevation,
+        {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]},
+        RELIEF_LEVELS[reliefLevel]);
+      viewport.scrollLeft=point.x*viewport.scrollWidth-viewport.clientWidth/2;
+      viewport.scrollTop=point.y*viewport.scrollHeight-viewport.clientHeight/2;
+    }else if(mapView==='depth'){
       const current=currentWorld.current;
       const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
@@ -213,7 +224,7 @@ export function WorldforgeApp(){
         {x:viewport.clientWidth,y:viewport.clientHeight});
       viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
     }
-  },[mapView,reliefLevel,orbitYaw,cameraPitch]);
+  },[mapView,true3D,reliefLevel,orbitYaw,cameraPitch]);
   // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
   // only the map scale; regular two-finger scrolling pans both axes natively.
   // Safari emits gesturechange, handled separately with the same anchor.
@@ -932,6 +943,14 @@ export function WorldforgeApp(){
                 camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
                 followId={followId} onFollowPosition={centerCamera}/>} 
           </div>
+          {[0,world.width-1,world.width*(world.height-1),
+            world.tiles.length-1].some(i=>world.tiles[i]?.biome!=='water')&&
+            <div className="evo-terrain-upgrade" role="note">
+              <strong>LEGACY RECTANGULAR WORLD</strong>
+              <span>This saved world's original geography is preserved.
+                Irregular coastlines appear in newly generated worlds.</span>
+              <button onClick={()=>navigate('creator')}>CREATE AN ISLAND WORLD</button>
+            </div>}
           <div className="evo-map-footer">
             <div className="evo-species-legend">
               {SPECIES.map(s=><span key={s}>
