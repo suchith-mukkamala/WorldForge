@@ -8,7 +8,7 @@ import {terrainDetailAt} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
 import {mortalWorldPoint} from './spatialDetails';
-import {paintSceneAtmosphere} from './sceneAtmosphere';
+import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Motion,type Point} from './motion';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
@@ -249,6 +249,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
+  const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<HTMLCanvasElement|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
@@ -264,11 +265,15 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const scenery=sceneryRef.current??document.createElement('canvas');
     const picking=pickingRef.current??document.createElement('canvas');
     sceneryRef.current=scenery;pickingRef.current=picking;
+    const atmosphere=atmosphereRef.current??document.createElement('canvas');
+    atmosphereRef.current=atmosphere;
     const resize=(c:HTMLCanvasElement)=>{
       if(c.width!==canvas.width)c.width=canvas.width;
       if(c.height!==canvas.height)c.height=canvas.height;
     };
-    resize(scenery);resize(picking);
+    resize(scenery);resize(picking);resize(atmosphere);
+    if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
+      world.settings.seed,world.year,world.dayOfYear??0,'depth');
     const backdrop=scenery.getContext('2d'),hit=picking.getContext('2d',
       {willReadFrequently:true});
     if(!backdrop||!hit)return;
@@ -309,8 +314,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
-      if(overlay==='terrain')paintSceneAtmosphere(ctx,world.settings.seed,
-        world.year,world.dayOfYear??0,'depth');
+      if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
       for(const [id,target] of positions){
         const motion=motionsRef.current.get(id);
