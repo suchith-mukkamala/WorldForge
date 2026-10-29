@@ -38,6 +38,7 @@ import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './traitRanks';
 import {birthInnateTrait,innateTrait,isInnateTrait,type InnateTraitId} from './innateTraits';
 import {naturalAwakeningPlan,isAwakeningRecord,type AwakeningRecord} from './awakening';
+import {isTraitHeritage,type TraitHeritage} from './traitHeritage';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -51,6 +52,7 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   potentialRank?:TraitRank;
   innateTrait?:InnateTraitId;
+  traitHeritage?:TraitHeritage;
   awakening?:AwakeningRecord;
   born:number;parents?:[number,number];partnerId?:number;mind?:AgentMind;
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
@@ -331,6 +333,8 @@ export function stepWorld(previous:World):World{
     agents:previous.agents.map(a=>({...a,
       potentialRank:potentialRank(previous.settings.seed,a),
       innateTrait:innateTrait(previous.settings.seed,a),
+      ...(a.traitHeritage?{traitHeritage:{...a.traitHeritage,
+        parentDomains:[...a.traitHeritage.parentDomains] as TraitHeritage['parentDomains']}}:{}),
       ...(a.awakening?{awakening:{...a.awakening}}:{}),
       knowledge:a.knowledge?.map(k=>({...k})),
       visitedSites:a.visitedSites?[...a.visitedSites]:undefined,
@@ -357,6 +361,8 @@ export function stepWorld(previous:World):World{
     lineage:previous.lineage.map(r=>({...r,
       potentialRank:potentialRank(previous.settings.seed,r),
       innateTrait:innateTrait(previous.settings.seed,r),children:[...r.children],
+      ...(r.traitHeritage?{traitHeritage:{...r.traitHeritage,
+        parentDomains:[...r.traitHeritage.parentDomains] as TraitHeritage['parentDomains']}}:{}),
       ...(r.awakening?{awakening:{...r.awakening}}:{}),
       partnerIds:[...r.partnerIds],divineOrigins:r.divineOrigins?[...r.divineOrigins]:undefined,
       knownKnowledge:r.knownKnowledge?.map(k=>({...k}))})),
@@ -846,6 +852,7 @@ export function isWorld(value:unknown):value is World{
       !checkAncestry(a.ancestry)||!checkGenes(a.genes)||
       (a.potentialRank!==undefined&&!isTraitRank(a.potentialRank))||
       (a.innateTrait!==undefined&&!isInnateTrait(a.innateTrait))||
+      (a.traitHeritage!==undefined&&!isTraitHeritage(a.traitHeritage))||
       (a.awakening!==undefined&&!isAwakeningRecord(a.awakening,a.born,w.year))||
       !Number.isFinite(a.energy)||a.energy<0||a.energy>100||
       !Number.isFinite(a.health)||a.health<=0||a.health>100||
@@ -920,6 +927,7 @@ export function isWorld(value:unknown):value is World{
       !SPECIES.includes(r.species)||!checkGenes(r.genes)||
       (r.potentialRank!==undefined&&!isTraitRank(r.potentialRank))||
       (r.innateTrait!==undefined&&!isInnateTrait(r.innateTrait))||
+      (r.traitHeritage!==undefined&&!isTraitHeritage(r.traitHeritage))||
       (r.awakening!==undefined&&!isAwakeningRecord(r.awakening,r.born,w.year))||
       !checkAncestry(r.ancestry)||!Number.isInteger(r.generation)||r.generation<0||
       !Number.isInteger(r.born)||
