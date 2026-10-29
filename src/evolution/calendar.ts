@@ -145,6 +145,9 @@ export const TIME_RATES=[
   {id:'season',label:'1 season / sec',days:91,interval:1000},
   {id:'year',label:'1 year / sec',days:365,interval:1000},
   {id:'four',label:'4 years / sec',days:365,interval:250},
-  {id:'sixteen',label:'16 years / sec',days:365,interval:62.5},
+  // Batch four years per worker reply at the fastest rate: same target
+  // simulation speed, one quarter as many main-thread world clones,
+  // React commits and large canvas redraws.
+  {id:'sixteen',label:'16 years / sec',days:365*4,interval:250},
 ] as const;
 export type TimeRate=typeof TIME_RATES[number]['id'];
