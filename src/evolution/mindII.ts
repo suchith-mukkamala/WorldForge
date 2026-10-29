@@ -13,6 +13,8 @@ import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
 import {residentIndex,tileCapacity,addResident,removeResident} from './density';
 import {traitProfile} from './family';
+import {trainedSkillGain} from './skillTraining';
+import {developAmbition,type PersonalAmbition} from './ambitions';
 import {hasPhysicalTerrain,terrainStepEffort} from './terrainPhysics';
 
 export const PURPOSES=['survive','recover','learn','explore','connect','care',
@@ -50,6 +52,7 @@ export type ReasonedChoice={year:number;day:number;purpose:Purpose;
 export type EmotionalState={stress:number;hope:number;loneliness:number};
 export type Cognition={nextId:number;agenda:MortalPlan[];history:PlanOutcome[];
   lessons?:StepLesson[];
+  ambition?:PersonalAmbition;
   decisions:ReasonedChoice[];emotions:EmotionalState;
   lastReview?:DateStamp;today?:{year:number;day:number;action:StepKind|'idle';
     explanation:string};
@@ -69,6 +72,7 @@ export function initialCognition():Cognition{return {nextId:1,agenda:[],
   history:[],decisions:[],emotions:{stress:18,hope:55,loneliness:24},
   trail:[],blockedDays:0};}
 export function cloneCognition(c:Cognition):Cognition{return {...c,
+  ambition:c.ambition?{...c.ambition,since:{...c.ambition.since}}:undefined,
   lessons:c.lessons?.map(lesson=>({...lesson})),
   agenda:c.agenda.map(p=>({...p,created:{...p.created},motives:[...p.motives],
     steps:p.steps.map(s=>({...s,target:s.target?{...s.target}:undefined}))})),
@@ -94,6 +98,9 @@ export function validCognition(c:Cognition,w:World):boolean{
     x>=0&&y>=0&&x<w.width&&y<w.height;
   const index=(v:number)=>Number.isInteger(v)&&v>=0&&v<w.tiles.length;
   const statement=(s:string,max=160)=>typeof s==='string'&&s.length<=max;
+  if(c.ambition&&(!PURPOSES.includes(c.ambition.purpose)||
+    !stamp(c.ambition.since)||!bounded(c.ambition.commitment)||
+    !statement(c.ambition.reason)))return false;
   if(c.lessons&&!c.lessons.every(l=>l&&stamp(l)&&
     PURPOSES.includes(l.purpose)&&STEP_KINDS.includes(l.kind)&&
     ['achieved','blocked'].includes(l.result)))return false;
@@ -236,9 +243,12 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
     const learned=m.purpose==='survive'||m.purpose==='recover'?0:
       experiencePreference(a.cognition,m.purpose,w.year)+
       stepExperiencePreference(a.cognition,m.purpose,w.year);
-    return {...m,score:m.score+bonus+learned,
+    const ambition=a.cognition?.ambition?.purpose===m.purpose?
+      a.cognition.ambition.commitment:0;
+    return {...m,score:m.score+bonus+learned+ambition,
       reasons:[...m.reasons,
         ...(bonus?['Awakened '+gift!.name+' favors this pursuit']:[]),
+        ...(ambition?['A long-term ambition gives this meaning']:[]),
         ...(learned?['Past '+(learned>0?'successes encourage':'setbacks temper')+
           ' this pursuit']:[])]};
   });
@@ -390,6 +400,7 @@ export function reviewMind(w:World,a:Agent,day:number,
   if(!reviewDue||c.lastReview?.year===at.year&&
     c.lastReview.day===at.day)return;
   c.lastReview=at;
+  c.ambition=developAmbition(c,at,adult(a));
   for(const p of [...c.agenda]){
     const required=p.steps.some(s=>s.personId&&!context.live.has(s.personId));
     if(required&&['connect','care'].includes(p.purpose)){
@@ -619,7 +630,9 @@ export function advanceMindDay(previous:World,day:number,
         skill==='navigation'?'exploration':skill==='care'?'care':
         skill==='foraging'?'foraging':'craft';
       a.development.skills[skill]=round(clamp(a.development.skills[skill]+
-        .035*(1+activeTraitBonus(w.settings.seed,a,specialty))));
+        trainedSkillGain(a.development.skills[skill],
+          .035*(1+activeTraitBonus(w.settings.seed,a,specialty)),
+          traitProfile(a.ancestry).lifespan)));
       if(step.kind==='observe'){
         const here=w.tiles[a.y*w.width+a.x].biome;
         if(!a.development.knownBiomes.includes(here))

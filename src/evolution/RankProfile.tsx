@@ -1,7 +1,8 @@
 import {SKILLS,type Skill} from './development';
 import type {Agent} from './engine';
-import {potentialRank,proficiencyRank,TRAIT_RANK_INFO,TRAIT_RANKS,
+import {potentialRank,TRAIT_RANK_INFO,TRAIT_RANKS,
   type TraitRank} from './traitRanks';
+import {trainingTitle} from './skillTraining';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {awakeningWindow} from './awakening';
 import {activeTraitEffect} from './traitEffects';
@@ -44,7 +45,7 @@ export function RankProfile({seed,person,compact=false}:{
       <span><small>LATENT POTENTIAL</small><strong>
         <RankBadge rank={rank}/> {TRAIT_RANK_INFO[rank].title}</strong></span>
       <span><small>STRONGEST TRAINING</small><strong>
-        {lead?<><RankBadge rank={proficiencyRank(mastery)}/>{' '}
+        {lead?<>{trainingTitle(mastery)} · {' '}
           {SKILL_NAMES[lead]} · {Math.round(mastery)}/100</>:
           'Not recorded'}</strong></span>
     </div>

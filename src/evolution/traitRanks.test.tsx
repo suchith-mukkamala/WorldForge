@@ -114,7 +114,7 @@ describe('v2.1.1 — potential is rare, fixed and separate from real training',(
     }));
     expect(practiced).toContain('Navigation');
     expect(practiced).toContain('70/100');
-    expect(practiced).toContain('>S</b>');
+    expect(practiced).toContain('Expert');
     const archive=renderToStaticMarkup(createElement(RankProfile,{
       seed:w.settings.seed,person:w.lineage[0],
     }));

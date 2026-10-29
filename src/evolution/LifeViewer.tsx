@@ -39,6 +39,12 @@ export function LifeViewer({world,person}:{world:World;person:Agent}){
             STEP_LABELS[disposition.caution]} — repeated blocked attempts.</p>}
           <small>These tendencies can change with new experiences.</small>
         </div>}
+        {c.ambition&&<div className="evo-life-history">
+          <h4>PERSONAL AMBITION</h4>
+          <p><b>{PURPOSE_LABELS[c.ambition.purpose]}</b> — {c.ambition.reason}</p>
+          <small>Since year {c.ambition.since.year}. This aspiration can change
+            as the person grows and achieves new things.</small>
+        </div>}
         <div className="evo-life-plans">
           <div className="evo-life-subhead"><h4>INTENTIONS & NEXT STEPS</h4>
             <small>{c.agenda.length} active or future · Age {age}</small></div>
