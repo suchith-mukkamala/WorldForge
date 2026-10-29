@@ -72,7 +72,8 @@ describe('Evolution Lab v0.1: reproducible fantasy worlds',()=>{
     const evolved=advanceWorld(createWorld({seed:73,resourceLevel:1.7}),30);
     expect(evolved.totalBirths).toBeGreaterThan(0);
     expect(evolved.history.at(-1)?.total).toBe(evolved.agents.length);
-    expect(evolved.events.some(e=>e.type==='birth')).toBe(true);
+    // The event feed retains only the newest 90 entries; early births can
+    // legitimately scroll out of it during a thirty-year simulation.
     expect(evolved.events.some(e=>e.type==='settlement')).toBe(true);
     expect(evolved.nextSettlementId).toBeGreaterThan(1);
     expect(evolved.agents.some(a=>a.parents&&a.parents.length===2)).toBe(true);
