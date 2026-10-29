@@ -4,13 +4,14 @@ import {potentialRank,proficiencyRank,TRAIT_RANK_INFO,TRAIT_RANKS,
   type TraitRank} from './traitRanks';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {awakeningWindow} from './awakening';
+import {TRAIT_DOMAIN_INFO as HERITAGE_DOMAIN_INFO} from './innateTraits';
 
 const SKILL_NAMES:Record<Skill,string>={
   foraging:'Foraging',navigation:'Navigation',craft:'Craft',
   knowledge:'Knowledge',care:'Care',diplomacy:'Diplomacy',
 };
 type Person=Pick<Agent,'id'|'genes'|'potentialRank'|'innateTrait'|
-  'ancestry'|'born'|'awakening'> &
+  'ancestry'|'born'|'awakening'|'traitHeritage'> &
   Partial<Pick<Agent,'development'|'age'>> & {died?:number};
 
 export function RankBadge({rank}:{rank:TraitRank}){
@@ -56,6 +57,15 @@ export function RankProfile({seed,person,compact=false}:{
           ' · YEAR '+person.awakening.year:
         '◇ DORMANT · LATENT AT BIRTH · NATURAL AWAKENING NOT GUARANTEED'}</em>
     </div>
+    {person.traitHeritage&&<div className="evo-awakening-timeline"
+      aria-label="Inherited affinity and family resonance">
+      <div className="evo-awakening-labels"><span>INHERITED AFFINITY</span>
+        <span>{person.traitHeritage.resonance.toUpperCase()} RESONANCE</span></div>
+      <strong>{HERITAGE_DOMAIN_INFO[person.traitHeritage.affinity].name}</strong>
+      <small>Parental gifts: {person.traitHeritage.parentDomains.map(d=>
+        HERITAGE_DOMAIN_INFO[d].name).join(' · ')}. A family tendency, not
+        a guaranteed gift, rank, or ability.</small>
+    </div>}
     <div className="evo-awakening-timeline" aria-label="Species-scaled awakening timeline">
       <div className="evo-awakening-labels"><span>
         {person.awakening?'AWAKENED':'NATURAL AWAKENING WINDOW'}</span>

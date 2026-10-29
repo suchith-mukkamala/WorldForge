@@ -13,6 +13,7 @@ import {
 import {appendLifeMoment,makeLifeRecord,personName} from './identity';
 import {birthPotentialRank} from './traitRanks';
 import {birthInnateTrait} from './innateTraits';
+import {inheritedTraitHeritage,inheritedPotentialUpgrade} from './traitHeritage';
 import {initialMind} from './mind';
 import {divineFactor} from './divine';
 import {residentIndex} from './density';
@@ -84,6 +85,8 @@ export function livingRecord(a:Agent):LineageRecord{
     genes:{...a.genes},born:a.born,generation:a.generation,
     potentialRank:a.potentialRank,
     innateTrait:a.innateTrait,
+    ...(a.traitHeritage?{traitHeritage:{...a.traitHeritage,
+      parentDomains:[...a.traitHeritage.parentDomains] as [import('./innateTraits').TraitDomain,import('./innateTraits').TraitDomain]}}:{}),
     ...(a.awakening?{awakening:{...a.awakening}}:{}),
     parents:a.parents?[...a.parents]:undefined,
     children:[],partnerIds:[]};
@@ -293,8 +296,12 @@ export function offspringFromBonds(
       energy:77,health:94,genes:inheritedGenes(a.genes,b.genes,rand),
       generation:Math.max(a.generation,b.generation)+1,parents:[a.id,b.id],
       mind:initialMind(world.year)};
-    baby.potentialRank=birthPotentialRank(world.settings.seed,baby.id,baby.genes);
-    baby.innateTrait=birthInnateTrait(world.settings.seed,baby.id,baby.genes);
+    baby.traitHeritage=inheritedTraitHeritage(world.settings.seed,baby.id,
+      baby.genes,a,b);
+    baby.potentialRank=inheritedPotentialUpgrade(world.settings.seed,baby.id,
+      birthPotentialRank(world.settings.seed,baby.id,baby.genes),baby.traitHeritage);
+    baby.innateTrait=birthInnateTrait(world.settings.seed,baby.id,baby.genes,
+      baby.traitHeritage);
     newborns.push(baby);bond.children.push(baby.id);
     bond.lastBirthYear=world.year;
     a.energy=Math.max(1,Math.round((a.energy-9)*100)/100);

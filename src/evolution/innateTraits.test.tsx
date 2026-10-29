@@ -71,7 +71,7 @@ describe('v2.1.2 — one distinct birth gift per person',()=>{
     const child=world.lineage.find(r=>r.generation>0);
     expect(child).toBeDefined();
     expect(child!.innateTrait).toBe(birthInnateTrait(world.settings.seed,
-      child!.id,child!.genes));
+      child!.id,child!.genes,child!.traitHeritage));
     const living=world.agents.find(a=>a.id===child!.id);
     if(living)expect(living.innateTrait).toBe(child!.innateTrait);
   });
