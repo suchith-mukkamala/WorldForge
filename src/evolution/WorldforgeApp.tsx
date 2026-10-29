@@ -143,7 +143,9 @@ export function WorldforgeApp(){
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
   const [mapView,setMapView]=useState<'overhead'|'depth'>(()=>{
-    return readWorldPerspective(typeof window==='undefined'?null:window.localStorage);
+    try{return readWorldPerspective(
+      typeof window==='undefined'?null:window.localStorage);}
+    catch{return 'depth';}
   });
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
@@ -151,8 +153,10 @@ export function WorldforgeApp(){
   const [zoom,setZoom]=useState(1);
   const [advancedView,setAdvancedView]=useState(false);
   const [toolPanel,setToolPanel]=useState(false);
-  useEffect(()=>writeWorldPerspective(
-    typeof window==='undefined'?null:window.localStorage,mapView),[mapView]);
+  useEffect(()=>{
+    try{writeWorldPerspective(window.localStorage,mapView);}
+    catch{/* Privacy settings can block browser storage. */}
+  },[mapView]);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
