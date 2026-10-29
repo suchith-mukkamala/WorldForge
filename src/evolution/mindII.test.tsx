@@ -174,7 +174,7 @@ describe('v1.7 — persistent, explainable Mind Engine II',()=>{
   it('exposes honest decisions and gives sprites more animation frames',()=>{
     const w=advanceWorldDays(fresh(),12),a=w.agents[0];
     const html=renderToStaticMarkup(<LifeViewer world={w} person={a}/>);
-    expect(html).toContain('LIFE VIEWER / MIND ENGINE II');
+    expect(html).toContain('LIFE VIEWER / MIND ENGINE III');
     expect(html).toContain('INTENTIONS &amp; NEXT STEPS');
     expect(html).toContain('HOW DECISIONS WERE MADE');
     expect(html).toContain('TODAY');
