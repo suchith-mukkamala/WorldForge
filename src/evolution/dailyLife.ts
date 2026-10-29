@@ -9,6 +9,7 @@ import {activeTraitBonus,activeTraitEffect} from './traitEffects';
 import {trainedSkillGain} from './skillTraining';
 import {traitProfile} from './family';
 import {relationshipScore,refusesConversation} from './socialJudgment';
+import {heardReputation,rememberSocialEpisode} from './socialMemory';
 
 export const ACTIVITIES=['rest','work','forage','study','care','socialize',
   'travel','craft','reflect'] as const;
@@ -201,7 +202,9 @@ export function advanceWeeklyLife(world:World,day:number):World{
         const mentor=a.development.mentorId===b.id?18:0;
         const family=a.development.householdId===b.development!.householdId?12:0;
         const willingness=b.dailyLife!.activity==='socialize'?8:0;
-        const rank=familiar+mentor+family+willingness+
+        const reputation=heardReputation(a.id,b.id,own,a.development.friends,
+          id=>byId.get(id)?.dailyLife?.acquaintances);
+        const rank=familiar+mentor+family+willingness+reputation+
           relationshipScore(own,other,a.id,b.id)+
           activeTraitBonus(world.settings.seed,a,'social')*15-
           distance(a,b)*6+((a.id*7+b.id*13+week*17)%11)*.2;
@@ -257,6 +260,7 @@ export function advanceWeeklyLife(world:World,day:number):World{
     encounter(b,a,year,day,kind,topic,detail);
     for(const [person,other] of [[a,b],[b,a]] as const){
       person.development=cloneDevelopment(person.development!);
+      rememberSocialEpisode(person.development,kind,other.id,year);
       person.development.trust=round(clamp(person.development.trust+
         (disagreement?-.12:comfort?.2:.08)));
       person.development.values[sharedGoal?'community':beliefDifference?
