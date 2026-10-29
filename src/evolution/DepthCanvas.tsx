@@ -5,6 +5,7 @@ import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
+import {visibleCoastTile} from './worldOutline';
 import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
   depthRoadSignature} from './depthWorldArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
@@ -94,6 +95,8 @@ function renderTerrain(w:World,overlay:MapOverlay,
     projector.order(b%W,Math.floor(b/W))||a%W-b%W);
   for(const index of ordered){
       const x=index%W,y=Math.floor(index/W),height=heights[index];
+      if(!visibleCoastTile(x,y,W,H,w.tiles[index].biome,
+        w.settings.seed))continue;
       const p=projector.project(x,y,height);
       const corners=projector.tileCorners(x,y,height);
       const biome=w.tiles[index].biome,palette=PALETTE[biome];
