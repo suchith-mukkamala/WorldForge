@@ -76,7 +76,10 @@ const downloadJson=(world:World)=>{
   document.body.appendChild(link);link.click();link.remove();
   URL.revokeObjectURL(url);
 };
-async function saveSnapshot(world:World):Promise<void>{
+// World snapshots are immutable: repeat checkpoints of the same instance
+// do not need a new multi-MB serialization or IndexedDB transaction.
+const snapshotSaves=new WeakMap<World,Promise<void>>();
+async function persistSnapshot(world:World):Promise<void>{
   const raw=compactWorld(world);
   const savedAt=Date.now();
   // A small synchronous fallback survives reloads even if a pagehide event
@@ -90,7 +93,7 @@ async function saveSnapshot(world:World):Promise<void>{
     }
     catch{/* IndexedDB is the primary save location. */}
   }
-  try{await saveDatabaseWorld(raw,savedAt);}
+  try{await saveDatabaseWorld(raw,savedAt,true);}
   catch(error){
     if(localSaved)return;
     try{
@@ -99,6 +102,17 @@ async function saveSnapshot(world:World):Promise<void>{
     }
     catch{throw error;}
   }
+}
+function saveSnapshot(world:World):Promise<void>{
+  const existing=snapshotSaves.get(world);
+  if(existing)return existing;
+  const pending=persistSnapshot(world).catch(error=>{
+    // A failed checkpoint must be retryable, especially during pagehide.
+    snapshotSaves.delete(world);
+    throw error;
+  });
+  snapshotSaves.set(world,pending);
+  return pending;
 }
 
 export function WorldforgeApp(){
