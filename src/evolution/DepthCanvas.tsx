@@ -300,6 +300,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<HTMLCanvasElement|null>(null);
   const buildingSpritesRef=useRef<BuildingSpriteCache>(new Map());
+  const structureCacheRef=useRef<{settlements:World['settlements'];
+    topography:World['topography'];seed:number;relief:number;
+    yaw:number;pitch:number;actors:DepthActor[]}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number}|null>(null);
@@ -346,7 +349,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     stampRef.current={tiles:world.tiles,topography:world.topography,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
       yaw:camera.yaw,pitch:camera.pitch,roadKey};
-    const positions=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
+    // Only painted residents need animation coordinates. Tracking every agent
+    // previously allocated thousands of points on every simulation commit,
+    // even though the depth view paints at most 350 residents.
+    const visibleAgents=renderedPopulation(world.agents,populationScene(world),{
+      bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
+      selected,focusId:followId,zoom:Math.max(1,zoom),maxVisible:350});
+    const positions=new Map(visibleAgents.map(a=>
+      [a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
     if(!previous||previous.seed!==world.settings.seed||
@@ -365,11 +375,17 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       motionsRef.current=moving;
     }
     priorRef.current={seed:world.settings.seed,year:world.year,day,positions};
-    const structures=prepareDepthStructures(ctx,world,projector,
-      buildingSpritesRef.current);
-    const visibleAgents=renderedPopulation(world.agents,populationScene(world),{
-      bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
-      selected,zoom:Math.max(1,zoom),maxVisible:350});
+    const structureCache=structureCacheRef.current;
+    const structures=structureCache&&
+      structureCache.settlements===world.settlements&&
+      structureCache.topography===world.topography&&
+      structureCache.seed===world.settings.seed&&
+      structureCache.relief===relief&&structureCache.yaw===camera.yaw&&
+      structureCache.pitch===camera.pitch?structureCache.actors:
+      prepareDepthStructures(ctx,world,projector,buildingSpritesRef.current);
+    structureCacheRef.current={settlements:world.settlements,
+      topography:world.topography,seed:world.settings.seed,
+      relief,yaw:camera.yaw,pitch:camera.pitch,actors:structures};
     let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -393,7 +409,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       }
       if(walking.size)frameHandle=requestAnimationFrame(draw);
     };
-    draw(now);
+    // Allow React to commit controls before rasterizing the scene. Painting
+    // synchronously inside the effect stalls input at every world tick.
+    frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
   },[world,overlay,selected,zoomDetailTier,speed,relief,
     camera.yaw,camera.pitch,followId,onFollowPosition]);
