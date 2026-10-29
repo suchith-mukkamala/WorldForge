@@ -38,6 +38,8 @@ export function paintDepthTree(ctx:Painter,p:Point,pine:boolean,variant=0):void{
   draw(ctx,'#473b3b',p.x-1,p.y-5,3,7);
   draw(ctx,'#947050',p.x,p.y-5,1,5);
   if(pine){
+    // Dark offset faces make each crown read as a small faceted volume.
+    draw(ctx,'#102b32',p.x+width/3,p.y-12,4,11);
     draw(ctx,'#152e38',p.x-width/2-1,p.y-5,width+3,4);
     draw(ctx,'#245447',p.x-width/2,p.y-9,width+1,5);
     draw(ctx,'#3b8061',p.x-width/3,p.y-13,width*.7,5);
@@ -50,6 +52,7 @@ export function paintDepthTree(ctx:Painter,p:Point,pine:boolean,variant=0):void{
     }
     draw(ctx,'#2b6653',p.x+width/3,p.y-8,3,3);
   }else{
+    draw(ctx,'#164436',p.x+width/3,p.y-15,5,13);
     draw(ctx,'#1a493f',p.x-width/2-1,p.y-8,width+3,7);
     draw(ctx,'#2d7854',p.x-width/2,p.y-13,width,8);
     draw(ctx,'#509a67',p.x-width/3,p.y-17,width*.75,8);
@@ -110,7 +113,17 @@ export function paintDepthBuilding(ctx:Painter,b:Building,p:Point):void{
   }
   const bodyHeight=8+tier*2;
   const wall=tier>=2?'#a7a3a0':style.wall;
+  // Raised roof plane, side wall and eaves: the environment reads as solid
+  // low-poly geometry while the mortals above remain flat pixel sprites.
+  const side=3+Math.min(2,tier);
+  draw(ctx,'rgba(12,24,35,.4)',x+width,y-bodyHeight+side,side,bodyHeight-side);
+  draw(ctx,'#465465',x+width-1,y-bodyHeight+2,side,bodyHeight-3);
   draw(ctx,wall,x,y-bodyHeight,width,bodyHeight);
+  draw(ctx,'rgba(18,37,45,.32)',x+width-3,y-bodyHeight+2,3,bodyHeight-3);
+  draw(ctx,'#342d3d',x+side,y-bodyHeight-9,width-2,3);
+  draw(ctx,style.roof,x+side-2,y-bodyHeight-11,width-2,3);
+  draw(ctx,'#f5d8a9',x+side-1,y-bodyHeight-11,width-4,1);
+  draw(ctx,'#253443',x+width,y-bodyHeight-7,side,4);
   draw(ctx,'#283449',x-3,y-bodyHeight-3,width+6,2);
   draw(ctx,'#332f42',x-3,y-bodyHeight-6,width+6,2);
   draw(ctx,style.roof,x-2,y-bodyHeight-5,width+4,5);
