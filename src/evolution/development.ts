@@ -3,6 +3,7 @@
  * changes skills, relationships, values and opportunity, not free will.
  */
 import {traitProfile} from './family';
+import {trainedSkillGain} from './skillTraining';
 import {appendLifeMoment} from './identity';
 import {divineFactor,mortalWhisper} from './divine';
 import type {Agent,Biome,Species,World} from './engine';
@@ -209,8 +210,9 @@ function chooseCareer(d:Development):Career{
   }
   return best;
 }
-function addSkill(d:Development,k:Skill,amount:number){
-  d.skills[k]=round(clamp(d.skills[k]+amount));
+function addSkill(d:Development,k:Skill,amount:number,lifespan:number){
+  d.skills[k]=round(clamp(d.skills[k]+
+    trainedSkillGain(d.skills[k],amount,lifespan)));
 }
 
 /** Called after births: relationships, adoption, learning and independent lives. */
@@ -230,6 +232,7 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
   const deceased=new Set(w.lineage.filter(r=>r.died!==undefined).map(r=>r.id));
   for(const a of w.agents){
     const d=a.development!,stage=lifeStage(a);
+    const lifespan=traitProfile(a.ancestry).lifespan;
     const learning=divineFactor(a,'intelligence',w.year)*
       divineFactor(a,'skill_growth',w.year);
     const omen=mortalWhisper(a,w.year);
@@ -238,7 +241,7 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
       const subject=theme==='exploration'?'navigation':
         theme==='learning'?'knowledge':theme==='leadership'?'diplomacy':
         theme==='cooperation'?'care':theme==='faith'?'knowledge':'craft';
-      addSkill(d,subject,.40*learning);
+      addSkill(d,subject,.40*learning,lifespan);
       const ideal=theme==='cooperation'?'community':
         theme==='faith'?'tradition':theme==='leadership'?'independence':'discovery';
       d.values[ideal]=round(clamp(d.values[ideal]+.12));
@@ -253,7 +256,7 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
     }
     const here=w.tiles[a.y*w.width+a.x].biome;
     if(!d.knownBiomes.includes(here)){
-      d.knownBiomes.push(here);addSkill(d,'navigation',2);
+      d.knownBiomes.push(here);addSkill(d,'navigation',2,lifespan);
       d.values.discovery=round(clamp(d.values.discovery+1.5));
       remember(a,'discovery',w.year,'Explored unfamiliar '+here+' terrain.');
     }
@@ -264,7 +267,7 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
         d.trust=round(clamp(d.trust+.55));
         d.empathy=round(clamp(d.empathy+.3));
         d.values.community=round(clamp(d.values.community+.28));
-        addSkill(d,'care',.12);
+        addSkill(d,'care',.12,lifespan);
         if(d.yearsCared===1)remember(a,'care',w.year,
           'Received support from a nearby adult.',provider.id);
         if(!d.caregiverIds.includes(provider.id)&&d.caregiverIds.length<4)
@@ -316,14 +319,15 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
       if(mentor){
         d.yearsTaught++;
         const subjects=CAREER_SKILLS[mentor.development?.career??'forager'];
-        addSkill(d,subjects[0],1.2*learning);addSkill(d,subjects[1],.65*learning);
-        addSkill(d,'knowledge',.25*learning);
+        addSkill(d,subjects[0],1.2*learning,lifespan);
+        addSkill(d,subjects[1],.65*learning,lifespan);
+        addSkill(d,'knowledge',.25*learning,lifespan);
         d.languages[mentor.species]=round(clamp(d.languages[mentor.species]+1.5));
       }
       // Exploration and ordinary practice also teach children with no mentor.
-      addSkill(d,'foraging',(observed?.providerId?1:.55)*learning);
+      addSkill(d,'foraging',(observed?.providerId?1:.55)*learning,lifespan);
       if(a.mind?.goal==='explore'||a.mind?.goal==='venture')
-        addSkill(d,'navigation',.6*learning);
+        addSkill(d,'navigation',.6*learning,lifespan);
     }else{
       if(!d.career){
         d.career=chooseCareer(d);
@@ -333,9 +337,9 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
         lifeRecords);
       }
       const focus=CAREER_SKILLS[d.career];
-      addSkill(d,focus[0],(a.mind?.goal==='vocation'?1.1:.52)*learning);
-      addSkill(d,focus[1],(a.mind?.goal==='vocation'?.50:.25)*learning);
-      if(a.mind?.goal==='venture')addSkill(d,'navigation',.55*learning);
+      addSkill(d,focus[0],(a.mind?.goal==='vocation'?1.1:.52)*learning,lifespan);
+      addSkill(d,focus[1],(a.mind?.goal==='vocation'?.50:.25)*learning,lifespan);
+      if(a.mind?.goal==='venture')addSkill(d,'navigation',.55*learning,lifespan);
       const parents=(a.parents??[]).map(id=>byId.get(id)).filter(Boolean) as Agent[];
       if(d.leftHomeYear===undefined&&a.age>=traitProfile(a.ancestry).maturity+2&&
         parents.some(p=>p.development?.householdId===d.householdId)&&
