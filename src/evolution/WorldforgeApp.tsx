@@ -244,7 +244,7 @@ export function WorldforgeApp(){
       viewport.removeEventListener('gesturestart',startGesture);
       viewport.removeEventListener('gesturechange',safariGesture);
     };
-  },[tab]);
+  },[tab,storageReady]);
   // After the canvas changes size, restore the exact world point below the
   // fingers instead of jumping to the top-left of the projected panorama.
   useLayoutEffect(()=>{
@@ -711,7 +711,7 @@ export function WorldforgeApp(){
               </button>
               <button onClick={()=>setZoom(v=>boundedMapZoom(v-.5))}
                 disabled={zoom<=1} title="Zoom out">−</button>
-              <button onClick={()=>setZoom(1)} title="Fit map to view">⌖ FIT</button>
+              <button onClick={()=>setZoom(1)} title="Reset map zoom to 1×">⌖ FIT</button>
               <button onClick={()=>setZoom(v=>boundedMapZoom(v+.5))}
                 disabled={zoom>=8} title="Zoom in">+</button>
             </div>
@@ -857,7 +857,7 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              {mapView==='overhead'?'ZOOM 3×+ FOR CHARACTER SPRITES · FOLLOW A SELECTED PERSON':
+              {mapView==='overhead'?'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
                 'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON · ORBIT 360°'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
