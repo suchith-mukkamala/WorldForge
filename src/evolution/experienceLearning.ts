@@ -3,7 +3,7 @@
  * deterministic preference from those records instead of introducing a
  * parallel mutable memory table or running inference for every agent/day.
  */
-import type {Cognition,Purpose} from './mindII';
+import type {Cognition,Purpose,StepKind} from './mindII';
 
 export function experiencePreference(c:Cognition|undefined,
   purpose:Purpose,year:number):number{
@@ -36,4 +36,29 @@ export function stepExperiencePreference(c:Cognition|undefined,
     weight+=(lesson.result==='achieved'?1.5:-2.5)*(1-age/21);
   }
   return Math.round(Math.max(-8,Math.min(8,weight))*100)/100;
+}
+
+export type LearnedDisposition={habit?:StepKind;caution?:StepKind};
+/** Habits and wariness emerge from repeated real outcomes. Neither genetics
+ * nor morals are overwritten, and no trait is inferred from a single event. */
+export function learnedDisposition(c:Cognition|undefined,
+  year:number):LearnedDisposition{
+  if(!c?.lessons?.length)return {};
+  const counts=new Map<StepKind,{success:number;blocked:number}>();
+  for(const lesson of c.lessons){
+    if(year-lesson.year>18)continue;
+    const count=counts.get(lesson.kind)??{success:0,blocked:0};
+    if(lesson.result==='achieved')count.success++;
+    else count.blocked++;
+    counts.set(lesson.kind,count);
+  }
+  let habit:StepKind|undefined,caution:StepKind|undefined;
+  let habitual=2,wariness=1;
+  for(const [kind,count] of counts){
+    const confidence=count.success-count.blocked;
+    const risk=count.blocked-count.success;
+    if(count.success>=3&&confidence>habitual){habit=kind;habitual=confidence;}
+    if(count.blocked>=2&&risk>wariness){caution=kind;wariness=risk;}
+  }
+  return {...(habit?{habit}:{}),...(caution?{caution}:{})};
 }
