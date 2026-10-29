@@ -8,6 +8,9 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
 import {sceneAtmosphere} from './sceneAtmosphere';
+import {createDepthProjector} from './depthProjection';
+import {topographyForWorld} from './topography';
+import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
@@ -149,11 +152,17 @@ export function WorldforgeApp(){
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
-  const [mapView,setMapView]=useState<'overhead'|'depth'>('overhead');
+  const [mapView,setMapView]=useState<'overhead'|'depth'>(()=>{
+    return readWorldPerspective(typeof window==='undefined'?null:window.localStorage);
+  });
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
   const [zoom,setZoom]=useState(1);
+  const [advancedView,setAdvancedView]=useState(false);
+  const [toolPanel,setToolPanel]=useState(false);
+  useEffect(()=>writeWorldPerspective(
+    typeof window==='undefined'?null:window.localStorage,mapView),[mapView]);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
@@ -171,11 +180,25 @@ export function WorldforgeApp(){
     const viewport=mapScrollRef.current;
     if(!viewport)return;
     const w=currentWorld.current.width,h=currentWorld.current.height;
-    const target=cameraScrollTarget({x,y},{x:w,y:h},
-      {x:viewport.scrollWidth,y:viewport.scrollHeight},
-      {x:viewport.clientWidth,y:viewport.clientHeight});
-    viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
-  },[]);
+    if(mapView==='depth'){
+      const current=currentWorld.current;
+      const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
+        {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
+      const z=Math.max(1,zoom);
+      const elevation=topographyForWorld(current).heights[y*w+x]??0;
+      const point=projector.project(x,y,elevation);
+      const scaleX=viewport.scrollWidth/projector.size.width;
+      const scaleY=viewport.scrollHeight/projector.size.height;
+      viewport.scrollLeft=point.x*scaleX-viewport.clientWidth/2;
+      viewport.scrollTop=point.y*scaleY-viewport.clientHeight/2;
+      void z;
+    }else{
+      const target=cameraScrollTarget({x,y},{x:w,y:h},
+        {x:viewport.scrollWidth,y:viewport.scrollHeight},
+        {x:viewport.clientWidth,y:viewport.clientHeight});
+      viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
+    }
+  },[mapView,reliefLevel,orbitYaw,cameraPitch,zoom]);
   useEffect(()=>{
     let active=true;
     loadDatabaseSnapshot().then(restored=>{
@@ -355,7 +378,7 @@ export function WorldforgeApp(){
     setPlaying(false);
     setFollowId(null);
     setSelected({x:place.x,y:place.y});setSelectedAgentId(null);
-    setMapView('overhead');setZoom(3);setTab('world');setMapFocus(-1);
+    setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
   };
   const openSettlement=(id:number)=>{
     setSelectedSettlementId(id);setTab('settlements');
@@ -364,11 +387,12 @@ export function WorldforgeApp(){
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
-    setMapView('overhead');setZoom(4);setFollowId(id);setTab('world');setMapFocus(id);
+    setZoom(v=>Math.max(2,v));setFollowId(mapView==='overhead'?id:null);
+    setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
     setPlaying(false);setSelected({x,y});setSelectedAgentId(null);
-    setFollowId(null);setMapView('overhead');setZoom(3);setTab('world');setMapFocus(-1);
+    setFollowId(null);setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
   };
   useEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
