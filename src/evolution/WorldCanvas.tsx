@@ -17,6 +17,7 @@ import {mortalWorldPoint} from './spatialDetails';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
+import {visibleCoastTile} from './worldOutline';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -104,6 +105,7 @@ export function WorldCanvas({
       hydrologyForWorld(world):null;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
+      if(!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
       const px=x*CELL,py=y*CELL;
       const index=y*W+x,h=heights[index];
       if(overlay==='watersheds'&&drainage){
