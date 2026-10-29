@@ -8,6 +8,7 @@ import {terrainDetailAt} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
 import {mortalWorldPoint} from './spatialDetails';
+import {paintSceneAtmosphere} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Motion,type Point} from './motion';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
@@ -295,6 +296,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
+      if(overlay==='terrain')paintSceneAtmosphere(ctx,world.settings.seed,
+        world.year,world.dayOfYear??0,'depth');
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
       for(const [id,target] of positions){
         const motion=motionsRef.current.get(id);
