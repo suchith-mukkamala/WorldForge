@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {experiencePreference,stepExperiencePreference} from './experienceLearning';
+import {experiencePreference,stepExperiencePreference,learnedDisposition} from './experienceLearning';
 import {initialCognition} from './mindII';
 
 describe('Mind Engine III — experiential preferences',()=>{
@@ -37,5 +37,17 @@ describe('Mind Engine III — experiential preferences',()=>{
     expect(stepExperiencePreference(c,'explore',20)).toBe(1.5);
     expect(stepExperiencePreference(c,'learn',45)).toBe(0);
     expect(stepExperiencePreference(initialCognition(),'learn',20)).toBe(0);
+  });
+  it('forms habits and caution only after repeated evidence, then forgets old patterns',()=>{
+    const c=initialCognition();
+    c.lessons=[...Array.from({length:4},(_,i)=>({year:20,day:i,
+      purpose:'learn' as const,kind:'practice' as const,
+      result:'achieved' as const})),
+    ...Array.from({length:3},(_,i)=>({year:20,day:i+5,
+      purpose:'connect' as const,kind:'talk' as const,
+      result:'blocked' as const}))];
+    expect(learnedDisposition(c,20)).toEqual({habit:'practice',caution:'talk'});
+    expect(learnedDisposition(c,50)).toEqual({});
+    expect(learnedDisposition(initialCognition(),20)).toEqual({});
   });
 });
