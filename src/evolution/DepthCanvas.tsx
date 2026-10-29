@@ -287,11 +287,13 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 }
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
-  zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA}:{
+  zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,
+  followId=null,onFollowPosition}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
-  relief?:number;camera?:DepthCamera;
+  relief?:number;camera?:DepthCamera;followId?:number|null;
+  onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
@@ -362,7 +364,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const visibleAgents=renderedPopulation(world.agents,populationScene(world),{
       bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
       selected,zoom:Math.max(1,zoom),maxVisible:350});
-    let frameHandle=0;
+    let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
@@ -376,11 +378,19 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       }
       paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
         projector,structures,visibleAgents);
+      const tracked=followId!==null?interpolated.get(followId):undefined;
+      if(tracked&&onFollowPosition&&(!lastFollow||
+        Math.abs(tracked.x-lastFollow.x)>.12||
+        Math.abs(tracked.y-lastFollow.y)>.12)){
+        lastFollow=tracked;
+        onFollowPosition(tracked.x,tracked.y);
+      }
       if(walking.size)frameHandle=requestAnimationFrame(draw);
     };
     draw(now);
     return ()=>cancelAnimationFrame(frameHandle);
-  },[world,overlay,selected,zoom,speed,relief,camera.yaw,camera.pitch]);
+  },[world,overlay,selected,zoom,speed,relief,camera.yaw,camera.pitch,
+    followId,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };
