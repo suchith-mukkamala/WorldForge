@@ -3,6 +3,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {WorldforgeApp} from './WorldforgeApp';
 import {createWorld} from './engine';
 import {pixelTerrainHash,paintDepthRoads,paintDepthSurfaceDetail,
+  depthRoadSignature,
   surfaceColor} from './depthWorldArt';
 import {DEFAULT_WORLD_VIEW,readWorldPerspective,writeWorldPerspective,
   WORLD_VIEW_KEY} from './worldViewPreferences';
@@ -32,6 +33,8 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
   it('renders a depth map with buttons rather than view and camera dropdowns',()=>{
     const html=renderToStaticMarkup(<WorldforgeApp/>);
     expect(html).toContain('◈ 2.5D WORLD');
+    expect(html).toContain('PINCH TO ZOOM');
+    expect(html).toContain('TWO-FINGER SCROLL TO PAN');
     expect(html).toContain('aria-label="Isometric terrain depth view');
     expect(html).toContain('aria-label="Map layers"');
     expect(html).toContain('aria-label="Playback pace"');
@@ -71,7 +74,12 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
       x:x*12-y*6,y:(x+y)*3-h/12,
     })};
     const before=JSON.stringify(world);
+    const roadKey=depthRoadSignature(world);
+    expect(depthRoadSignature(world)).toBe(roadKey);
     expect(paintDepthRoads(ctx,world,heights,projector)).toBe(1);
+    world.trails=[...world.trails,{index:world.width*6+10,wear:1}];
+    expect(depthRoadSignature(world)).not.toBe(roadKey);
+    world.trails.pop();
     for(let x=0;x<15;x++)
       paintDepthSurfaceDetail(ctx,'forest',{x:20,y:15},x,3,world.settings.seed);
     expect(operations).toContain('rect');
