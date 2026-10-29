@@ -308,6 +308,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const motionsRef=useRef<Map<number,Motion>>(new Map());
   const projector=createDepthProjector(world,relief,camera);
   const size=projector.size;
+  // Pinch changes the canvas CSS scale continuously. Rebuilding the terrain
+  // and NPC layers on every fractional zoom would cause trackpad stutter.
+  // Only population visibility/detail thresholds require an actual repaint.
+  const zoomDetailTier=zoom>=3?3:zoom>=2?2:1;
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
@@ -391,8 +395,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     };
     draw(now);
     return ()=>cancelAnimationFrame(frameHandle);
-  },[world,overlay,selected,zoom,speed,relief,camera.yaw,camera.pitch,
-    followId,onFollowPosition]);
+  },[world,overlay,selected,zoomDetailTier,speed,relief,
+    camera.yaw,camera.pitch,followId,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };
