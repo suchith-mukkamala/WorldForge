@@ -218,7 +218,12 @@ export function WorldforgeApp(){
       setZoom(value=>boundedMapZoom(value*factor));
     };
     const wheel=(event:WheelEvent)=>{
-      if(!event.ctrlKey)return; // Two-finger scroll pans with native inertia.
+      if(!event.ctrlKey){
+        // Trackpad two-finger scrolling pans naturally with browser inertia.
+        // A manual navigation gesture also releases the follow camera.
+        if(event.deltaX||event.deltaY)setFollowId(null);
+        return;
+      }
       event.preventDefault(); // Pinch the map, never the entire browser page.
       requestZoom(gestureZoomFactor(event.deltaY,event.deltaMode),
         event.clientX,event.clientY);
