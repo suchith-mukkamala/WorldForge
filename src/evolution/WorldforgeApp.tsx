@@ -41,6 +41,8 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
+const ThreeWorldCanvas=lazy(()=>import('./ThreeWorldCanvas').then(m=>
+  ({default:m.ThreeWorldCanvas})));
 import {compactWorld,loadBrowserWorld,loadBrowserWorldSnapshot,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
@@ -157,6 +159,14 @@ export function WorldforgeApp(){
       typeof window==='undefined'?null:window.localStorage);}
     catch{return 'depth';}
   });
+  const [true3D,setTrue3D]=useState(()=>{
+    try{return window.localStorage.getItem('worldforge:true-3d:v1')!=='off';}
+    catch{return true;}
+  });
+  useEffect(()=>{
+    try{window.localStorage.setItem('worldforge:true-3d:v1',true3D?'on':'off');}
+    catch{/* Optional rendering preference. */}
+  },[true3D]);
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
@@ -773,9 +783,15 @@ export function WorldforgeApp(){
           </div>
           <div className="evo-map-toolbar evo-map-commandbar">
             <div className="evo-view-switch" role="group" aria-label="Map perspective">
-              <button className={mapView==='depth'?'is-on':''}
-                aria-pressed={mapView==='depth'}
-                onClick={()=>{setMapView('depth');setFollowId(null);setZoom(1.5);}}>
+              <button className={mapView==='depth'&&true3D?'is-on':''}
+                aria-pressed={mapView==='depth'&&true3D}
+                onClick={()=>{setTrue3D(true);setMapView('depth');
+                  setFollowId(null);setZoom(1.5);}}>
+                ◈ 3D WORLD</button>
+              <button className={mapView==='depth'&&!true3D?'is-on':''}
+                aria-pressed={mapView==='depth'&&!true3D}
+                onClick={()=>{setTrue3D(false);setMapView('depth');
+                  setFollowId(null);setZoom(1.5);}}>
                 ◈ 2.5D WORLD</button>
               <button className={mapView==='overhead'?'is-on':''}
                 aria-pressed={mapView==='overhead'}
@@ -897,6 +913,19 @@ export function WorldforgeApp(){
               speed={speed} followId={followId} onFollowPosition={centerCamera}
               selected={displayed} onSelect={chooseTile} onEdit={brushAt}
               onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
+              true3D?<Suspense fallback={<DepthCanvas world={world} brush={brush}
+                overlay={overlay} zoom={zoom} speed={speed} selected={displayed}
+                onSelect={chooseTile} onEdit={brushAt}
+                relief={RELIEF_LEVELS[reliefLevel]}
+                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
+                followId={followId} onFollowPosition={centerCamera}/> }>
+                <ThreeWorldCanvas world={world} brush={brush} overlay={overlay}
+                  zoom={zoom} speed={speed} selected={displayed}
+                  onSelect={chooseTile} onEdit={brushAt}
+                  relief={RELIEF_LEVELS[reliefLevel]}
+                  camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
+                  followId={followId} onFollowPosition={centerCamera}/>
+              </Suspense>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
