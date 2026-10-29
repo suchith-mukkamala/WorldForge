@@ -124,6 +124,9 @@ export function WorldforgeApp(){
   },[]);
   const simulationWorker=useRef<Worker|null>(null);
   const simulationPending=useRef<PendingSimulation|null>(null);
+  const preparedSimulation=useRef<{pending:PendingSimulation;
+    reply:Extract<SimulationReply,{kind:'advanced'}>}|null>(null);
+  const playbackDeadlineReached=useRef(false);
   const simulationRequestId=useRef(0);
   const workerSyncedRevision=useRef(-1);
   const lastSimulationMs=useRef<number|null>(null);
@@ -144,6 +147,8 @@ export function WorldforgeApp(){
   },[]);
   const [timeRate,setTimeRate]=useState<TimeRate>('month');
   const playback=TIME_RATES.find(rate=>rate.id===timeRate)??TIME_RATES[2];
+  const playbackDaysRef=useRef<number>(playback.days);
+  playbackDaysRef.current=playback.days;
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
@@ -296,6 +301,45 @@ export function WorldforgeApp(){
     return ()=>window.clearTimeout(timer);
   },[world,playing,storageReady]);
   useEffect(()=>{if(tab!=='world'&&tab!=='settlements')setPlaying(false);},[tab]);
+  const requestSimulation=useCallback(()=>{
+    const worker=simulationWorker.current,current=currentWorld.current;
+    if(!worker||simulationPending.current||preparedSimulation.current||
+      !playingRef.current||!current.agents.length||current.year>=9999)return;
+    const request:SimulationRequest={kind:'advance',
+      id:++simulationRequestId.current,days:playbackDaysRef.current,
+      ...(workerSyncedRevision.current===worldRevision.current?
+        {}:{world:current})};
+    simulationPending.current={id:request.id,
+      revision:worldRevision.current,world:current};
+    try{
+      const start=performance.now();
+      worker.postMessage(request);
+      lastTransferMs.current=Math.max(0,performance.now()-start);
+    }catch{
+      worker.terminate();simulationWorker.current=null;
+      simulationPending.current=null;preparedSimulation.current=null;
+      workerSyncedRevision.current=-1;
+      setWorkerMode('fallback');
+      setNotice('Worker messaging failed; using safe main-thread playback.');
+    }
+  },[]);
+  const publishPrepared=useCallback(()=>{
+    const prepared=preparedSimulation.current;
+    if(!prepared)return false;
+    preparedSimulation.current=null;
+    const {pending,reply}=prepared;
+    if(!shouldAcceptSimulation(pending,reply,worldRevision.current,
+      playingRef.current&&['world','settlements'].includes(tabRef.current),
+      currentWorld.current)){
+      workerSyncedRevision.current=-1;
+      return false;
+    }
+    lastSimulationMs.current=reply.elapsedMs;
+    currentWorld.current=reply.world;
+    setWorld(reply.world);
+    workerSyncedRevision.current=worldRevision.current;
+    return true;
+  },[setWorld]);
   // A dedicated worker owns each expensive playback calculation. The UI
   // remains authoritative for edits; stale worker results are discarded.
   // Missing/crashed workers safely fall back to the exact same calendar code.
@@ -315,6 +359,7 @@ export function WorldforgeApp(){
       worker.terminate();
       if(simulationWorker.current===worker)simulationWorker.current=null;
       simulationPending.current=null;
+      preparedSimulation.current=null;
       workerSyncedRevision.current=-1;
       setWorkerMode('fallback');
       setNotice(message);
@@ -327,19 +372,20 @@ export function WorldforgeApp(){
         fallback('Background simulation failed; using safe main-thread playback.');
         return;
       }
-      if(shouldAcceptSimulation(pending,reply,worldRevision.current,
+      if(!shouldAcceptSimulation(pending,reply,worldRevision.current,
         playingRef.current&&['world','settlements'].includes(tabRef.current),
         currentWorld.current)){
-        lastSimulationMs.current=reply.elapsedMs;
-        // One clock step becomes visible after React commits. Save snapshots
-        // always reference this accepted world, not a pending worker copy.
-        currentWorld.current=reply.world;
-        setWorld(reply.world);
-        // Worker already owns the accepted result, so subsequent ticks only
-        // transfer the day count until the user changes world state.
-        workerSyncedRevision.current=worldRevision.current;
-      }else{
         workerSyncedRevision.current=-1;
+        if(playingRef.current)requestSimulation();
+        return;
+      }
+      // Prepare the next world while the current one is being displayed.
+      // The clock only publishes it on its regular presentation deadline.
+      preparedSimulation.current={pending,reply};
+      if(playbackDeadlineReached.current){
+        playbackDeadlineReached.current=false;
+        publishPrepared();
+        requestSimulation();
       }
     };
     worker.onerror=()=>{
@@ -349,36 +395,29 @@ export function WorldforgeApp(){
       worker.terminate();
       if(simulationWorker.current===worker)simulationWorker.current=null;
       simulationPending.current=null;
+      preparedSimulation.current=null;
       workerSyncedRevision.current=-1;
     };
-  },[setWorld]);
+  },[requestSimulation,publishPrepared]);
   useEffect(()=>{
     if(!playing||(tab!=='world'&&tab!=='settlements'))return;
+    playbackDeadlineReached.current=false;
+    preparedSimulation.current=null;
+    // Start the expensive calculation at the beginning of the display period,
+    // rather than waiting until the exact moment the next frame is due.
+    requestSimulation();
     const timer=window.setInterval(()=>{
       const current=currentWorld.current;
       if(!current.agents.length||current.year>=9999)return;
       const worker=simulationWorker.current;
       if(worker){
-        if(simulationPending.current)return; // no unbounded tick queue
-        const request:SimulationRequest={kind:'advance',
-          id:++simulationRequestId.current,days:playback.days,
-          ...(workerSyncedRevision.current===worldRevision.current?
-            {}:{world:current})};
-        simulationPending.current={id:request.id,
-          revision:worldRevision.current,world:current};
-        try{
-          const start=performance.now();
-          worker.postMessage(request);
-          lastTransferMs.current=Math.max(0,performance.now()-start);
-          return;
-        }catch{
-          worker.terminate();
-          simulationWorker.current=null;
-          simulationPending.current=null;
-          workerSyncedRevision.current=-1;
-          setWorkerMode('fallback');
-          setNotice('Worker messaging failed; using safe main-thread playback.');
-        }
+        playbackDeadlineReached.current=true;
+        if(preparedSimulation.current){
+          playbackDeadlineReached.current=false;
+          publishPrepared();
+          requestSimulation();
+        }else requestSimulation();
+        return;
       }
       const start=performance.now();
       setWorld(w=>{
@@ -388,8 +427,17 @@ export function WorldforgeApp(){
         return next;
       });
     },playback.interval);
-    return ()=>window.clearInterval(timer);
-  },[playing,playback.days,playback.interval,tab,setWorld]);
+    return ()=>{
+      window.clearInterval(timer);
+      playbackDeadlineReached.current=false;
+      preparedSimulation.current=null;
+      simulationPending.current=null;
+      // The worker may be ahead of the displayed world. Resend an exact
+      // snapshot after a pause or rate change, never its speculative state.
+      workerSyncedRevision.current=-1;
+    };
+  },[playing,playback.days,playback.interval,tab,setWorld,
+    requestSimulation,publishPrepared]);
   useEffect(()=>{
     if(playing&&(!world.agents.length||world.year>=9999))setPlaying(false);
   },[world.agents.length,world.year,playing]);

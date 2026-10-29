@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {createWorld} from './engine';
 import {advanceMindDay,createDayContext} from './mindII';
 import {advanceWorldDays,TIME_RATES} from './calendar';
-import {updateAtmosphereLayer} from './sceneAtmosphere';
+import {sceneAtmosphere,updateAtmosphereLayer} from './sceneAtmosphere';
 
 describe('v2.1.5.1 — low-lag rendering and daily simulation',()=>{
   it('preserves idle agent snapshots without per-day deep cognition copies',()=>{
@@ -52,5 +52,20 @@ describe('v2.1.5.1 — low-lag rendering and daily simulation',()=>{
     layer.width=100;
     expect(updateAtmosphereLayer(layer,12,4,85,'overhead')).toBe(true);
     expect(clears).toBe(4);
+  });
+  it('blends season lighting gradually without changing the calendar season',()=>{
+    const before=sceneAtmosphere(91);
+    const boundary=sceneAtmosphere(92);
+    const middle=sceneAtmosphere(122);
+    const finished=sceneAtmosphere(152);
+    expect(before.season).toBe('Bloom');
+    expect(boundary.season).toBe('Highsun');
+    expect(boundary.wash).toBe(before.wash);
+    expect(middle.wash).not.toBe(boundary.wash);
+    expect(middle.wash).not.toBe(finished.wash);
+    expect(finished.wash).toBe(sceneAtmosphere(170).wash);
+    // New-year lighting crosses from frost to bloom without a hard flash.
+    expect(sceneAtmosphere(0).wash).toBe(sceneAtmosphere(364).wash);
+    expect(sceneAtmosphere(7)).toEqual(sceneAtmosphere(7));
   });
 });
