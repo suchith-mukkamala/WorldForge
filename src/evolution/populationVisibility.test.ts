@@ -73,4 +73,41 @@ describe('v1.8 presentation-only population',()=>{
     const b=advanceWorldDays(world,7);
     expect(a).toEqual(b);
   });
+  it('keeps exactly the same deterministic crowd sample after indexed selection',()=>{
+    const {world,base}=fixture();
+    const agents=Array.from({length:8000},(_,i)=>({...base,id:i+11,
+      x:(i*11)%51,y:(i*23)%39}));
+    const scene=populationScene(world);
+    const priority=(id:number)=>Math.imul(id,0x9e3779b1)>>>0;
+    const reference=(zoom:number,focusId:number|null)=>{
+      const bounds={minX:0,minY:0,maxX:45,maxY:32},maxVisible=130;
+      const perTile=zoom>=3?2:1;
+      const focus=agents.find(a=>a.id===focusId);
+      const candidates=agents.filter(a=>a.id!==focus?.id&&
+        a.x>=bounds.minX&&a.x<=bounds.maxX&&
+        a.y>=bounds.minY&&a.y<=bounds.maxY&&
+        !isVisuallyIndoors(a,scene));
+      candidates.sort((a,b)=>priority(a.id)-priority(b.id)||a.id-b.id);
+      const cells=new Map<number,number>(),visible:Agent[]=[];
+      for(const a of candidates){
+        const tile=a.y*scene.width+a.x,used=cells.get(tile)??0;
+        if(used>=perTile)continue;
+        cells.set(tile,used+1);visible.push(a);
+        if(visible.length>=maxVisible)break;
+      }
+      if(focus)visible.push(focus);
+      return visible.sort((a,b)=>a.y-b.y||a.x-b.x||a.id-b.id)
+        .map(a=>a.id);
+    };
+    for(const zoom of [1,4])for(const focusId of [null,777]){
+      const view={bounds:{minX:0,minY:0,maxX:45,maxY:32},
+        maxVisible:130,zoom,focusId};
+      const wanted=reference(zoom,focusId);
+      expect(renderedPopulation(agents,scene,view).map(a=>a.id))
+        .toEqual(wanted);
+      expect(renderedPopulation([...agents].reverse(),scene,view)
+        .map(a=>a.id)).toEqual(wanted);
+    }
+  });
+
 });
