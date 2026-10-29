@@ -1,6 +1,7 @@
 import {PURPOSE_LABELS,STEP_LABELS,type Cognition} from './mindII';
 import {calendarDate} from './calendar';
 import type {Agent,World} from './engine';
+import {learnedDisposition} from './experienceLearning';
 
 /** Close-up into a mortal's actual state, never an invented narrative.
  * Every motive and choice comes from a persisted planning decision.
@@ -9,9 +10,10 @@ export function LifeViewer({world,person}:{world:World;person:Agent}){
   const c=person.cognition;
   const age=person.age;
   const date=calendarDate(world);
+  const disposition=learnedDisposition(c,world.year);
   return <section className="evo-section-card evo-life-viewer">
-    <div className="evo-card-heading"><strong>◈ LIFE VIEWER / MIND ENGINE II</strong>
-      <span>V1.7 · Y{date.year} · {date.month+1}/{date.day}</span></div>
+    <div className="evo-card-heading"><strong>◈ LIFE VIEWER / MIND ENGINE III</strong>
+      <span>V2.2 · Y{date.year} · {date.month+1}/{date.day}</span></div>
     <div className="evo-life-viewer-body">
       <p className="evo-life-viewer-intro">A person's plans are provisional.
         Needs, memories, relationships and new events may change what they do next.</p>
@@ -29,6 +31,14 @@ export function LifeViewer({world,person}:{world:World;person:Agent}){
             <label key={label}><span>{label}</span><progress max={100} value={value}/>
               <b>{Math.round(value)}</b></label>)}
         </div>
+        {(disposition.habit||disposition.caution)&&<div className="evo-life-history">
+          <h4>HABITS & LEARNED CAUTION</h4>
+          {disposition.habit&&<p><b>Practiced habit:</b> {
+            STEP_LABELS[disposition.habit]} — repeated successful experiences.</p>}
+          {disposition.caution&&<p><b>Learned caution:</b> {
+            STEP_LABELS[disposition.caution]} — repeated blocked attempts.</p>}
+          <small>These tendencies can change with new experiences.</small>
+        </div>}
         <div className="evo-life-plans">
           <div className="evo-life-subhead"><h4>INTENTIONS & NEXT STEPS</h4>
             <small>{c.agenda.length} active or future · Age {age}</small></div>
