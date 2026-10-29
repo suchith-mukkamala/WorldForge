@@ -507,15 +507,17 @@ export function WorldforgeApp(){
         <button role="tab" aria-selected={tab==='powers'}
           className={tab==='powers'?'active':''} onClick={()=>navigate('powers')}>
           ⚡ POWERS</button>
-        <select className="evo-more-pages" aria-label="More WorldForge pages"
-          value={['creator','family','codex','history'].includes(tab)?tab:''}
-          onChange={e=>navigate(e.target.value as Tab)}>
-          <option value="" disabled>MORE PAGES ▾</option>
-          <option value="creator">✧ WORLD CREATOR</option>
-          <option value="family">♡ FAMILIES</option>
-          <option value="codex">✦ DIVINE CODEX</option>
-          <option value="history">≋ HISTORY</option>
-        </select>
+        <details className="evo-nav-more">
+          <summary>✧ ARCHIVES</summary>
+          <div className="evo-nav-more-panel">
+            {([['creator','✧ WORLD CREATOR'],['family','♡ FAMILIES'],
+              ['codex','✦ DIVINE CODEX'],['history','≋ HISTORY']] as const)
+              .map(([page,title])=><button key={page}
+                className={tab===page?'active':''}
+                aria-current={tab===page?'page':undefined}
+                onClick={()=>navigate(page)}>{title}</button>)}
+          </div>
+        </details>
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}
         {savedDate&&<small> · SAVED Y{savedDate.year} {MONTH_NAMES[savedDate.month]}
@@ -562,17 +564,30 @@ export function WorldforgeApp(){
           <button className={playing?'playing evo-play-main':'evo-play-main'}
             disabled={!world.agents.length||world.year>=9999}
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
-          <button onClick={()=>step(1)} title="Advance one simulated day">+DAY</button>
-          <button onClick={()=>step(7)} title="Advance one simulated week">+WEEK</button>
-          <button onClick={()=>step(30)} title="Advance thirty simulated days">+MONTH</button>
-          <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
-          <button onClick={()=>step(3650)} title="Advance ten simulated years">+10Y</button>
-          <label htmlFor="evo-play-speed">PACE
-            <select id="evo-play-speed" value={timeRate}
-              onChange={e=>setTimeRate(e.target.value as TimeRate)}>
-              {TIME_RATES.map(v=><option value={v.id} key={v.id}>{v.label}</option>)}
-            </select>
-          </label>
+          <div className="evo-step-actions" role="group"
+            aria-label="Advance the world clock">
+            <button onClick={()=>step(1)} title="Advance one simulated day">+DAY</button>
+            <button onClick={()=>step(30)} title="Advance thirty simulated days">+MONTH</button>
+            <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
+            <details className="evo-more-steps">
+              <summary aria-label="More time advances">MORE +</summary>
+              <div className="evo-extra-steps">
+                <button onClick={()=>step(7)}>+WEEK</button>
+                <button onClick={()=>step(3650)}>+10 YEARS</button>
+              </div>
+            </details>
+          </div>
+          <div className="evo-pace-panel" role="group" aria-label="Playback pace">
+            <small>PACE</small>
+            {TIME_RATES.map(rate=><button key={rate.id}
+              className={timeRate===rate.id?'is-on':''}
+              aria-pressed={timeRate===rate.id}
+              title={rate.label}
+              onClick={()=>setTimeRate(rate.id)}>
+                {rate.id==='sixteen'?'16×':rate.id==='four'?'4×':
+                  rate.id==='season'?'SEASON':rate.id.toUpperCase()}
+              </button>)}
+          </div>
         </div>
       </header>
       <section className="evo-stats" aria-label="Live world statistics">
@@ -627,79 +642,101 @@ export function WorldforgeApp(){
                 disabled={zoom>=8} title="Zoom in">+</button>
             </div>
           </div>
-          <div className="evo-map-toolbar">
-            <label htmlFor="evo-brush">MAP TOOL</label>
-            <select id="evo-brush" value={brushValue(brush)}
-              onChange={e=>setBrush(fromBrushValue(e.target.value))}>
-              <option value="inspect">⌖ Inspect tile or individual</option>
-              <optgroup label="Place individuals">
-                {SPECIES.map(s=><option value={'spawn-'+s} key={s}>
-                  + Place {SPECIES_INFO[s].name.slice(0,-1)}
-                </option>)}
-              </optgroup>
-              <optgroup label="World editing">
-                <option value="food">✿ Replenish tile food</option>
-                {BIOMES.map(b=><option value={'terrain-'+b} key={b}>
-                  Paint {BIOME_INFO[b].name}
-                </option>)}
-              </optgroup>
-            </select>
-            <label htmlFor="evo-overlay">MAP LAYER</label>
-            <select id="evo-overlay" value={overlay}
-              onChange={e=>setOverlay(e.target.value as MapOverlay)}>
-              <option value="terrain">Biomes</option>
-              <option value="resources">Food levels</option>
-              <option value="deposits">Trees & ore deposits</option>
-              <option value="elevation">Elevation & contours</option>
-              <option value="watersheds">Watersheds & rivers</option>
-            </select>
-            <label htmlFor="evo-map-view">VIEW</label>
-            <select id="evo-map-view" value={mapView}
-              aria-label="Map perspective"
-              onChange={e=>{
-                const next=e.target.value as 'overhead'|'depth';
-                setMapView(next);setFollowId(null);setZoom(1);
-              }}>
-              <option value="overhead">Top-down · 2D</option>
-              <option value="depth">Raised terrain · 2.5D</option>
-            </select>
-            {mapView==='depth'&&<>
-              <label htmlFor="evo-relief">HEIGHT</label>
-              <select id="evo-relief" value={reliefLevel}
-                aria-label="Terrain relief exaggeration"
-                onChange={e=>setReliefLevel(e.target.value as ReliefLevel)}>
-                <option value="natural">Natural · 1×</option>
-                <option value="dramatic">Dramatic · 2.5×</option>
-                <option value="monumental">Monumental · 4×</option>
-              </select>
-              <div className="evo-orbit-controls" role="group"
+          <div className="evo-map-toolbar evo-map-commandbar">
+            <div className="evo-view-switch" role="group" aria-label="Map perspective">
+              <button className={mapView==='depth'?'is-on':''}
+                aria-pressed={mapView==='depth'}
+                onClick={()=>{setMapView('depth');setFollowId(null);setZoom(1);}}>
+                ◈ 2.5D WORLD</button>
+              <button className={mapView==='overhead'?'is-on':''}
+                aria-pressed={mapView==='overhead'}
+                onClick={()=>{setMapView('overhead');setZoom(1);}}>
+                ▦ OVERHEAD</button>
+            </div>
+            <div className="evo-layer-chips" role="group" aria-label="Map layers">
+              {([['terrain','WORLD'],['resources','FOOD'],
+                ['deposits','RESOURCES'],['elevation','HEIGHT'],
+                ['watersheds','RIVERS']] as const).map(([key,label])=>
+                <button key={key} className={overlay===key?'is-on':''}
+                  aria-pressed={overlay===key} onClick={()=>setOverlay(key)}>
+                  {label}</button>)}
+            </div>
+            <div className="evo-toolbar-drawers">
+              {mapView==='depth'&&<button className={advancedView?'is-on':''}
+                aria-expanded={advancedView} aria-controls="evo-camera-panel"
+                onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
+              <button className={toolPanel?'is-on':''}
+                aria-expanded={toolPanel} aria-controls="evo-world-tools"
+                onClick={()=>setToolPanel(v=>!v)}>✧ WORLD TOOLS</button>
+            </div>
+          </div>
+          {mapView==='depth'&&advancedView&&
+            <div id="evo-camera-panel" className="evo-map-options evo-camera-panel">
+              <div className="evo-option-group">
+                <small>RELIEF</small>
+                {([['natural','NATURAL'],['dramatic','DRAMATIC'],
+                  ['monumental','MONUMENTAL']] as const).map(([key,label])=>
+                  <button key={key} className={reliefLevel===key?'is-on':''}
+                    aria-pressed={reliefLevel===key}
+                    onClick={()=>setReliefLevel(key)}>{label}</button>)}
+              </div>
+              <div className="evo-option-group">
+                <small>CAMERA TILT</small>
+                {([['low','LOW'],['classic','CLASSIC'],['high','HIGH']]
+                  as const).map(([key,label])=>
+                  <button key={key} className={cameraPitch===key?'is-on':''}
+                    aria-pressed={cameraPitch===key}
+                    onClick={()=>setCameraPitch(key)}>{label}</button>)}
+              </div>
+              <div className="evo-option-group evo-orbit-controls" role="group"
                 aria-label="Orbit camera controls">
-                <label htmlFor="evo-orbit">ORBIT</label>
-                <button type="button" aria-label="Rotate camera 45 degrees left"
+                <small>ORBIT</small>
+                <button aria-label="Rotate camera 45 degrees left"
                   title="Orbit left 45°"
                   onClick={()=>setOrbitYaw(yaw=>(yaw+315)%360)}>↶</button>
                 <input id="evo-orbit" type="range" min="0" max="345" step="15"
                   aria-label="Camera rotation in degrees" value={orbitYaw}
                   onChange={e=>setOrbitYaw(Number(e.target.value))}/>
-                <button type="button" aria-label="Rotate camera 45 degrees right"
+                <button aria-label="Rotate camera 45 degrees right"
                   title="Orbit right 45°"
                   onClick={()=>setOrbitYaw(yaw=>(yaw+45)%360)}>↷</button>
                 <output htmlFor="evo-orbit">{orbitYaw}°</output>
-                <label htmlFor="evo-camera-tilt">TILT</label>
-                <select id="evo-camera-tilt" value={cameraPitch}
-                  aria-label="Camera viewing angle"
-                  onChange={e=>setCameraPitch(e.target.value as CameraPitch)}>
-                  <option value="low">Low · 18°</option>
-                  <option value="classic">Classic · 30°</option>
-                  <option value="high">High · 55°</option>
-                </select>
-                <button type="button" className="evo-orbit-reset"
+                <button className="evo-orbit-reset"
                   aria-label="Reset camera orientation"
-                  onClick={()=>{setOrbitYaw(0);setCameraPitch('classic');}}>
-                  RESET</button>
+                  onClick={()=>{setOrbitYaw(0);setCameraPitch('classic');
+                    setReliefLevel('dramatic');}}>RESET</button>
               </div>
-            </>}
-          </div>
+            </div>}
+          {toolPanel&&<div id="evo-world-tools"
+            className="evo-map-options evo-world-tools-panel">
+            <div className="evo-option-group">
+              <small>MAP ACTION</small>
+              <button className={brush.kind==='inspect'?'is-on':''}
+                aria-pressed={brush.kind==='inspect'}
+                onClick={()=>setBrush({kind:'inspect'})}>⌖ INSPECT</button>
+              <button className={brush.kind==='food'?'is-on':''}
+                aria-pressed={brush.kind==='food'}
+                onClick={()=>setBrush({kind:'food'})}>✿ RESTORE FOOD</button>
+            </div>
+            <div className="evo-option-group">
+              <small>ADD PEOPLE</small>
+              {SPECIES.map(species=><button key={species}
+                className={brush.kind==='spawn'&&brush.species===species?'is-on':''}
+                aria-pressed={brush.kind==='spawn'&&brush.species===species}
+                onClick={()=>setBrush({kind:'spawn',species})}>
+                + {SPECIES_INFO[species].name.toUpperCase()}</button>)}
+            </div>
+            <div className="evo-option-group">
+              <small>PAINT TERRAIN</small>
+              {BIOMES.map(biome=><button key={biome}
+                className={brush.kind==='terrain'&&brush.biome===biome?'is-on':''}
+                aria-pressed={brush.kind==='terrain'&&brush.biome===biome}
+                onClick={()=>setBrush({kind:'terrain',biome})}>
+                {BIOME_INFO[biome].name.toUpperCase()}</button>)}
+            </div>
+            <p>Choose a tool, then click a world tile. Inspect is the default;
+              terrain edits and spawning remain entirely optional.</p>
+          </div>}
           <MapLayerLegend overlay={overlay}/>
           {overlay==='terrain'&&<div className="evo-season-visual" role="note"
             aria-label="Visual world season">
