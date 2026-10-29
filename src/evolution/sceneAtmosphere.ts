@@ -13,8 +13,7 @@ export type Atmosphere={
   season:VisualSeason;wash:string;cloud:string;highlight:string;
   particle:string;density:number;
 };
-export function sceneAtmosphere(day:number):Atmosphere{
-  const season=visualSeason(day);
+function seasonPalette(season:VisualSeason):Atmosphere{
   switch(season){
     case 'Bloom':return {season,wash:'rgba(111,157,132,.075)',
       cloud:'rgba(24,61,65,.08)',highlight:'rgba(250,229,171,.14)',
@@ -29,6 +28,40 @@ export function sceneAtmosphere(day:number):Atmosphere{
       cloud:'rgba(35,56,84,.14)',highlight:'rgba(213,235,255,.12)',
       particle:'#e7f3ff',density:74};
   }
+}
+const CHANNELS=/[\d.]+/g;
+function mixColor(a:string,b:string,t:number):string{
+  const left=a.match(CHANNELS)?.map(Number)??[];
+  const right=b.match(CHANNELS)?.map(Number)??[];
+  const channels=left.map((value,i)=>value+(right[i]-value)*t);
+  if(a.startsWith('#')){
+    // Seasonal particles use hex RGB; interpolate without a second overlay.
+    const l=[1,3,5].map(i=>parseInt(a.slice(i,i+2),16));
+    const r=[1,3,5].map(i=>parseInt(b.slice(i,i+2),16));
+    return '#'+l.map((v,i)=>Math.round(v+(r[i]-v)*t)
+      .toString(16).padStart(2,'0')).join('');
+  }
+  return `rgba(${channels.slice(0,3).map(Math.round).join(',')},${Number(channels[3].toFixed(4))})`;
+}
+/** Crossfade the first two months of each season from the previous palette.
+ * A sudden quarter-year color jump otherwise resembles a frozen world tick.
+ * Month-sized playback steps still encounter intermediate lighting rather
+ * than jumping across the entire fade. No simulation rules or RNG change. */
+export function sceneAtmosphere(day:number):Atmosphere{
+  const safe=Number.isFinite(day)?Math.max(0,Math.floor(day)):0;
+  const index=Math.min(3,Math.floor((safe%365)/365*4));
+  const start=Math.ceil(index*365/4);
+  const progress=Math.min(1,Math.max(0,((safe%365)-start)/60));
+  const next=seasonPalette(VISUAL_SEASONS[index]);
+  if(progress>=1)return next;
+  const previous=seasonPalette(VISUAL_SEASONS[(index+3)%4]);
+  if(progress===0)return {...previous,season:next.season};
+  return {season:next.season,
+    wash:mixColor(previous.wash,next.wash,progress),
+    cloud:mixColor(previous.cloud,next.cloud,progress),
+    highlight:mixColor(previous.highlight,next.highlight,progress),
+    particle:mixColor(previous.particle,next.particle,progress),
+    density:Math.round(previous.density+(next.density-previous.density)*progress)};
 }
 const hash=(v:number)=>{
   v=Math.imul(v^(v>>>16),0x7feb352d);
