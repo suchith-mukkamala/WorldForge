@@ -155,7 +155,7 @@ export function WorldforgeApp(){
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
-  const [zoom,setZoom]=useState(1);
+  const [zoom,setZoom]=useState(mapView==='depth'?1.5:1);
   const [advancedView,setAdvancedView]=useState(false);
   const [toolPanel,setToolPanel]=useState(false);
   useEffect(()=>{
@@ -504,7 +504,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
-    setZoom(1);setNotice('New world created with seed '+settings.seed+'.');
+    setZoom(mapView==='depth'?1.5:1);
+    setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
     const legacyDimensions=world.width!==({
@@ -535,7 +536,8 @@ export function WorldforgeApp(){
       setPlaying(false);setWorld(obj);setTab('world');
       setSavedDate(null);
       setFollowId(null);
-      setSelected(null);setSelectedAgentId(null);setZoom(1);setBrush({kind:'inspect'});
+      setSelected(null);setSelectedAgentId(null);
+      setZoom(mapView==='depth'?1.5:1);setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
@@ -725,7 +727,7 @@ export function WorldforgeApp(){
             <div className="evo-view-switch" role="group" aria-label="Map perspective">
               <button className={mapView==='depth'?'is-on':''}
                 aria-pressed={mapView==='depth'}
-                onClick={()=>{setMapView('depth');setFollowId(null);setZoom(1);}}>
+                onClick={()=>{setMapView('depth');setFollowId(null);setZoom(1.5);}}>
                 ◈ 2.5D WORLD</button>
               <button className={mapView==='overhead'?'is-on':''}
                 aria-pressed={mapView==='overhead'}
