@@ -33,6 +33,8 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
   it('renders a depth map with buttons rather than view and camera dropdowns',()=>{
     const html=renderToStaticMarkup(<WorldforgeApp/>);
     expect(html).toContain('◈ 2.5D WORLD');
+    expect(html).toContain('aria-pressed="true">◈ 2.5D WORLD</button>');
+    expect(html).toContain('aria-pressed="false">◈ 3D PREVIEW</button>');
     expect(html).toContain('PINCH TO ZOOM');
     expect(html).toContain('TWO-FINGER SCROLL TO PAN');
     expect(html).toContain('aria-label="Isometric terrain depth view');

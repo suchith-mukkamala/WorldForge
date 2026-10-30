@@ -161,8 +161,12 @@ export function WorldforgeApp(){
     catch{return 'depth';}
   });
   const [true3D,setTrue3D]=useState(()=>{
-    try{return window.localStorage.getItem('worldforge:true-3d:v1')!=='off';}
-    catch{return true;}
+    // v2.3.6: Restore the established illustrated 2.5D world as the main
+    // presentation. True WebGL remains an opt-in experiment. The new preference
+    // key intentionally stops the previous 3D-by-default rollout from forcing
+    // existing visitors into the visually different scene on every reload.
+    try{return window.localStorage.getItem('worldforge:true-3d:v2')==='on';}
+    catch{return false;}
   });
   const [webglFailure,setWebglFailure]=useState<string|null>(null);
   const [webglState,setWebglState]=useState<'starting'|'active'|'fallback'>('starting');
@@ -172,7 +176,7 @@ export function WorldforgeApp(){
     setWebglFailure(status==='fallback'?(reason??'WebGL failed to initialize'):null);
   },[]);
   useEffect(()=>{
-    try{window.localStorage.setItem('worldforge:true-3d:v1',true3D?'on':'off');}
+    try{window.localStorage.setItem('worldforge:true-3d:v2',true3D?'on':'off');}
     catch{/* Optional rendering preference. */}
   },[true3D]);
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
@@ -807,7 +811,7 @@ export function WorldforgeApp(){
                   setWebglFailure(null);setWebglState('starting');
                   setRendererAttempt(v=>v+1);
                   setFollowId(null);setZoom(1.5);}}>
-                ◈ 3D WORLD</button>
+                ◈ 3D PREVIEW</button>
               <button className={mapView==='depth'&&!true3D?'is-on':''}
                 aria-pressed={mapView==='depth'&&!true3D}
                 onClick={()=>{setTrue3D(false);setMapView('depth');
