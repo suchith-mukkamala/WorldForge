@@ -15,7 +15,8 @@ import {mortalWorldPoint} from './spatialDetails';
 import {actionPose} from './motion';
 import {type DepthCamera,DEFAULT_DEPTH_CAMERA} from './depthProjection';
 import {buildScenery3D} from './threeWorldScenery';
-import {sceneryDetailForZoom,threeWorldRasterScale} from './threeWorldDetail';
+import {sceneryDetailForZoom,threeWorldFogDensity,
+  threeWorldRasterScale} from './threeWorldDetail';
 
 const COLORS:Record<Biome,string>={
   water:'#3b809c',plains:'#81a176',forest:'#417d63',mountain:'#929da5',
@@ -194,7 +195,10 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
     renderer.setSize(WIDTH,HEIGHT,false);
     renderer.setClearColor('#102738');
     const scene=new THREE.Scene();scene.background=new THREE.Color('#102738');
-    scene.fog=new THREE.FogExp2('#102738',.008);
+    // The camera is hundreds of world units away. Fixed dense fog blended the
+    // entire island into the clear color despite valid WebGL draw calls.
+    scene.fog=new THREE.FogExp2('#102738',
+      threeWorldFogDensity(world.width,world.height));
     scene.add(new THREE.AmbientLight('#d8e7ed',1.25));
     const sun=new THREE.DirectionalLight('#ffe4b1',2.1);
     sun.position.set(-30,90,45);scene.add(sun);
