@@ -1106,12 +1106,11 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.1.6: A CLEARER WINDOW INTO YOUR WORLD</strong>
-        <span>The raised 2.5D view is the default, with richer natural scenery,
-          built roads, detailed settlements and more room to explore.
-          Camera options and optional world-editing tools stay out of the way
-          until needed. Awakened gifts and agent decisions still shape the
-          simulation independently of how you choose to view it.</span>
+        <strong>V2.3.7: THE LIVING PIXEL WORLD</strong>
+        <span>The illustrated 2.5D landscape is WorldForge's primary view.
+          Zoom in to see richer trees, buildings and individual pixel characters.
+          Scenery and sprites are cached to keep the world moving smoothly.
+          Camera controls, raised terrain, and mortal choices remain intact.</span>
       </div>
     </main>}
   </div>;
