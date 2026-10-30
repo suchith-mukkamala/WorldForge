@@ -205,12 +205,12 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
 }){
   const canvas=useRef<HTMLCanvasElement>(null);
   const state=useRef<SceneState|null>(null);
-  const [unavailable,setUnavailable]=useState(false);
+  const [failure,setFailure]=useState<string|null>(null);
   const render=()=>{
     const current=state.current;
     if(!current)return;
     try{current.renderer.render(current.scene,current.camera);}
-    catch{setUnavailable(true);}
+    catch{setFailure('WebGL could not draw the scene.');}
   };
   // Food stocks and settlement bookkeeping change on many simulation ticks.
   // They must not rebuild a massive GPU mesh unless visible geometry changed.
@@ -223,13 +223,14 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
   useEffect(()=>{
     if(!canvas.current)return;
     const surface=canvas.current;
-    const lost=(event:Event)=>{event.preventDefault();setUnavailable(true);};
+    const lost=(event:Event)=>{event.preventDefault();
+      setFailure('The graphics device lost its WebGL context.');};
     surface.addEventListener('webglcontextlost',lost);
     let renderer:THREE.WebGLRenderer;
     try{renderer=new THREE.WebGLRenderer({canvas:canvas.current,antialias:false,
       powerPreference:'high-performance'});}catch{
       surface.removeEventListener('webglcontextlost',lost);
-      setUnavailable(true);return;
+      setFailure('A WebGL graphics context could not be created.');return;
     }
     renderer.setPixelRatio(Math.min(1.5,window.devicePixelRatio||1));
     renderer.setSize(WIDTH,HEIGHT,false);
@@ -256,19 +257,19 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
   useEffect(()=>{
     const s=state.current;if(!s)return;
     try{buildTerrain(world,overlay,s);render();}
-    catch{setUnavailable(true);}
+    catch{setFailure('Terrain geometry failed to render.');}
   },[terrainKey,world.topography,world.width,world.height,world.settings.seed,
     overlay]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
     try{buildStructures(world,s);render();}
-    catch{setUnavailable(true);}
+    catch{setFailure('3D scenery failed to render.');}
   },[structuresKey,world.deposits?.length,world.topography,
     world.settings.seed]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
     try{buildPeople(world,s,zoom,selected,followId);render();}
-    catch{setUnavailable(true);return;}
+    catch{setFailure('3D inhabitants failed to render.');return;}
     const tracked=followId!==null?world.agents.find(a=>a.id===followId):null;
     if(tracked&&canvas.current?.parentElement){
       // Use the actual 3D camera projection for tracking. The 2.5D camera's
@@ -301,7 +302,24 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
     render();
     // A successfully created WebGL context can still render an empty scene
     // (for example after a driver/context problem). Never leave a blank map.
-    if(s.surface&&s.renderer.info.render.triangles===0)setUnavailable(true);
+    if(s.surface&&s.renderer.info.render.triangles===0)
+      setFailure('The 3D camera drew no terrain triangles.');
+    // Some drivers report successful draw calls despite showing only the
+    // clear color. Sample the finished framebuffer once, after camera setup,
+    // and choose the reliable 2.5D map if the rendered terrain is invisible.
+    else if(s.surface){
+      try{
+        const gl=s.renderer.getContext(),pixel=new Uint8Array(4);
+        let visible=false;
+        for(const x of [.35,.5,.65])for(const y of [.35,.5,.65]){
+          gl.readPixels(Math.floor(WIDTH*x),Math.floor(HEIGHT*y),1,1,
+            gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+          if(Math.abs(pixel[0]-16)+Math.abs(pixel[1]-39)+
+            Math.abs(pixel[2]-56)>36)visible=true;
+        }
+        if(!visible)setFailure('WebGL returned an empty framebuffer.');
+      }catch{/* Some GPU drivers do not permit readback. */}
+    }
   },[world.width,world.height,camera.yaw,camera.pitch,relief]);
   const click=(event:MouseEvent<HTMLCanvasElement>)=>{
     const s=state.current;if(!s||!s.surface)return;
@@ -330,9 +348,8 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
       if(brush.kind!=='inspect')onEdit(x,y);
     }else onSelect(x,y);
   };
-  if(unavailable)return <div className="evo-3d-fallback" role="status">
-    <p>3D is unavailable on this device or graphics session. Showing the
-      working 2.5D view instead.</p>
+  if(failure)return <div className="evo-3d-fallback" role="status">
+    <p>{failure} Showing the working 2.5D view instead.</p>
     <DepthCanvas world={world} brush={brush} overlay={overlay}
       selected={selected} onSelect={onSelect} onEdit={onEdit}
       zoom={zoom} speed={speed} relief={relief} camera={camera}
