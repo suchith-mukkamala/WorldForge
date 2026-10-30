@@ -206,6 +206,12 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const canvas=useRef<HTMLCanvasElement>(null);
   const state=useRef<SceneState|null>(null);
   const [unavailable,setUnavailable]=useState(false);
+  const render=()=>{
+    const current=state.current;
+    if(!current)return;
+    try{current.renderer.render(current.scene,current.camera);}
+    catch{setUnavailable(true);}
+  };
   // Food stocks and settlement bookkeeping change on many simulation ticks.
   // They must not rebuild a massive GPU mesh unless visible geometry changed.
   const terrainKey=useMemo(()=>overlay==='resources'?world.tiles:
@@ -216,9 +222,15 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
       .join(',')].join('/')).join('|'),[world.settlements]);
   useEffect(()=>{
     if(!canvas.current)return;
+    const surface=canvas.current;
+    const lost=(event:Event)=>{event.preventDefault();setUnavailable(true);};
+    surface.addEventListener('webglcontextlost',lost);
     let renderer:THREE.WebGLRenderer;
     try{renderer=new THREE.WebGLRenderer({canvas:canvas.current,antialias:false,
-      powerPreference:'high-performance'});}catch{setUnavailable(true);return;}
+      powerPreference:'high-performance'});}catch{
+      surface.removeEventListener('webglcontextlost',lost);
+      setUnavailable(true);return;
+    }
     renderer.setPixelRatio(Math.min(1.5,window.devicePixelRatio||1));
     renderer.setSize(WIDTH,HEIGHT,false);
     renderer.setClearColor('#102738');
@@ -238,23 +250,25 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
         if(object instanceof THREE.Sprite)object.material.dispose();
       for(const texture of state.current?.textures.values()??[])texture.dispose();
       renderer.dispose();state.current=null;
+      surface.removeEventListener('webglcontextlost',lost);
     };
   },[]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
-    buildTerrain(world,overlay,s);
-    s.renderer.render(s.scene,s.camera);
+    try{buildTerrain(world,overlay,s);render();}
+    catch{setUnavailable(true);}
   },[terrainKey,world.topography,world.width,world.height,world.settings.seed,
     overlay]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
-    buildStructures(world,s);s.renderer.render(s.scene,s.camera);
+    try{buildStructures(world,s);render();}
+    catch{setUnavailable(true);}
   },[structuresKey,world.deposits?.length,world.topography,
     world.settings.seed]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
-    buildPeople(world,s,zoom,selected,followId);
-    s.renderer.render(s.scene,s.camera);
+    try{buildPeople(world,s,zoom,selected,followId);render();}
+    catch{setUnavailable(true);return;}
     const tracked=followId!==null?world.agents.find(a=>a.id===followId):null;
     if(tracked&&canvas.current?.parentElement){
       // Use the actual 3D camera projection for tracking. The 2.5D camera's
@@ -284,7 +298,10 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
       Math.sin(pitch)*distance*relief*.6,
       Math.sin(radians)*Math.cos(pitch)*distance);
     s.camera.lookAt(0,2,0);s.camera.updateProjectionMatrix();
-    s.renderer.render(s.scene,s.camera);
+    render();
+    // A successfully created WebGL context can still render an empty scene
+    // (for example after a driver/context problem). Never leave a blank map.
+    if(s.surface&&s.renderer.info.render.triangles===0)setUnavailable(true);
   },[world.width,world.height,camera.yaw,camera.pitch,relief]);
   const click=(event:MouseEvent<HTMLCanvasElement>)=>{
     const s=state.current;if(!s||!s.surface)return;
@@ -313,10 +330,14 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
       if(brush.kind!=='inspect')onEdit(x,y);
     }else onSelect(x,y);
   };
-  if(unavailable)return <DepthCanvas world={world} brush={brush} overlay={overlay}
-    selected={selected} onSelect={onSelect} onEdit={onEdit}
-    zoom={zoom} speed={speed} relief={relief} camera={camera}
-    followId={followId} onFollowPosition={onFollowPosition}/>;
+  if(unavailable)return <div className="evo-3d-fallback" role="status">
+    <p>3D is unavailable on this device or graphics session. Showing the
+      working 2.5D view instead.</p>
+    <DepthCanvas world={world} brush={brush} overlay={overlay}
+      selected={selected} onSelect={onSelect} onEdit={onEdit}
+      zoom={zoom} speed={speed} relief={relief} camera={camera}
+      followId={followId} onFollowPosition={onFollowPosition}/>
+  </div>;
   return <canvas ref={canvas} className="evo-world-canvas evo-true-3d-canvas"
     width={WIDTH} height={HEIGHT} style={{width:(zoom*100)+'%'}}
     role="grid" tabIndex={0} onClick={click} onKeyDown={keyboard}
