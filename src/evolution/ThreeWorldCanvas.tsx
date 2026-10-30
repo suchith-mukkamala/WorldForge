@@ -5,7 +5,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import type {KeyboardEvent,MouseEvent} from 'react';
 import * as THREE from 'three';
 import {DepthCanvas} from './DepthCanvas';
-import {SPECIES_INFO,type Biome,type Brush,type World} from './engine';
+import {type Biome,type Brush,type World} from './engine';
 import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {visibleCoastTile} from './worldOutline';
@@ -14,6 +14,8 @@ import {renderedPopulation,populationScene} from './populationVisibility';
 import {mortalWorldPoint} from './spatialDetails';
 import {actionPose} from './motion';
 import {type DepthCamera,DEFAULT_DEPTH_CAMERA} from './depthProjection';
+import {buildScenery3D} from './threeWorldScenery';
+import {sceneryDetailForZoom,threeWorldRasterScale} from './threeWorldDetail';
 
 const COLORS:Record<Biome,string>={
   water:'#3b809c',plains:'#81a176',forest:'#417d63',mountain:'#929da5',
@@ -89,63 +91,9 @@ function buildTerrain(world:World,overlay:MapOverlay,scene:SceneState){
   const mesh=new THREE.Mesh(geometry,material);
   scene.surface=mesh;scene.tileIds=ids;scene.terrain.add(mesh);
 }
-function buildStructures(world:World,scene:SceneState){
+function buildStructures(world:World,scene:SceneState,zoom:number){
   replaceGroup(scene.structures);
-  const heights=topographyForWorld(world).heights;
-  const W=world.width,H=world.height;
-  const ground=(x:number,y:number)=>Math.max(-.8,
-    (heights[Math.max(0,Math.min(H-1,y))*W+
-      Math.max(0,Math.min(W-1,x))]-SEA_LEVEL)/22);
-  const positions:{x:number;y:number;pine:boolean}[]=[];
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-    const biome=world.tiles[y*W+x].biome;
-    if(biome!=='forest'&&biome!=='plains')continue;
-    const v=(Math.imul(x+world.settings.seed,73856093)^
-      Math.imul(y+world.settings.seed,19349663))>>>0;
-    if(v%(biome==='forest'?7:43)!==0)continue;
-    positions.push({x,y,pine:v%3===0});
-  }
-  // One draw call per trunk/canopy material, regardless of forest size.
-  const trunk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.1,.14,.75,5),
-    new THREE.MeshLambertMaterial({color:'#765740'}),positions.length);
-  const canopy=new THREE.InstancedMesh(new THREE.ConeGeometry(.62,1.8,6),
-    new THREE.MeshLambertMaterial({color:'#438467'}),positions.length);
-  const placeholder=new THREE.Object3D();
-  positions.forEach((p,i)=>{
-    const x=p.x-W/2+.5,z=p.y-H/2+.5,h=ground(p.x,p.y);
-    placeholder.position.set(x,h+.38,z);placeholder.scale.setScalar(1);
-    placeholder.updateMatrix();trunk.setMatrixAt(i,placeholder.matrix);
-    placeholder.position.y=h+1.42;
-    placeholder.scale.set(p.pine?.8:1,p.pine?1.4:1,p.pine?.8:1);
-    placeholder.updateMatrix();canopy.setMatrixAt(i,placeholder.matrix);
-  });
-  scene.structures.add(trunk,canopy);
-  const stone=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.4,0),
-    new THREE.MeshLambertMaterial({color:'#88959b'}),
-    Math.min(900,world.deposits?.length??0));
-  let stoneCount=0;
-  for(const d of world.deposits??[]){
-    if(stoneCount>=900)break;
-    if(d.kind==='tree'||d.amount<=0)continue;
-    const x=d.index%W,y=Math.floor(d.index/W);
-    placeholder.position.set(x-W/2+.5,ground(x,y)+.3,y-H/2+.5);
-    placeholder.scale.setScalar(.8);placeholder.updateMatrix();
-    stone.setMatrixAt(stoneCount++,placeholder.matrix);
-  }
-  stone.count=stoneCount;scene.structures.add(stone);
-  for(const settlement of world.settlements){
-    for(const b of settlement.infrastructure?.buildings??[]){
-      const x=b.x-W/2+.5,z=b.y-H/2+.5,h=ground(b.x,b.y);
-      const scale=b.stage==='complete'?1:Math.max(.3,(b.progress??0)/100);
-      const walls=new THREE.Mesh(new THREE.BoxGeometry(.83,1.2*scale,.83),
-        new THREE.MeshLambertMaterial({color:SPECIES_INFO[settlement.species].color}));
-      walls.position.set(x,h+.6*scale,z);
-      const roof=new THREE.Mesh(new THREE.ConeGeometry(.72,.72,4),
-        new THREE.MeshLambertMaterial({color:'#725563'}));
-      roof.position.set(x,h+1.55*scale,z);roof.rotation.y=Math.PI/4;
-      scene.structures.add(walls,roof);
-    }
-  }
+  buildScenery3D(world,scene.structures,sceneryDetailForZoom(zoom));
 }
 function buildPeople(world:World,scene:SceneState,zoom:number,
   selected:{x:number;y:number}|null,followId:number|null){
@@ -189,7 +137,9 @@ function buildPeople(world:World,scene:SceneState,zoom:number,
       point.y-H/2+.5);
     const focus=followId===person.id||selected?.x===person.x&&
       selected?.y===person.y;
-    const size=focus?1.9:1.45;
+    // Give inhabitants a legible silhouette against much taller 3D scenery.
+    // Their 16x22 atlas stays nearest-neighbor, unlike the smooth 3D geometry.
+    const size=focus?2.15:zoom>=1.8?1.75:1.58;
     sprite.scale.set(size*.72,size,1);
     scene.people.add(sprite);
   }
@@ -216,6 +166,8 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
   // They must not rebuild a massive GPU mesh unless visible geometry changed.
   const terrainKey=useMemo(()=>overlay==='resources'?world.tiles:
     world.tiles.map(t=>t.biome).join(','),[world.tiles,overlay]);
+  const sceneryDetail=sceneryDetailForZoom(zoom);
+  const rasterScale=threeWorldRasterScale(zoom);
   const structuresKey=useMemo(()=>world.settlements.map(s=>
     [s.x,s.y,s.species,(s.infrastructure?.buildings??[]).map(b=>
       [b.x,b.y,b.type,b.stage,Math.floor(b.progress??0)/10|0].join(':'))
@@ -262,10 +214,10 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
     overlay]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
-    try{buildStructures(world,s);render();}
+    try{buildStructures(world,s,zoom);render();}
     catch{setFailure('3D scenery failed to render.');}
   },[structuresKey,world.deposits?.length,world.topography,
-    world.settings.seed]);
+    world.settings.seed,sceneryDetail]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
     try{buildPeople(world,s,zoom,selected,followId);render();}
@@ -284,8 +236,18 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
       scroll.scrollTop=(1-target.y)/2*canvas.current.clientHeight-
         scroll.clientHeight/2;
     }
-  },[world.agents,world.topography,zoom>=3,selected,followId,
+  },[world.agents,world.topography,sceneryDetail,selected,followId,
     onFollowPosition]);
+  useEffect(()=>{
+    const s=state.current;if(!s)return;
+    // CSS zoom magnifies the canvas. Also increase the actual GPU render
+    // resolution (within a strict budget), otherwise the 3D view remains
+    // a blown-up pixel image at all zoom levels.
+    s.renderer.setPixelRatio(Math.min(1.25,window.devicePixelRatio||1));
+    s.renderer.setSize(Math.round(WIDTH*rasterScale),
+      Math.round(HEIGHT*rasterScale),false);
+    render();
+  },[rasterScale]);
   useEffect(()=>{
     const s=state.current;if(!s)return;
     const size=Math.max(world.width,world.height)*.78;
@@ -310,9 +272,11 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
     else if(s.surface){
       try{
         const gl=s.renderer.getContext(),pixel=new Uint8Array(4);
+        const drawingSize=s.renderer.getDrawingBufferSize(new THREE.Vector2());
         let visible=false;
         for(const x of [.35,.5,.65])for(const y of [.35,.5,.65]){
-          gl.readPixels(Math.floor(WIDTH*x),Math.floor(HEIGHT*y),1,1,
+          gl.readPixels(Math.floor(drawingSize.x*x),
+            Math.floor(drawingSize.y*y),1,1,
             gl.RGBA,gl.UNSIGNED_BYTE,pixel);
           if(Math.abs(pixel[0]-16)+Math.abs(pixel[1]-39)+
             Math.abs(pixel[2]-56)>36)visible=true;
@@ -356,7 +320,8 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
       followId={followId} onFollowPosition={onFollowPosition}/>
   </div>;
   return <canvas ref={canvas} className="evo-world-canvas evo-true-3d-canvas"
-    width={WIDTH} height={HEIGHT} style={{width:(zoom*100)+'%'}}
+    width={WIDTH} height={HEIGHT} style={{width:(zoom*100)+'%',
+      imageRendering:'auto'}}
     role="grid" tabIndex={0} onClick={click} onKeyDown={keyboard}
     aria-label="3D terrain, forests and settlements with 2D pixel inhabitants. Click to inspect a tile."/>;
 }
