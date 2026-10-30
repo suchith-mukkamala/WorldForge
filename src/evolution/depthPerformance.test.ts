@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {depthStructureSignature} from './depthPerformance';
+import {depthStructureSignature,visibleDistrictBuildings} from './depthPerformance';
 import {DEPTH_PERSON_SIZE,depthArtDetail} from './depthSprites';
 import type {Settlement} from './engine';
 
@@ -22,6 +22,10 @@ describe('2.5D structure layer caching',()=>{
     expect(depthStructureSignature([{...home,infrastructure:{
       ...home.infrastructure!,buildings:[{...building,stage:'ruin'}],
     }}])).not.toBe(baseline);
+    const village=[...Array(6)].map((_,i)=>({...building,id:i+1}));
+    expect(depthStructureSignature([{...home,infrastructure:{
+      ...home.infrastructure!,buildings:village,
+    }}])).not.toBe(baseline);
   });
   it('adds sprite details only at discrete close zoom levels',()=>{
     expect(depthArtDetail(1)).toBe(0);
@@ -31,5 +35,19 @@ describe('2.5D structure layer caching',()=>{
     expect(depthArtDetail(4)).toBe(2);
     // The detail tiers now affect the landscape, never mortal scale.
     expect(DEPTH_PERSON_SIZE).toEqual({width:3,height:5});
+  });
+  it('keeps district landmarks and active construction visible in crowded views',()=>{
+    const house=home.infrastructure!.buildings[0];
+    const at=(id:number,type:typeof house.type,stage:typeof house.stage,
+      x:number,y:number)=>({building:{...house,id,type,stage},x,y});
+    const buildings=[at(1,'house','complete',10,10),
+      at(2,'communal','complete',11,11),
+      at(3,'house','complete',45,45),
+      at(4,'house','foundation',46,46)];
+    expect(visibleDistrictBuildings(buildings,0).map(e=>e.building.id))
+      .toEqual([4,2]);
+    expect(visibleDistrictBuildings(buildings,2)).toEqual(buildings);
+    expect(visibleDistrictBuildings([...buildings].reverse(),0)
+      .map(e=>e.building.id)).toEqual([4,2]);
   });
 });

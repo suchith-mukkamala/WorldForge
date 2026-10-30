@@ -1052,7 +1052,7 @@ export function WorldforgeApp(){
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               {mapView==='overhead'?'LEFT-DRAG TO PAN · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
-                'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN'}</span>
+                'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -1236,12 +1236,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.3.9: EXPLORE YOUR WORLD</strong>
-        <span>People keep their small in-world proportions when zooming closer,
-          while terrain and structures retain their illustrated 2.5D detail.
-          Left-drag to move around without inspecting by accident; right-drag
-          to orbit, pinch to zoom and scroll with two fingers to pan.
-          Mortal choices and simulation rules are unchanged.</span>
+        <strong>V2.4: LIVING SETTLEMENTS</strong>
+        <span>Watch small camps turn into towns and cities with distinct halls,
+          storehouses, workshops, docks and growing paved streets. Crowded
+          districts simplify at distant zoom so individual buildings become
+          readable again up close. Real builders can now gradually cut steep
+          ground and fill neighboring low areas as settlements expand.</span>
       </div>
     </main>}
   </div>;

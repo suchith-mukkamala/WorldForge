@@ -11,9 +11,10 @@ import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
 import {depthArtDetail,paintDepthBuilding,paintDepthPerson,paintDepthTree,
+  paintDepthSettlementHub,
   type DepthArtDetail,type PersonSpriteCache} from './depthSprites';
-import {depthStructureSignature} from './depthPerformance';
-import {buildingTier,type Building} from './construction';
+import {depthStructureSignature,visibleDistrictBuildings} from './depthPerformance';
+import {buildingTier,settlementStage,type Building} from './construction';
 import type {Agent} from './engine';
 import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
@@ -268,15 +269,16 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
   for(const s of w.settlements){
     const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
     actors.push({order:p.y+.2,paint:()=>{
-      ctx.fillStyle='#21364a';ctx.fillRect(p.x-1,p.y-9,2,9);
-      ctx.fillStyle=SPECIES_INFO[s.species].color;
-      ctx.fillRect(p.x-6,p.y-12,11,4);
-      ctx.fillStyle='#f1d9a9';ctx.fillRect(p.x-4,p.y-11,7,1);
+      paintDepthSettlementHub(ctx,p,settlementStage(s),s.species);
     }});
-    for(const b of s.infrastructure?.buildings??[]){
-      const bp=projector.project(b.x,b.y,heights[b.y*w.width+b.x]);
-      actors.push({order:bp.y+.4,
-        paint:()=>paintCachedBuilding(ctx,b,bp,cache,detail)});
+    const buildings=(s.infrastructure?.buildings??[]).map(building=>{
+      const p=projector.project(building.x,building.y,
+        heights[building.y*w.width+building.x]);
+      return {building,x:p.x,y:p.y,p};
+    });
+    for(const {building,p} of visibleDistrictBuildings(buildings,detail)){
+      actors.push({order:p.y+.4,
+        paint:()=>paintCachedBuilding(ctx,building,p,cache,detail)});
     }
   }
   return actors;
