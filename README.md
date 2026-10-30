@@ -6,6 +6,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.3.9 — Drag to Explore:** Hold the left mouse button and drag either world view to pan without accidentally inspecting a tile or person. A stationary click still inspects or uses the selected world tool. Right-drag continues orbiting only the 2.5D view, while trackpad/touch panning and pinch zoom are preserved.
 - **v2.3.8 — Consistent Character Scale & Mouse Orbit:** Character sprites retain the same small world-space footprint at every zoom level instead of jumping to oversized figures at close range. Right-click and drag horizontally to orbit the raised map in 15° steps; pinch-to-zoom, two-finger panning, and the camera control buttons still work.
 - **v2.3.7 — 2.5D World Refinement:** The separate experimental WebGL 3D mode has been removed. The original raised pixel-art world remains the primary view, with more detailed nearby trees, buildings and identifiable character sprites at close zoom. Reusable scenery, building and character sprite caches reduce repaint work as days and seasons advance. The overhead 2D map remains available; simulation and saves are unchanged.
 - Generate deterministic fantasy worlds with humans, elves, dwarves and demons.

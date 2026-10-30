@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
-  restoreWorldZoomAnchor} from './mapGestures';
+  isMapPanDrag,mapScrollForDrag,restoreWorldZoomAnchor} from './mapGestures';
 
 describe('v2.1.6 trackpad gestures',()=>{
   it('keeps the exact terrain point below the fingers after pinch zoom',()=>{
@@ -30,5 +30,13 @@ describe('v2.1.6 trackpad gestures',()=>{
     expect(boundedMapZoom(NaN)).toBe(1);
     expect(boundedMapZoom(2.12349)).toBe(2.123);
     expect(gestureZoomFactor(100000,0)).toBeGreaterThan(0);
+  });
+  it('treats small movements as inspection clicks and longer drags as panning',()=>{
+    expect(isMapPanDrag(0,0)).toBe(false);
+    expect(isMapPanDrag(3,4)).toBe(false);
+    expect(isMapPanDrag(6,0)).toBe(true);
+    expect(isMapPanDrag(-12,8)).toBe(true);
+    expect(mapScrollForDrag({scrollLeft:320,scrollTop:175},
+      {x:40,y:-20})).toEqual({x:280,y:195});
   });
 });

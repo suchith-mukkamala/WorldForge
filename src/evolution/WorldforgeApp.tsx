@@ -12,7 +12,8 @@ import {createDepthProjector} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
-  restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
+  isMapPanDrag,mapScrollForDrag,restoreWorldZoomAnchor,
+  type WorldZoomAnchor} from './mapGestures';
 import {yawForRightDrag} from './orbitGestures';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
@@ -259,14 +260,19 @@ export function WorldforgeApp(){
       viewport.removeEventListener('gesturechange',safariGesture);
     };
   },[tab,storageReady]);
-  // Hold the right mouse button to orbit the raised world. We snap to the
-  // existing 15° camera angles and coalesce pointer events into one animation
-  // frame, so trackpad panning and pinch zoom remain entirely unaffected.
+  // Left-drag pans in both views; a motionless click still selects a tile.
+  // Right-drag orbits the raised view in 15° steps. Pointer capture starts
+  // only once a pan passes its threshold, so inspections still receive clicks.
   useEffect(()=>{
-    if(tab!=='world'||mapView!=='depth')return;
+    if(tab!=='world')return;
     const viewport=mapScrollRef.current;
     if(!viewport)return;
-    let drag:{pointerId:number;startX:number;startYaw:number}|null=null;
+    type PanDrag={kind:'pan';pointerId:number;startX:number;startY:number;
+      scrollX:number;scrollY:number;moved:boolean};
+    type OrbitDrag={kind:'orbit';pointerId:number;startX:number;
+      startYaw:number};
+    let drag:PanDrag|OrbitDrag|null=null;
+    let suppressClick=false;
     let frame=0,pendingYaw:number|null=null;
     const commit=()=>{
       frame=0;
@@ -274,14 +280,24 @@ export function WorldforgeApp(){
     };
     const finish=(event:PointerEvent)=>{
       if(!drag||event.pointerId!==drag.pointerId)return;
+      if(drag.kind==='pan'&&drag.moved)suppressClick=true;
       drag=null;
       if(frame){window.cancelAnimationFrame(frame);commit();}
       viewport.classList.remove('is-orbit-dragging');
+      viewport.classList.remove('is-pan-dragging');
       if(viewport.hasPointerCapture(event.pointerId))
         viewport.releasePointerCapture(event.pointerId);
     };
     const down=(event:PointerEvent)=>{
-      if(event.button!==2||drag)return;
+      if(drag)return;
+      if(event.button===0&&event.pointerType!=='touch'){
+        suppressClick=false;
+        drag={kind:'pan',pointerId:event.pointerId,
+          startX:event.clientX,startY:event.clientY,
+          scrollX:viewport.scrollLeft,scrollY:viewport.scrollTop,moved:false};
+        return;
+      }
+      if(event.button!==2||mapView!=='depth')return;
       event.preventDefault();
       // Pivot around the actual viewport center, rather than snapping to the
       // world's center every time a player orbits a nearby settlement.
@@ -301,7 +317,7 @@ export function WorldforgeApp(){
         if(d<best){best=d;nearest={x,y};}
       }
       orbitFocusRef.current=nearest;
-      drag={pointerId:event.pointerId,startX:event.clientX,
+      drag={kind:'orbit',pointerId:event.pointerId,startX:event.clientX,
         startYaw:orbitYawRef.current};
       viewport.classList.add('is-orbit-dragging');
       viewport.setPointerCapture(event.pointerId);
@@ -309,25 +325,51 @@ export function WorldforgeApp(){
     };
     const move=(event:PointerEvent)=>{
       if(!drag||event.pointerId!==drag.pointerId)return;
+      if(drag.kind==='pan'){
+        if(!(event.buttons&1)){finish(event);return;}
+        const dx=event.clientX-drag.startX,dy=event.clientY-drag.startY;
+        if(!drag.moved){
+          if(!isMapPanDrag(dx,dy))return;
+          drag.moved=true;
+          viewport.setPointerCapture(event.pointerId);
+          viewport.classList.add('is-pan-dragging');
+          setFollowId(null);
+        }
+        event.preventDefault();
+        const scroll=mapScrollForDrag({scrollLeft:drag.scrollX,
+          scrollTop:drag.scrollY},{x:dx,y:dy});
+        viewport.scrollLeft=scroll.x;viewport.scrollTop=scroll.y;
+        return;
+      }
       if(!(event.buttons&2)){finish(event);return;}
       event.preventDefault();
       pendingYaw=yawForRightDrag(drag.startYaw,event.clientX-drag.startX);
       if(!frame)frame=window.requestAnimationFrame(commit);
     };
-    const contextMenu=(event:MouseEvent)=>event.preventDefault();
+    const contextMenu=(event:MouseEvent)=>{
+      if(mapView==='depth')event.preventDefault();
+    };
+    const clickCapture=(event:MouseEvent)=>{
+      if(!suppressClick)return;
+      suppressClick=false;
+      event.preventDefault();event.stopPropagation();
+    };
     viewport.addEventListener('pointerdown',down);
     viewport.addEventListener('pointermove',move);
     viewport.addEventListener('pointerup',finish);
     viewport.addEventListener('pointercancel',finish);
     viewport.addEventListener('contextmenu',contextMenu);
+    viewport.addEventListener('click',clickCapture,true);
     return ()=>{
       if(frame)window.cancelAnimationFrame(frame);
       viewport.classList.remove('is-orbit-dragging');
+      viewport.classList.remove('is-pan-dragging');
       viewport.removeEventListener('pointerdown',down);
       viewport.removeEventListener('pointermove',move);
       viewport.removeEventListener('pointerup',finish);
       viewport.removeEventListener('pointercancel',finish);
       viewport.removeEventListener('contextmenu',contextMenu);
+      viewport.removeEventListener('click',clickCapture,true);
     };
   },[tab,mapView,reliefLevel,cameraPitch]);
   // After the canvas changes size, restore the exact world point below the
@@ -997,8 +1039,8 @@ export function WorldforgeApp(){
             </div>
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              {mapView==='overhead'?'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
-                'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · RIGHT-DRAG TO ORBIT · FOLLOW A SELECTED PERSON'}</span>
+              {mapView==='overhead'?'LEFT-DRAG TO PAN · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
+                'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -1182,11 +1224,12 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.3.8: A CLOSER LOOK AT YOUR WORLD</strong>
+        <strong>V2.3.9: EXPLORE YOUR WORLD</strong>
         <span>People keep their small in-world proportions when zooming closer,
           while terrain and structures retain their illustrated 2.5D detail.
-          Right-click and drag to orbit, pinch to zoom and scroll with two
-          fingers to pan. Mortal choices and simulation rules are unchanged.</span>
+          Left-drag to move around without inspecting by accident; right-drag
+          to orbit, pinch to zoom and scroll with two fingers to pan.
+          Mortal choices and simulation rules are unchanged.</span>
       </div>
     </main>}
   </div>;
