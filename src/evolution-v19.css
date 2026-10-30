@@ -117,6 +117,11 @@
 .evo-3d-warning code{color:#fff6de}
 .evo-3d-warning button{padding:9px 12px;background:#6c483b;color:#fff2dc;
   border:1px solid #e3a275;font:10px var(--pixel);cursor:pointer}
+.evo-webgl-state{display:inline-flex;align-items:center;padding:5px 8px;
+  font:9px/1.5 'Space Mono',monospace;white-space:nowrap;color:#d4d1ad;
+  border:1px solid #776d5b;background:#262938}
+.evo-webgl-state.is-active{color:#b5f0ca;border-color:#4e9878;background:#15372f}
+.evo-webgl-state.is-fallback{color:#ffd3a9;border-color:#d99e70;background:#4b2f36}
 .evo-layer-legend{padding:6px 12px;gap:8px}
 .evo-season-visual{margin:0;border-radius:0;padding:7px 12px;
   border-width:0 0 1px}
