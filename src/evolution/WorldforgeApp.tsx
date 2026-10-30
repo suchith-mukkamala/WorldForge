@@ -9,7 +9,6 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
 import {MapLayerLegend} from './MapLayerLegend';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector} from './depthProjection';
-import {project3DScreen} from './world3DProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -42,8 +41,6 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
-const ThreeWorldCanvas=lazy(()=>import('./ThreeWorldCanvas').then(m=>
-  ({default:m.ThreeWorldCanvas})));
 import {compactWorld,loadBrowserWorld,loadBrowserWorldSnapshot,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
@@ -160,25 +157,6 @@ export function WorldforgeApp(){
       typeof window==='undefined'?null:window.localStorage);}
     catch{return 'depth';}
   });
-  const [true3D,setTrue3D]=useState(()=>{
-    // v2.3.6: Restore the established illustrated 2.5D world as the main
-    // presentation. True WebGL remains an opt-in experiment. The new preference
-    // key intentionally stops the previous 3D-by-default rollout from forcing
-    // existing visitors into the visually different scene on every reload.
-    try{return window.localStorage.getItem('worldforge:true-3d:v2')==='on';}
-    catch{return false;}
-  });
-  const [webglFailure,setWebglFailure]=useState<string|null>(null);
-  const [webglState,setWebglState]=useState<'starting'|'active'|'fallback'>('starting');
-  const [rendererAttempt,setRendererAttempt]=useState(0);
-  const onRenderStatus=useCallback((status:'active'|'fallback',reason?:string)=>{
-    setWebglState(status);
-    setWebglFailure(status==='fallback'?(reason??'WebGL failed to initialize'):null);
-  },[]);
-  useEffect(()=>{
-    try{window.localStorage.setItem('worldforge:true-3d:v2',true3D?'on':'off');}
-    catch{/* Optional rendering preference. */}
-  },[true3D]);
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
@@ -207,17 +185,7 @@ export function WorldforgeApp(){
     const viewport=mapScrollRef.current;
     if(!viewport)return;
     const w=currentWorld.current.width,h=currentWorld.current.height;
-    if(mapView==='depth'&&true3D){
-      const current=currentWorld.current;
-      const tx=Math.max(0,Math.min(w-1,Math.floor(x)));
-      const ty=Math.max(0,Math.min(h-1,Math.floor(y)));
-      const elevation=topographyForWorld(current).heights[ty*w+tx]??48;
-      const point=project3DScreen(w,h,x,y,elevation,
-        {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]},
-        RELIEF_LEVELS[reliefLevel]);
-      viewport.scrollLeft=point.x*viewport.scrollWidth-viewport.clientWidth/2;
-      viewport.scrollTop=point.y*viewport.scrollHeight-viewport.clientHeight/2;
-    }else if(mapView==='depth'){
+    if(mapView==='depth'){
       const current=currentWorld.current;
       const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
@@ -235,7 +203,7 @@ export function WorldforgeApp(){
         {x:viewport.clientWidth,y:viewport.clientHeight});
       viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
     }
-  },[mapView,true3D,reliefLevel,orbitYaw,cameraPitch]);
+  },[mapView,reliefLevel,orbitYaw,cameraPitch]);
   // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
   // only the map scale; regular two-finger scrolling pans both axes natively.
   // Safari emits gesturechange, handled separately with the same anchor.
@@ -805,16 +773,9 @@ export function WorldforgeApp(){
           </div>
           <div className="evo-map-toolbar evo-map-commandbar">
             <div className="evo-view-switch" role="group" aria-label="Map perspective">
-              <button className={mapView==='depth'&&true3D?'is-on':''}
-                aria-pressed={mapView==='depth'&&true3D}
-                onClick={()=>{setTrue3D(true);setMapView('depth');
-                  setWebglFailure(null);setWebglState('starting');
-                  setRendererAttempt(v=>v+1);
-                  setFollowId(null);setZoom(1.5);}}>
-                ◈ 3D PREVIEW</button>
-              <button className={mapView==='depth'&&!true3D?'is-on':''}
-                aria-pressed={mapView==='depth'&&!true3D}
-                onClick={()=>{setTrue3D(false);setMapView('depth');
+              <button className={mapView==='depth'?'is-on':''}
+                aria-pressed={mapView==='depth'}
+                onClick={()=>{setMapView('depth');
                   setFollowId(null);setZoom(1.5);}}>
                 ◈ 2.5D WORLD</button>
               <button className={mapView==='overhead'?'is-on':''}
@@ -822,11 +783,6 @@ export function WorldforgeApp(){
                 onClick={()=>{setMapView('overhead');setZoom(1);}}>
                 ▦ OVERHEAD</button>
             </div>
-            {mapView==='depth'&&true3D&&
-              <span className={'evo-webgl-state is-'+webglState} role="status">
-                {webglState==='active'?'✓ REAL WEBGL 3D ACTIVE':
-                  webglState==='fallback'?'⚠ 2.5D FALLBACK':'◌ STARTING WEBGL 3D'}
-              </span>}
             <div className="evo-layer-chips" role="group" aria-label="Map layers">
               {([['terrain','WORLD'],['resources','FOOD'],
                 ['deposits','RESOURCES'],['elevation','HEIGHT'],
@@ -936,37 +892,12 @@ export function WorldforgeApp(){
               setNotice('Physical terrain enabled. Your existing world was preserved.');
             }}>ENABLE PHYSICAL TERRAIN</button>
           </div>}
-          {mapView==='depth'&&true3D&&webglFailure&&
-            <div className="evo-3d-warning" role="alert">
-              <strong>⚠ TRUE 3D IS NOT RUNNING — YOU ARE SEEING 2.5D</strong>
-              <span>{webglFailure} This is why the trees and buildings look
-                identical in both modes. Your world and saves are unaffected.
-                Check Chrome's <code>chrome://gpu</code> page for WebGL status,
-                or try another browser with hardware acceleration enabled.</span>
-              <button onClick={()=>{setWebglFailure(null);setWebglState('starting');
-                setRendererAttempt(v=>v+1);}}>
-                RETRY 3D</button>
-            </div>}
           <div className="evo-map-scroll" ref={mapScrollRef}>
             {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
               overlay={overlay} zoom={zoom}
               speed={speed} followId={followId} onFollowPosition={centerCamera}
               selected={displayed} onSelect={chooseTile} onEdit={brushAt}
               onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
-              true3D?<Suspense fallback={<DepthCanvas world={world} brush={brush}
-                overlay={overlay} zoom={zoom} speed={speed} selected={displayed}
-                onSelect={chooseTile} onEdit={brushAt}
-                relief={RELIEF_LEVELS[reliefLevel]}
-                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
-                followId={followId} onFollowPosition={centerCamera}/> }>
-                <ThreeWorldCanvas key={rendererAttempt} world={world} brush={brush} overlay={overlay}
-                  zoom={zoom} speed={speed} selected={displayed}
-                  onSelect={chooseTile} onEdit={brushAt}
-                  relief={RELIEF_LEVELS[reliefLevel]}
-                  camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
-                  followId={followId} onFollowPosition={centerCamera}
-                  onRenderStatus={onRenderStatus}/>
-              </Suspense>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
