@@ -30,3 +30,13 @@ export function boundedMapZoom(value:number):number{
   if(!Number.isFinite(value))return 1;
   return Math.max(1,Math.min(8,Math.round(value*1000)/1000));
 }
+/** A small pointer wobble is a click to inspect, not an attempt to move the
+ * camera. Longer left-button drags pan the scroll viewport directly. */
+export const MAP_DRAG_THRESHOLD=5;
+export function isMapPanDrag(dx:number,dy:number):boolean{
+  return dx*dx+dy*dy>MAP_DRAG_THRESHOLD*MAP_DRAG_THRESHOLD;
+}
+export function mapScrollForDrag(start:Pick<MapScrollGeometry,
+  'scrollLeft'|'scrollTop'>,delta:PointerOffset):PointerOffset{
+  return {x:start.scrollLeft-delta.x,y:start.scrollTop-delta.y};
+}

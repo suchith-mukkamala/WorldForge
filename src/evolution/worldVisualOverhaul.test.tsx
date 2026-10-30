@@ -37,6 +37,7 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
     expect(html).not.toContain('3D PREVIEW');
     expect(html).toContain('PINCH TO ZOOM');
     expect(html).toContain('TWO-FINGER SCROLL TO PAN');
+    expect(html).toContain('LEFT-DRAG TO PAN');
     expect(html).toContain('RIGHT-DRAG TO ORBIT');
     expect(html).toContain('aria-label="Isometric terrain depth view');
     expect(html).toContain('aria-label="Map layers"');
