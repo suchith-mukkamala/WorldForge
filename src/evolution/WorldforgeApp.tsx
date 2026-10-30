@@ -164,6 +164,13 @@ export function WorldforgeApp(){
     try{return window.localStorage.getItem('worldforge:true-3d:v1')!=='off';}
     catch{return true;}
   });
+  const [webglFailure,setWebglFailure]=useState<string|null>(null);
+  const [webglState,setWebglState]=useState<'starting'|'active'|'fallback'>('starting');
+  const [rendererAttempt,setRendererAttempt]=useState(0);
+  const onRenderStatus=useCallback((status:'active'|'fallback',reason?:string)=>{
+    setWebglState(status);
+    setWebglFailure(status==='fallback'?(reason??'WebGL failed to initialize'):null);
+  },[]);
   useEffect(()=>{
     try{window.localStorage.setItem('worldforge:true-3d:v1',true3D?'on':'off');}
     catch{/* Optional rendering preference. */}
@@ -797,6 +804,8 @@ export function WorldforgeApp(){
               <button className={mapView==='depth'&&true3D?'is-on':''}
                 aria-pressed={mapView==='depth'&&true3D}
                 onClick={()=>{setTrue3D(true);setMapView('depth');
+                  setWebglFailure(null);setWebglState('starting');
+                  setRendererAttempt(v=>v+1);
                   setFollowId(null);setZoom(1.5);}}>
                 ◈ 3D WORLD</button>
               <button className={mapView==='depth'&&!true3D?'is-on':''}
@@ -809,6 +818,11 @@ export function WorldforgeApp(){
                 onClick={()=>{setMapView('overhead');setZoom(1);}}>
                 ▦ OVERHEAD</button>
             </div>
+            {mapView==='depth'&&true3D&&
+              <span className={'evo-webgl-state is-'+webglState} role="status">
+                {webglState==='active'?'✓ REAL WEBGL 3D ACTIVE':
+                  webglState==='fallback'?'⚠ 2.5D FALLBACK':'◌ STARTING WEBGL 3D'}
+              </span>}
             <div className="evo-layer-chips" role="group" aria-label="Map layers">
               {([['terrain','WORLD'],['resources','FOOD'],
                 ['deposits','RESOURCES'],['elevation','HEIGHT'],
@@ -918,6 +932,17 @@ export function WorldforgeApp(){
               setNotice('Physical terrain enabled. Your existing world was preserved.');
             }}>ENABLE PHYSICAL TERRAIN</button>
           </div>}
+          {mapView==='depth'&&true3D&&webglFailure&&
+            <div className="evo-3d-warning" role="alert">
+              <strong>⚠ TRUE 3D IS NOT RUNNING — YOU ARE SEEING 2.5D</strong>
+              <span>{webglFailure} This is why the trees and buildings look
+                identical in both modes. Your world and saves are unaffected.
+                Check Chrome's <code>chrome://gpu</code> page for WebGL status,
+                or try another browser with hardware acceleration enabled.</span>
+              <button onClick={()=>{setWebglFailure(null);setWebglState('starting');
+                setRendererAttempt(v=>v+1);}}>
+                RETRY 3D</button>
+            </div>}
           <div className="evo-map-scroll" ref={mapScrollRef}>
             {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
               overlay={overlay} zoom={zoom}
@@ -930,12 +955,13 @@ export function WorldforgeApp(){
                 relief={RELIEF_LEVELS[reliefLevel]}
                 camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
                 followId={followId} onFollowPosition={centerCamera}/> }>
-                <ThreeWorldCanvas world={world} brush={brush} overlay={overlay}
+                <ThreeWorldCanvas key={rendererAttempt} world={world} brush={brush} overlay={overlay}
                   zoom={zoom} speed={speed} selected={displayed}
                   onSelect={chooseTile} onEdit={brushAt}
                   relief={RELIEF_LEVELS[reliefLevel]}
                   camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
-                  followId={followId} onFollowPosition={centerCamera}/>
+                  followId={followId} onFollowPosition={centerCamera}
+                  onRenderStatus={onRenderStatus}/>
               </Suspense>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}

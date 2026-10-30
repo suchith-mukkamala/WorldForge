@@ -146,16 +146,22 @@ function buildPeople(world:World,scene:SceneState,zoom:number,
 }
 export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,followId=null,
-  onFollowPosition}: {
+  onFollowPosition,onRenderStatus}: {
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
   zoom?:number;speed?:number;relief?:number;camera?:DepthCamera;
   followId?:number|null;onFollowPosition?:(x:number,y:number)=>void;
+  onRenderStatus?:(status:'active'|'fallback',reason?:string)=>void;
 }){
   const canvas=useRef<HTMLCanvasElement>(null);
   const state=useRef<SceneState|null>(null);
   const [failure,setFailure]=useState<string|null>(null);
+  const [ready,setReady]=useState(false);
+  useEffect(()=>{
+    if(failure)onRenderStatus?.('fallback',failure);
+    else if(ready)onRenderStatus?.('active');
+  },[failure,ready,onRenderStatus]);
   const render=()=>{
     const current=state.current;
     if(!current)return;
@@ -274,7 +280,10 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
         const gl=s.renderer.getContext(),pixel=new Uint8Array(4);
         const drawingSize=s.renderer.getDrawingBufferSize(new THREE.Vector2());
         let visible=false;
-        for(const x of [.35,.5,.65])for(const y of [.35,.5,.65]){
+        // A few center pixels can miss narrow or off-center islands. Sampling
+        // the full frame avoids incorrectly declaring functional WebGL broken.
+        for(const x of [.12,.25,.38,.5,.62,.75,.88])
+          for(const y of [.12,.25,.38,.5,.62,.75,.88]){
           gl.readPixels(Math.floor(drawingSize.x*x),
             Math.floor(drawingSize.y*y),1,1,
             gl.RGBA,gl.UNSIGNED_BYTE,pixel);
@@ -284,6 +293,7 @@ export function ThreeWorldCanvas({world,brush,overlay,selected,onSelect,onEdit,
         if(!visible)setFailure('WebGL returned an empty framebuffer.');
       }catch{/* Some GPU drivers do not permit readback. */}
     }
+    setReady(true);
   },[world.width,world.height,camera.yaw,camera.pitch,relief]);
   const click=(event:MouseEvent<HTMLCanvasElement>)=>{
     const s=state.current;if(!s||!s.surface)return;
