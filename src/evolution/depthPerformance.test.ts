@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {depthStructureSignature} from './depthPerformance';
-import {depthArtDetail} from './depthSprites';
+import {DEPTH_PERSON_SIZE,depthArtDetail} from './depthSprites';
 import type {Settlement} from './engine';
 
 describe('2.5D structure layer caching',()=>{
@@ -29,5 +29,7 @@ describe('2.5D structure layer caching',()=>{
     expect(depthArtDetail(2)).toBe(1);
     expect(depthArtDetail(3.99)).toBe(1);
     expect(depthArtDetail(4)).toBe(2);
+    // The detail tiers now affect the landscape, never mortal scale.
+    expect(DEPTH_PERSON_SIZE).toEqual({width:3,height:5});
   });
 });

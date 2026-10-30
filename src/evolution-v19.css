@@ -162,4 +162,6 @@
    gestures at its edge instead of unexpectedly scrolling the whole page. */
 .evo-map-scroll{overscroll-behavior:contain;scroll-behavior:auto;
   touch-action:pan-x pan-y}
+.evo-map-scroll.is-orbit-dragging,.evo-map-scroll.is-orbit-dragging *{
+  cursor:grabbing!important;user-select:none}
 .evo-map-scroll:focus-within{outline-offset:-3px}
