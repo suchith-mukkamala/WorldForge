@@ -34,6 +34,7 @@ import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
 import {visibleCoastTile} from './worldOutline';
+import {seededBiome,biomeHome} from './biomeGeneration';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,validTopography,type Topography} from './topography';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
@@ -210,28 +211,6 @@ function log(world:World,type:WorldEvent['type'],message:string){
   world.events.push({id:world.nextEventId++,year:world.year,type,message});
   if(world.events.length>90)world.events=world.events.slice(-90);
 }
-function biomeAt(x:number,y:number,w:number,h:number,seed:number):Biome{
-  const u=x/(w-1),v=y/(h-1);
-  const noise=(n:number)=>Math.sin(n+seed*.000173);
-  const river=.475+.04*noise(v*12)+.017*noise(v*35);
-  if(Math.abs(u-river)<.012||Math.hypot((u-.62)*1.6,(v-.20)*1.2)<.05)
-    return 'water';
-  // Remote scorched corners are the demons' starting borderlands.
-  if(u>.73&&(v<.40||v>.69)){
-    // Volcanic corners lie inside the irregular playable coastline so demons
-    // retain their home biome without requiring a rectangular land border.
-    const edge=Math.min(Math.hypot(u-.81,v-.23),Math.hypot(u-.81,v-.77));
-    return edge<.105?'volcanic':'wasteland';
-  }
-  const ridge=.66+.075*noise(v*9)+.025*noise(v*26);
-  if(u>ridge&&v>.27&&v<.86)
-    return (noise(x*.9+y*.51)*.5+.5)>.68?'cave':'mountain';
-  const forest=.34+.065*noise(v*10)+.035*noise(v*31);
-  if(u<forest||(u<.53&&Math.sin(x*.28+y*.21+seed*.008)>.72))
-    return 'forest';
-  if(u>.79&&v<.24)return 'wasteland';
-  return 'plains';
-}
 function genes(state:{n:number},parents?:[Genes,Genes]):Genes{
   const inherit=(key:keyof Genes)=>{
     const value=parents?(parents[0][key]+parents[1][key])*.5+
@@ -253,9 +232,6 @@ function freeNearby(world:World,origin:{x:number;y:number},radius:number,
   possible.sort((a,b)=>a.score-b.score);
   return possible[0]??null;
 }
-const centers:Record<Species,[number,number]>={
-  human:[.42,.66],elf:[.18,.45],dwarf:[.70,.58],demon:[.91,.15],
-};
 export function createWorld(input:Partial<WorldSettings>={}):World{
   const settings=normalizeSettings(input),[width,height]=WORLD_SIZES[settings.size];
   const state={n:prngState(settings.seed)};
@@ -265,7 +241,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     // rectangular index space remains authoritative for simulation and saves.
     // Existing worlds are not rewritten when loading older save data.
     const biome=visibleCoastTile(x,y,width,height,'water',settings.seed)?
-      biomeAt(x,y,width,height,settings.seed):'water';
+      seededBiome(x,y,width,height,settings.seed):'water';
     const info=BIOME_INFO[biome];
     return {biome,food:round(info.food*settings.resourceLevel*(.75+.25*random(state)))};
   });
@@ -285,8 +261,9 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   const occupied=new Set<number>();
   for(const s of SPECIES){
     const info=SPECIES_INFO[s];
-    const target={x:Math.round(centers[s][0]*(width-1)),
-      y:Math.round(centers[s][1]*(height-1))};
+    const home=biomeHome(settings.seed,s);
+    const target={x:Math.round(home[0]*(width-1)),
+      y:Math.round(home[1]*(height-1))};
     // Nearest favored starting biome in O(tiles) rather than sorting huge worlds.
     let closest=target,closestD=Infinity;
     for(let index=0;index<tiles.length;index++){
