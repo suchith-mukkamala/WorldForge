@@ -165,8 +165,10 @@ export function WorldforgeApp(){
     catch{return true;}
   });
   const [webglFailure,setWebglFailure]=useState<string|null>(null);
+  const [webglState,setWebglState]=useState<'starting'|'active'|'fallback'>('starting');
   const [rendererAttempt,setRendererAttempt]=useState(0);
   const onRenderStatus=useCallback((status:'active'|'fallback',reason?:string)=>{
+    setWebglState(status);
     setWebglFailure(status==='fallback'?(reason??'WebGL failed to initialize'):null);
   },[]);
   useEffect(()=>{
@@ -802,7 +804,8 @@ export function WorldforgeApp(){
               <button className={mapView==='depth'&&true3D?'is-on':''}
                 aria-pressed={mapView==='depth'&&true3D}
                 onClick={()=>{setTrue3D(true);setMapView('depth');
-                  setWebglFailure(null);setRendererAttempt(v=>v+1);
+                  setWebglFailure(null);setWebglState('starting');
+                  setRendererAttempt(v=>v+1);
                   setFollowId(null);setZoom(1.5);}}>
                 ◈ 3D WORLD</button>
               <button className={mapView==='depth'&&!true3D?'is-on':''}
@@ -815,6 +818,11 @@ export function WorldforgeApp(){
                 onClick={()=>{setMapView('overhead');setZoom(1);}}>
                 ▦ OVERHEAD</button>
             </div>
+            {mapView==='depth'&&true3D&&
+              <span className={'evo-webgl-state is-'+webglState} role="status">
+                {webglState==='active'?'✓ REAL WEBGL 3D ACTIVE':
+                  webglState==='fallback'?'⚠ 2.5D FALLBACK':'◌ STARTING WEBGL 3D'}
+              </span>}
             <div className="evo-layer-chips" role="group" aria-label="Map layers">
               {([['terrain','WORLD'],['resources','FOOD'],
                 ['deposits','RESOURCES'],['elevation','HEIGHT'],
@@ -931,7 +939,8 @@ export function WorldforgeApp(){
                 identical in both modes. Your world and saves are unaffected.
                 Check Chrome's <code>chrome://gpu</code> page for WebGL status,
                 or try another browser with hardware acceleration enabled.</span>
-              <button onClick={()=>{setWebglFailure(null);setRendererAttempt(v=>v+1);}}>
+              <button onClick={()=>{setWebglFailure(null);setWebglState('starting');
+                setRendererAttempt(v=>v+1);}}>
                 RETRY 3D</button>
             </div>}
           <div className="evo-map-scroll" ref={mapScrollRef}>
