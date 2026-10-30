@@ -3,6 +3,7 @@
  * advancing the simulation, consuming RNG, or touching the picking buffer.
  */
 import type {Biome,World} from './engine';
+import {settlementStage} from './construction';
 type Point={x:number;y:number};
 type Projector={project:(x:number,y:number,elevation:number)=>Point};
 const shades:Record<Biome,readonly string[]>={
@@ -71,10 +72,14 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
   heights:readonly number[],projector:Projector):number{
   const roads=new Set<number>();
   const maintained=new Set<number>();
-  for(const s of world.settlements)
+  const townStreets=new Set<number>();
+  for(const s of world.settlements){
+    const civic=settlementStage(s)==='town'||settlementStage(s)==='city';
     for(const i of s.infrastructure?.roads??[]){
       if(i>=0&&i<heights.length){roads.add(i);maintained.add(i);}
+      if(civic)townStreets.add(i);
     }
+  }
   for(const segment of world.transport?.roads??[])
     if(segment.index>=0&&segment.index<heights.length){
       roads.add(segment.index);maintained.add(segment.index);
@@ -86,11 +91,12 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
     const p=projector.project(x,y,heights[i]);
     const px=Math.round(p.x),py=Math.round(p.y);
     const paved=maintained.has(i);
+    const civic=townStreets.has(i);
     ctx.fillStyle='rgba(21,28,39,.48)';
     ctx.fillRect(px-4,py-1,9,3);
-    ctx.fillStyle=paved?'#d4ba8d':'#96856e';
+    ctx.fillStyle=civic?'#a7ada9':paved?'#d4ba8d':'#96856e';
     ctx.fillRect(px-4,py-1,8,2);
-    ctx.fillStyle=paved?'#f3d9a1':'#bbad85';
+    ctx.fillStyle=civic?'#dbd3b5':paved?'#f3d9a1':'#bbad85';
     ctx.fillRect(px-2,py-2,4,1);
     const adjacent=[i-1,i+1,i-world.width,i+world.width];
     for(let direction=0;direction<4;direction++){
@@ -100,7 +106,7 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
         direction===2&&y===0||direction===3&&y===world.height-1)continue;
       const q=projector.project(neighbor%world.width,
         Math.floor(neighbor/world.width),heights[neighbor]);
-      ctx.strokeStyle=paved?'#bda178':'#877862';ctx.lineWidth=2;
+      ctx.strokeStyle=civic?'#949c97':paved?'#bda178':'#877862';ctx.lineWidth=2;
       ctx.beginPath();ctx.moveTo(p.x,p.y);
       ctx.lineTo((p.x+q.x)/2,(p.y+q.y)/2);ctx.stroke();
     }
@@ -117,6 +123,7 @@ export function depthRoadSignature(world:Pick<World,'settlements'|'transport'|'t
   add(world.settlements.length);
   for(const s of world.settlements){
     add(s.id);
+    add(['encampment','hamlet','village','town','city'].indexOf(settlementStage(s)));
     const roads=s.infrastructure?.roads??[];
     add(roads.length);
     for(const index of roads)add(index);

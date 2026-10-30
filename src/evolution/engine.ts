@@ -37,6 +37,7 @@ import {visibleCoastTile} from './worldOutline';
 import {seededBiome,biomeHome} from './biomeGeneration';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,validTopography,type Topography} from './topography';
+import {advanceEarthworks,validEarthworks,type Earthwork} from './earthworks';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './traitRanks';
 import {birthInnateTrait,innateTrait,isInnateTrait,type InnateTraitId} from './innateTraits';
@@ -108,7 +109,7 @@ export type Sample={year:number;total:number;human:number;elf:number;dwarf:numbe
 export type World={version:2;settings:WorldSettings;width:number;height:number;
   year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
   nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;
-  terrainPhysics?:TerrainPhysics;agents:Agent[];
+  terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
   demography?:Demography;codex?:WorldCodex;
@@ -317,6 +318,7 @@ const settlementNames:Record<Species,string[]>={
 };
 export function stepWorld(previous:World):World{
   const world:World={...previous,year:previous.year+1,
+    earthworks:previous.earthworks?.map(e=>({...e})),
     tiles:previous.tiles.map(t=>({...t})),
     agents:previous.agents.map(a=>({...a,
       potentialRank:potentialRank(previous.settings.seed,a),
@@ -687,6 +689,9 @@ export function stepWorld(previous:World):World{
   advanceCulture(world,()=>random(state));
   // Construction is a world-tick system. Map zoom and open UI tabs never enter it.
   advanceConstruction(world,movementSteps);
+  // A limited number of builders gradually reshape actual elevation near
+  // their homes and roads, independent of which viewport is being rendered.
+  advanceEarthworks(world);
   for(const crossing of advanceTransport(world))
     reconcileTradeTerrain(world,crossing);
   const births=newborns.length;
@@ -802,6 +807,7 @@ export function isWorld(value:unknown):value is World{
     return false;
   if(w.terrainPhysics!==undefined&&(!w.terrainPhysics||
     w.terrainPhysics.version!==1))return false;
+  if(!validEarthworks(w as World))return false;
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();

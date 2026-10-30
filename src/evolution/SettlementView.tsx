@@ -386,6 +386,8 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
   const relationships=(world.tradeRelations??[]).filter(r=>
     r.a===place?.id||r.b===place?.id).sort((a,b)=>b.trust-a.trust||a.a-b.a);
   const guilds=(world.institutions?.guilds??[]).filter(g=>g.settlementId===place?.id);
+  const earthworks=(world.earthworks??[]).filter(e=>e.settlementId===place?.id);
+  const soilMoved=earthworks.reduce((total,e)=>total+e.volume,0);
   const localTransport=[...(world.transport?.roads??[]),
     ...(world.transport?.bridges??[])].filter(t=>place&&
     Math.max(Math.abs(t.index%world.width-place.x),
@@ -395,7 +397,8 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
       <div><span className="evo-overline">WORLDFORGE / BUILT BY THE PEOPLE</span>
         <h2>Living Settlements</h2>
         <p>Watch people choose work, grow food, trade scarce goods, build homes,
-          and leave roads or ruins behind. Every year advances off-screen.</p></div>
+          move soil to prepare ground, and leave roads or ruins behind.
+          Every year advances off-screen.</p></div>
       <div className="evo-city-header-actions">
         <div className="evo-city-header-stat"><b>{world.settlements.length}</b>
           <span>living settlements</span></div>
@@ -463,7 +466,19 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
               world.tiles[t.index].biome!=='water').length} / {localTransport.filter(t=>
               world.tiles[t.index].biome==='water').length}</strong></div>
             <div><small>OWNED LAND TILES</small><strong>{place?.infrastructure?.land.length??0}</strong></div>
+            <div><small>EARTHWORKS / SOIL MOVED</small>
+              <strong>{earthworks.length} / {soilMoved} units</strong></div>
           </div>
+          {place&&<section className="evo-settlement-culture" aria-label="Autonomous earthworks">
+            <h3>⛏ PEOPLE SHAPING THE LAND</h3>
+            <p>Builders gradually cut steep ground and use the soil to fill nearby low
+              places along roads and construction sites. The changed elevation affects
+              future travel and farming; no divine placement is required.</p>
+            <small>{earthworks.length?`Last recorded earthwork: year ${earthworks.at(-1)!.year}. `:
+              'No earthworks recorded yet. '}
+              Qualified builders need suitable terrain and energy. Work progresses
+              every four years, even when the city view is closed.</small>
+          </section>}
           {place?.economy&&<section className="evo-economy-panel" aria-label="Settlement economy">
             <div className="evo-economy-heading"><h3>WORK, PROVISIONS & TRADE</h3>
               <span>Economy advances with the world, even off-screen.</span></div>

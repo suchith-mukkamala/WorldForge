@@ -1,7 +1,8 @@
 /** Crisp 2.5D sprites use intentionally unequal footprints. The world grid
  * controls ecology and ownership, not an object's visible width or height. */
 import {SPECIES_INFO,type Agent} from './engine';
-import {ARCHITECTURE,buildingTier,type Building} from './construction';
+import {ARCHITECTURE,buildingTier,type Building,
+  type SettlementStage} from './construction';
 import {DEPTH_FOOTPRINT} from './spatialDetails';
 import {INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {paintPerson,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH,
@@ -115,6 +116,47 @@ export function paintDepthTree(ctx:Painter,p:Point,pine:boolean,variant=0,
 
 /** Four-unit structures become taller and more durable with their real tier.
  * Construction and ruins remain visibly distinct from inhabited buildings. */
+export function paintDepthSettlementHub(ctx:Painter,p:Point,
+  stage:SettlementStage,culture:Agent['species']):void{
+  const rank=['encampment','hamlet','village','town','city'].indexOf(stage);
+  const style=ARCHITECTURE[culture],x=Math.round(p.x),y=Math.round(p.y);
+  // Civic ground grows from a campsite into a paved square, then a hall with
+  // its own silhouette. It marks the living community, not a placed building.
+  const radius=3+rank*2;
+  draw(ctx,'#26383d',x-radius-1,y-1,radius*2+2,3);
+  draw(ctx,rank>=3?'#a7a69c':'#ae936f',x-radius,y-2,radius*2,2);
+  if(rank===0){
+    draw(ctx,'#9f684d',x-3,y-6,6,4);
+    draw(ctx,'#f2bd73',x-1,y-7,2,4);
+    draw(ctx,'#5f4339',x-4,y-3,8,2);
+  }else if(rank===1){
+    draw(ctx,style.wall,x-4,y-8,8,6);
+    draw(ctx,style.roof,x-5,y-10,10,4);
+    draw(ctx,'#f0cc88',x-1,y-6,2,4);
+  }else{
+    const height=9+rank*3,half=5+rank;
+    draw(ctx,'#36404c',x-half+2,y-height+1,half*2, height-1);
+    draw(ctx,style.wall,x-half,y-height,half*2,height-2);
+    draw(ctx,'#342d3a',x-half-1,y-height-4,half*2+2,3);
+    draw(ctx,style.roof,x-half,y-height-6,half*2,3);
+    draw(ctx,'#e7d8b2',x-half+2,y-height+3,3,2);
+    draw(ctx,'#2d3948',x-2,y-6,4,5);
+    if(rank>=3){
+      draw(ctx,style.wall,x+half-3,y-height-7,5,8);
+      draw(ctx,style.roof,x+half-4,y-height-10,7,3);
+      draw(ctx,'#ffe0a1',x+half-2,y-height-5,2,2);
+    }
+    if(rank===4){
+      draw(ctx,style.wall,x-half-2,y-height-5,4,6);
+      draw(ctx,style.roof,x-half-3,y-height-8,6,3);
+      draw(ctx,'#f5d5a3',x-half,y-height-3,1,2);
+    }
+  }
+  draw(ctx,'#293949',x+radius-1,y-12-rank,1,11+rank);
+  draw(ctx,style.roof,x+radius,y-12-rank,5,3);
+  draw(ctx,'#f7d7a2',x+radius+1,y-12-rank,3,1);
+}
+
 export function paintDepthBuilding(ctx:Painter,b:Building,p:Point,
   detail:DepthArtDetail=0):void{
   const style=ARCHITECTURE[b.culture],tier=buildingTier(b);
@@ -227,6 +269,41 @@ export function paintDepthBuilding(ctx:Painter,b:Building,p:Point,
     draw(ctx,'#c48a6b',x+width-5,y-5,2,2);
     draw(ctx,'#66575b',x+width-4,y-bodyHeight-9,3,8);
     draw(ctx,'#d6b895',x+width-4,y-bodyHeight-10,3,2);
+  }
+  if(b.type==='storage'){
+    // Taller storehouses have loading doors, visible stacked crates and a
+    // small rooftop vent; the silhouette differs from a residence.
+    draw(ctx,'#564e48',x+2,y-8,5,7);
+    draw(ctx,'#d0ae74',x+2,y-7,5,2);
+    draw(ctx,'#a77b4e',x+width-3,y-5,4,4);
+    draw(ctx,'#ebcb90',x+width-2,y-5,2,1);
+    draw(ctx,'#7d7c75',x+width-6,y-bodyHeight-9,3,7);
+  }
+  if(b.type==='communal'){
+    // A gathering hall gains a bell-tower and an open doorway.
+    draw(ctx,wall,x+Math.floor(width/2)-3,y-bodyHeight-15,7,11);
+    draw(ctx,style.roof,x+Math.floor(width/2)-4,y-bodyHeight-17,9,3);
+    draw(ctx,'#ffe0a2',x+Math.floor(width/2),y-bodyHeight-12,2,3);
+    draw(ctx,'#f4dcab',x-1,y-bodyHeight+4,2,4);
+    draw(ctx,'#d5b77d',x+width-1,y-bodyHeight+4,2,4);
+  }
+  if(b.type==='dock'){
+    draw(ctx,'#6f5445',x-4,y-2,width+8,3);
+    for(let post=1;post<width;post+=5){
+      draw(ctx,'#ac825a',x+post,y-4,2,7);
+      draw(ctx,'#e8bd80',x+post,y-4,2,1);
+    }
+    draw(ctx,'#6db2b2',x+2,y+2,width-3,1);
+  }
+  if(b.type==='shelter'&&tier===0){
+    draw(ctx,'#d2aa78',x-3,y-bodyHeight-4,4,6);
+    draw(ctx,style.roof,x-4,y-bodyHeight-5,5,2);
+    draw(ctx,'#dda46e',x+width-2,y-4,3,2);
+  }
+  if(b.type==='house'&&tier>=1){
+    draw(ctx,'#6a5d53',x+width-5,y-bodyHeight-11,3,7);
+    draw(ctx,'#a9aaa4',x+width-6,y-bodyHeight-12,5,2);
+    draw(ctx,'#f2dcab',x-2,y-5,2,2);
   }
   if(b.type==='market'){
     for(let strip=1;strip<width-1;strip+=4){
