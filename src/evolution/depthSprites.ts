@@ -13,6 +13,9 @@ export type DepthArtDetail=0|1|2;
 export const depthArtDetail=(zoom:number):DepthArtDetail=>
   zoom>=4?2:zoom>=2?1:0;
 export type PersonSpriteCache=Map<string,HTMLCanvasElement>;
+// Characters have a fixed footprint in world coordinates. Zoom magnifies the
+// entire canvas uniformly; crossing detail thresholds must not inflate people.
+export const DEPTH_PERSON_SIZE={width:3,height:5} as const;
 const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);
 };
@@ -20,9 +23,9 @@ const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
 /** People remain tiny at world scale but gain identifiable pixel-art bodies
  * and outfits when the player zooms in. The simulated tile size is unchanged. */
 export function paintDepthPerson(ctx:Painter,a:Agent,
-  p:Point,walking=false,showGlow=false,detail:DepthArtDetail=0,
+  p:Point,walking=false,showGlow=false,
   cache?:PersonSpriteCache):void{
-  if(detail>0&&cache){
+  if(cache){
     const key=spriteKey(a)+':'+(walking?'walk':'idle');
     let image=cache.get(key);
     if(!image){
@@ -34,7 +37,7 @@ export function paintDepthPerson(ctx:Painter,a:Agent,
       if(cache.size>1200)cache.clear();
       cache.set(key,image);
     }
-    const w=detail===2?12:6,h=detail===2?16:8;
+    const {width:w,height:h}=DEPTH_PERSON_SIZE;
     ctx.imageSmoothingEnabled=false;
     ctx.drawImage(image,Math.round(p.x-w/2),Math.round(p.y-h+1),w,h);
     if(showGlow&&a.awakening&&a.innateTrait){

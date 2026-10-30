@@ -13,6 +13,7 @@ import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
   restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
+import {yawForRightDrag} from './orbitGestures';
 import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
@@ -159,6 +160,8 @@ export function WorldforgeApp(){
   });
   const [reliefLevel,setReliefLevel]=useState<ReliefLevel>('dramatic');
   const [orbitYaw,setOrbitYaw]=useState(0);
+  const orbitYawRef=useRef(orbitYaw);
+  orbitYawRef.current=orbitYaw;
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
   const [zoom,setZoom]=useState(mapView==='depth'?1.5:1);
   const [advancedView,setAdvancedView]=useState(false);
@@ -173,6 +176,7 @@ export function WorldforgeApp(){
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
+  const orbitFocusRef=useRef<{x:number;y:number}|null>(null);
   const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
   const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
@@ -255,6 +259,77 @@ export function WorldforgeApp(){
       viewport.removeEventListener('gesturechange',safariGesture);
     };
   },[tab,storageReady]);
+  // Hold the right mouse button to orbit the raised world. We snap to the
+  // existing 15° camera angles and coalesce pointer events into one animation
+  // frame, so trackpad panning and pinch zoom remain entirely unaffected.
+  useEffect(()=>{
+    if(tab!=='world'||mapView!=='depth')return;
+    const viewport=mapScrollRef.current;
+    if(!viewport)return;
+    let drag:{pointerId:number;startX:number;startYaw:number}|null=null;
+    let frame=0,pendingYaw:number|null=null;
+    const commit=()=>{
+      frame=0;
+      if(pendingYaw!==null){setOrbitYaw(pendingYaw);pendingYaw=null;}
+    };
+    const finish=(event:PointerEvent)=>{
+      if(!drag||event.pointerId!==drag.pointerId)return;
+      drag=null;
+      if(frame){window.cancelAnimationFrame(frame);commit();}
+      viewport.classList.remove('is-orbit-dragging');
+      if(viewport.hasPointerCapture(event.pointerId))
+        viewport.releasePointerCapture(event.pointerId);
+    };
+    const down=(event:PointerEvent)=>{
+      if(event.button!==2||drag)return;
+      event.preventDefault();
+      // Pivot around the actual viewport center, rather than snapping to the
+      // world's center every time a player orbits a nearby settlement.
+      const w=currentWorld.current;
+      const projector=createDepthProjector(w,RELIEF_LEVELS[reliefLevel],
+        {yaw:orbitYawRef.current,pitch:CAMERA_PITCHES[cameraPitch]});
+      const scaleX=viewport.scrollWidth/projector.size.width;
+      const scaleY=viewport.scrollHeight/projector.size.height;
+      const cx=(viewport.scrollLeft+viewport.clientWidth/2)/Math.max(.001,scaleX);
+      const cy=(viewport.scrollTop+viewport.clientHeight/2)/Math.max(.001,scaleY);
+      const heights=topographyForWorld(w).heights;
+      let nearest={x:Math.floor(w.width/2),y:Math.floor(w.height/2)};
+      let best=Infinity;
+      for(let y=0;y<w.height;y++)for(let x=0;x<w.width;x++){
+        const p=projector.project(x,y,heights[y*w.width+x]);
+        const d=(p.x-cx)**2+(p.y-cy)**2;
+        if(d<best){best=d;nearest={x,y};}
+      }
+      orbitFocusRef.current=nearest;
+      drag={pointerId:event.pointerId,startX:event.clientX,
+        startYaw:orbitYawRef.current};
+      viewport.classList.add('is-orbit-dragging');
+      viewport.setPointerCapture(event.pointerId);
+      setFollowId(null);
+    };
+    const move=(event:PointerEvent)=>{
+      if(!drag||event.pointerId!==drag.pointerId)return;
+      if(!(event.buttons&2)){finish(event);return;}
+      event.preventDefault();
+      pendingYaw=yawForRightDrag(drag.startYaw,event.clientX-drag.startX);
+      if(!frame)frame=window.requestAnimationFrame(commit);
+    };
+    const contextMenu=(event:MouseEvent)=>event.preventDefault();
+    viewport.addEventListener('pointerdown',down);
+    viewport.addEventListener('pointermove',move);
+    viewport.addEventListener('pointerup',finish);
+    viewport.addEventListener('pointercancel',finish);
+    viewport.addEventListener('contextmenu',contextMenu);
+    return ()=>{
+      if(frame)window.cancelAnimationFrame(frame);
+      viewport.classList.remove('is-orbit-dragging');
+      viewport.removeEventListener('pointerdown',down);
+      viewport.removeEventListener('pointermove',move);
+      viewport.removeEventListener('pointerup',finish);
+      viewport.removeEventListener('pointercancel',finish);
+      viewport.removeEventListener('contextmenu',contextMenu);
+    };
+  },[tab,mapView,reliefLevel,cameraPitch]);
   // After the canvas changes size, restore the exact world point below the
   // fingers instead of jumping to the top-left of the projected panorama.
   useLayoutEffect(()=>{
@@ -517,7 +592,7 @@ export function WorldforgeApp(){
   useEffect(()=>{
     if(!storageReady||tab!=='world'||mapView!=='depth'||mapFocus!==null)return;
     const frame=window.requestAnimationFrame(()=>{
-      const point=selected??{x:Math.floor(world.width/2),
+      const point=orbitFocusRef.current??selected??{x:Math.floor(world.width/2),
         y:Math.floor(world.height/2)};
       centerCamera(point.x,point.y);
     });
@@ -529,6 +604,7 @@ export function WorldforgeApp(){
     if(tab==='world'&&target)centerCamera(target.x,target.y);
   },[followId,tab,zoom,world.settings.seed,centerCamera]);
   const chooseTile=(x:number,y:number)=>{
+    orbitFocusRef.current=null;
     setSelected({x,y});
     const individual=world.agents.find(a=>a.x===x&&a.y===y);
     setSelectedAgentId(individual?.id??null);
@@ -922,7 +998,7 @@ export function WorldforgeApp(){
             <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
               'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
               {mapView==='overhead'?'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
-                'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON · ORBIT 360°'}</span>
+                'PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · RIGHT-DRAG TO ORBIT · FOLLOW A SELECTED PERSON'}</span>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -1106,11 +1182,11 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.3.7: THE LIVING PIXEL WORLD</strong>
-        <span>The illustrated 2.5D landscape is WorldForge's primary view.
-          Zoom in to see richer trees, buildings and individual pixel characters.
-          Scenery and sprites are cached to keep the world moving smoothly.
-          Camera controls, raised terrain, and mortal choices remain intact.</span>
+        <strong>V2.3.8: A CLOSER LOOK AT YOUR WORLD</strong>
+        <span>People keep their small in-world proportions when zooming closer,
+          while terrain and structures retain their illustrated 2.5D detail.
+          Right-click and drag to orbit, pinch to zoom and scroll with two
+          fingers to pan. Mortal choices and simulation rules are unchanged.</span>
       </div>
     </main>}
   </div>;
