@@ -4,19 +4,46 @@ import {SPECIES_INFO,type Agent} from './engine';
 import {ARCHITECTURE,buildingTier,type Building} from './construction';
 import {DEPTH_FOOTPRINT} from './spatialDetails';
 import {INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
+import {paintPerson,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH,
+  spriteKey} from './pixelArt';
 
 type Point={x:number;y:number};
 type Painter=CanvasRenderingContext2D;
+export type DepthArtDetail=0|1|2;
+export const depthArtDetail=(zoom:number):DepthArtDetail=>
+  zoom>=4?2:zoom>=2?1:0;
+export type PersonSpriteCache=Map<string,HTMLCanvasElement>;
 const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);
 };
 
-/** Mortals are tiny one-pixel-wide figures on the raised world map: a tile is
- * twelve pixels wide, and the taller trees and homes preserve a real sense of
- * scale. Full character detail remains in the close-up and portrait views. */
-export function paintDepthPerson(ctx:Painter,a:Pick<Agent,'species'|'id'> &
-  Partial<Pick<Agent,'innateTrait'|'awakening'>>,
-  p:Point,walking=false,showGlow=false):void{
+/** People remain tiny at world scale but gain identifiable pixel-art bodies
+ * and outfits when the player zooms in. The simulated tile size is unchanged. */
+export function paintDepthPerson(ctx:Painter,a:Agent,
+  p:Point,walking=false,showGlow=false,detail:DepthArtDetail=0,
+  cache?:PersonSpriteCache):void{
+  if(detail>0&&cache){
+    const key=spriteKey(a)+':'+(walking?'walk':'idle');
+    let image=cache.get(key);
+    if(!image){
+      image=document.createElement('canvas');
+      image.width=PERSON_SPRITE_WIDTH;image.height=PERSON_SPRITE_HEIGHT;
+      const painter=image.getContext('2d');
+      if(painter)paintPerson(painter,a,0,0,'south',walking?1:0,
+        walking?'walk':'idle');
+      if(cache.size>1200)cache.clear();
+      cache.set(key,image);
+    }
+    const w=detail===2?12:6,h=detail===2?16:8;
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(image,Math.round(p.x-w/2),Math.round(p.y-h+1),w,h);
+    if(showGlow&&a.awakening&&a.innateTrait){
+      const color=TRAIT_DOMAIN_INFO[INNATE_TRAIT_INFO[a.innateTrait].domain].color;
+      draw(ctx,color,p.x-w/2-2,p.y-h,2,2);
+      draw(ctx,color,p.x+w/2+1,p.y-h-2,2,2);
+    }
+    return;
+  }
   const width=DEPTH_FOOTPRINT.person;
   draw(ctx,'rgba(11,28,39,.7)',p.x,p.y+1,width,1);
   draw(ctx,SPECIES_INFO[a.species].color,p.x,p.y-2,width,2);
@@ -30,7 +57,8 @@ export function paintDepthPerson(ctx:Painter,a:Pick<Agent,'species'|'id'> &
   }
 }
 
-export function paintDepthTree(ctx:Painter,p:Point,pine:boolean,variant=0):void{
+export function paintDepthTree(ctx:Painter,p:Point,pine:boolean,variant=0,
+  detail:DepthArtDetail=0):void{
   const width=DEPTH_FOOTPRINT.tree*3;
   // Stacked crowns and separate canopy shadows produce actual silhouette
   // volume at the tiny 2.5D scale; decorative roots do not block movement.
@@ -66,12 +94,26 @@ export function paintDepthTree(ctx:Painter,p:Point,pine:boolean,variant=0):void{
       draw(ctx,'#d0d49f',p.x+3,p.y-17,1,2);
     }
   }
+  if(detail>=1){
+    // Close-up faceted highlights make the original pixel silhouette appear
+    // three-dimensional without changing terrain perspective or palette.
+    draw(ctx,pine?'#194439':'#285a45',p.x+width/3,p.y-10,3,5);
+    draw(ctx,pine?'#a5cda6':'#bcd89f',p.x-width/3,p.y-14,3,2);
+    draw(ctx,'#815e46',p.x-1,p.y-4,1,4);
+    if(detail===2){
+      draw(ctx,pine?'#4f9776':'#72ab75',p.x-width/3-1,p.y-11,3,3);
+      draw(ctx,'#d4dda5',p.x-2,p.y-17,2,1);
+      draw(ctx,'#52785a',p.x+2,p.y-4,3,2);
+      draw(ctx,'#322e34',p.x+1,p.y-2,2,2);
+    }
+  }
   draw(ctx,'#375b46',p.x-width/2,p.y-1,3,2);
 }
 
 /** Four-unit structures become taller and more durable with their real tier.
  * Construction and ruins remain visibly distinct from inhabited buildings. */
-export function paintDepthBuilding(ctx:Painter,b:Building,p:Point):void{
+export function paintDepthBuilding(ctx:Painter,b:Building,p:Point,
+  detail:DepthArtDetail=0):void{
   const style=ARCHITECTURE[b.culture],tier=buildingTier(b);
   const baseWidth=DEPTH_FOOTPRINT.building*3;
   const width=baseWidth+tier*2;
@@ -101,6 +143,12 @@ export function paintDepthBuilding(ctx:Painter,b:Building,p:Point):void{
     draw(ctx,style.roof,x+2,y-9,width-4,4);
     draw(ctx,'#385642',x+1,y-5,width-2,1);
     draw(ctx,'#e4cb82',x+3,y-7,2,1);
+    if(detail>=1){
+      draw(ctx,'#574b3c',x+width-4,y-6,2,4);
+      draw(ctx,'#e6d7a7',x+2,y-10,width-4,1);
+      if(detail===2)for(let row=0;row<3;row++)
+        draw(ctx,'#d8e3a0',x+4+row*3,y-5+row,1,2);
+    }
     return;
   }
   if(b.type==='well'){
@@ -109,6 +157,10 @@ export function paintDepthBuilding(ctx:Painter,b:Building,p:Point):void{
     draw(ctx,style.roof,x+2,y-11,width-4,3);
     draw(ctx,'#dbe4dd',x+4,y-5,width-8,1);
     draw(ctx,'#69798c',x+2,y-8,2,7);
+    if(detail>=1){
+      draw(ctx,'#ebdba9',x+width-4,y-7,2,5);
+      draw(ctx,'#77999b',x+5,y-3,width-10,1);
+    }
     return;
   }
   const bodyHeight=8+tier*2;
@@ -180,5 +232,19 @@ export function paintDepthBuilding(ctx:Painter,b:Building,p:Point):void{
     }
     draw(ctx,'#e7c793',x+1,y-5,width-2,2);
     draw(ctx,style.roof,x+1,y-8,4,3);
+  }
+  if(detail>=1){
+    draw(ctx,'rgba(18,25,37,.36)',x+width,y-bodyHeight+side,
+      side,bodyHeight-side);
+    draw(ctx,style.trim,x+2,y-bodyHeight+4,1,bodyHeight-6);
+    draw(ctx,'#ffecb7',x+width-6,y-bodyHeight+4,2,2);
+    draw(ctx,'#544c55',x+width-5,y-bodyHeight+6,1,2);
+    if(detail===2){
+      for(let roofX=3;roofX<width-3;roofX+=5)
+        draw(ctx,style.trim,x+roofX,y-bodyHeight-6,2,1);
+      draw(ctx,'#e8d8b4',x+width-2,y-bodyHeight+3,1,bodyHeight-4);
+      draw(ctx,'#6e5c52',x+width/2+2,y-4,1,2);
+      draw(ctx,style.trim,x+Math.floor(width/2)-2,y-6,5,1);
+    }
   }
 }
