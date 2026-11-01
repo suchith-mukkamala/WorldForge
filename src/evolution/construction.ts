@@ -9,6 +9,7 @@ import {harvestDeposit,type ResourceDeposit,
 import {hasHarbor} from './shipping';
 import {terrainBuildPenalty,terrainFarmFactor} from './terrainPhysics';
 import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
+import {wornPathTiles} from './trailNetwork';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
   'workshop','market','dock','communal'] as const;
@@ -433,14 +434,20 @@ function maintain(w:World,s:Settlement):void{
   }
 }
 
-/** Actual movement leaves wear; unused traces decay. A road follows repeated travel. */
+/** Repeated journeys carve paths. A lone walk leaves no permanent highway. */
 function updateRoutes(w:World,moved:number[]):void{
-  const wear=new Map((w.trails??[]).map(t=>[t.index,t.wear*.88]));
-  for(const index of moved)wear.set(index,Math.min(100,(wear.get(index)??0)+1.8));
-  w.trails=[...wear.entries()].filter(([,v])=>v>=.4)
+  // Cap same-tick traffic contributions so 1,000 people wandering through a
+  // single block do not instantly pave an entire settlement. Old excessively
+  // worn trails normalize quickly without invalidating existing world saves.
+  const wear=new Map((w.trails??[]).map(t=>[t.index,Math.min(24,t.wear)*.78]));
+  const visits=new Map<number,number>();
+  for(const index of moved)visits.set(index,Math.min(3,(visits.get(index)??0)+1));
+  for(const [index,count] of visits)
+    wear.set(index,Math.min(100,(wear.get(index)??0)+count*1.5));
+  w.trails=[...wear.entries()].filter(([,v])=>v>=1.1)
     .sort((a,b)=>b[1]-a[1]).slice(0,4000)
     .map(([index,v])=>({index,wear:round(v)}));
-  const established=new Set(w.trails.filter(t=>t.wear>=4).map(t=>t.index));
+  const established=wornPathTiles(w.trails,w.width,w.height);
   for(const s of w.settlements){
     const i=s.infrastructure;if(!i)continue;
     i.roads=i.land.filter(idx=>established.has(idx)).slice(0,300);

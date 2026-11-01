@@ -19,6 +19,7 @@ import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
 import {visibleCoastTile} from './worldOutline';
+import {wornPathTiles} from './trailNetwork';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -161,8 +162,10 @@ export function WorldCanvas({
       }
     }
     if(zoom>=2){
+      const worn=wornPathTiles(world.trails??[],world.width,world.height);
       for(const s of world.settlements){
         for(const id of s.infrastructure?.roads??[]){
+          if(!worn.has(id))continue;
           const x=id%W,y=Math.floor(id/W);
           ctx.fillStyle='rgba(239,207,151,.65)';
           ctx.fillRect(x*CELL+1,y*CELL+2,CELL-2,2);

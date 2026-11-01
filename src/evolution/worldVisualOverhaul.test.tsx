@@ -67,7 +67,8 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
   });
   it('draws detail and real roads without mutating geography or RNG',()=>{
     const world=createWorld({seed:2156,size:'small'});
-    world.trails=[{index:world.width*5+9,wear:4}];
+    const start=world.width*5+9;
+    world.trails=[0,1,2].map(dx=>({index:start+dx,wear:16}));
     const heights=new Array(world.width*world.height).fill(90);
     const operations:string[]=[];
     const ctx={
@@ -82,8 +83,11 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
     const before=JSON.stringify(world);
     const roadKey=depthRoadSignature(world);
     expect(depthRoadSignature(world)).toBe(roadKey);
-    expect(paintDepthRoads(ctx,world,heights,projector)).toBe(1);
+    expect(paintDepthRoads(ctx,world,heights,projector)).toBe(3);
     world.trails=[...world.trails,{index:world.width*6+10,wear:1}];
+    expect(depthRoadSignature(world)).toBe(roadKey);
+    world.trails.pop();
+    world.trails.push({index:start+3,wear:16});
     expect(depthRoadSignature(world)).not.toBe(roadKey);
     world.trails.pop();
     for(let x=0;x<15;x++)
