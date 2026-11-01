@@ -3,15 +3,17 @@ import {calendarDate,MONTH_NAMES} from './calendar';
 import {personName} from './identity';
 import {SPECIES_INFO} from './engine';
 import type {MortalAction} from './mortalGameplay';
+import type {MortalCameraMode} from './adventureCamera';
 
 const nameOf=(world:World,agent:Agent)=>personName(world,
   world.lineage.find(r=>r.id===agent.id)??{id:agent.id,species:agent.species});
 
 /** Small in-world controls; the underlying map stays the primary screen. */
 export function MortalHUD({world,nearby,targetId,message,running,
-  onTalk,onSelect,onClose,onToggleTime,onLeave}:{
+  cameraMode='adventure',onToggleCamera,onTalk,onSelect,onClose,onToggleTime,onLeave}:{
   world:World;nearby:Agent[];targetId:number|null;message:string;
-  running:boolean;onTalk:(action:MortalAction)=>void;
+  running:boolean;cameraMode?:MortalCameraMode;onToggleCamera?:()=>void;
+  onTalk:(action:MortalAction)=>void;
   onSelect:(id:number)=>void;onClose:()=>void;
   onToggleTime:()=>void;onLeave:()=>void;
 }){
@@ -30,9 +32,14 @@ export function MortalHUD({world,nearby,targetId,message,running,
       <div className="evo-mortal-keys">
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk</span>
         <span><kbd>E</kbd> Talk</span>
+        <span><kbd>V</kbd> View</span>
         <span><kbd>P</kbd> Time</span>
       </div>
       <div className="evo-mortal-actions">
+        {onToggleCamera&&<button onClick={onToggleCamera}
+          title="Switch between the close adventure camera and the traditional atlas"
+          aria-label="Switch mortal camera perspective">
+          {cameraMode==='adventure'?'◈ ADVENTURE VIEW':'▦ ATLAS VIEW'}</button>}
         <button onClick={()=>nearby.length&&onSelect(nearby[0].id)}
           disabled={!nearby.length} title="Talk with a nearby inhabitant">
           ◈ INTERACT {nearby.length?'('+nearby.length+')':''}</button>
