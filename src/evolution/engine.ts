@@ -55,8 +55,14 @@ export type WorldSettings={
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
+/** A mortal's chosen appearance is optional: older NPCs retain seeded looks. */
+export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
+export type MortalAppearance={skin:number;hair:number;hairStyle:number;
+  outfit:MortalOutfit};
+export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
+  appearance?:MortalAppearance;
   potentialRank?:TraitRank;
   innateTrait?:InnateTraitId;
   traitHeritage?:TraitHeritage;
@@ -75,6 +81,7 @@ export type LifeMoment={year:number;
     'independence'|'divine'|'discovery'|'awakening';text:string;relatedIds?:number[]};
 export type LineageRecord={id:number;species:Species;ancestry:Ancestry;
   genes:Genes;born:number;died?:number;generation:number;name?:string;house?:string;
+  appearance?:MortalAppearance;
   potentialRank?:TraitRank;
   innateTrait?:InnateTraitId;
   traitHeritage?:TraitHeritage;
@@ -116,6 +123,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
   demography?:Demography;codex?:WorldCodex;
+  descent?:DivineDescent;
   publicHealth?:PublicHealthState;
   households?:Household[];nextHouseholdId?:number;divine?:DivineState;
   ruins?:RuinSite[];trails?:Trail[];deposits?:ResourceDeposit[];
@@ -835,6 +843,10 @@ export function isWorld(value:unknown):value is World{
   const checkGenes=(g:Genes)=>!!g&&
     (['vigor','curiosity','fertility','social'] as const).every(k=>
       Number.isFinite(g[k])&&g[k]>=.5&&g[k]<=1.5);
+  const checkAppearance=(a:MortalAppearance)=>!!a&&
+    [a.skin,a.hair].every(n=>Number.isInteger(n)&&n>=0&&n<4)&&
+    Number.isInteger(a.hairStyle)&&a.hairStyle>=0&&a.hairStyle<3&&
+    ['wanderer','forager','artisan','scholar'].includes(a.outfit);
   const checkAncestry=(a:Ancestry)=>!!a&&SPECIES.every(s=>
     Number.isFinite(a[s])&&a[s]>=0&&a[s]<=1)&&
     Math.abs(SPECIES.reduce((sum,s)=>sum+a[s],0)-1)<.0001;
@@ -875,6 +887,7 @@ export function isWorld(value:unknown):value is World{
       !within(width,height,a.x,a.y)||!Number.isInteger(a.age)||a.age<0||
       !Number.isInteger(a.born)||!Number.isInteger(a.generation)||a.generation<0||
       !checkAncestry(a.ancestry)||!checkGenes(a.genes)||
+      (a.appearance!==undefined&&!checkAppearance(a.appearance))||
       (a.potentialRank!==undefined&&!isTraitRank(a.potentialRank))||
       (a.innateTrait!==undefined&&!isInnateTrait(a.innateTrait))||
       (a.traitHeritage!==undefined&&!isTraitHeritage(a.traitHeritage))||
@@ -951,6 +964,7 @@ export function isWorld(value:unknown):value is World{
   for(const r of w.lineage){
     if(!r||!Number.isSafeInteger(r.id)||r.id<=0||records.has(r.id)||
       !SPECIES.includes(r.species)||!checkGenes(r.genes)||
+      (r.appearance!==undefined&&!checkAppearance(r.appearance))||
       (r.potentialRank!==undefined&&!isTraitRank(r.potentialRank))||
       (r.innateTrait!==undefined&&!isInnateTrait(r.innateTrait))||
       (r.traitHeritage!==undefined&&!isTraitHeritage(r.traitHeritage))||
@@ -975,6 +989,13 @@ export function isWorld(value:unknown):value is World{
       (r.parents!==undefined&&(!Array.isArray(r.parents)||r.parents.length!==2||
         !r.parents.every(id=>Number.isSafeInteger(id)&&id>0))))return false;
     records.add(r.id);
+  }
+  if(w.descent!==undefined){
+    const d=w.descent;
+    if(!d||!Number.isSafeInteger(d.agentId)||!records.has(d.agentId)||
+      !['mortal','divine'].includes(d.mode)||
+      !Number.isInteger(d.createdYear)||d.createdYear<0||d.createdYear>year)
+      return false;
   }
   // Optional because v0.2 JSON saves had no diagnostics. New saves are
   // populated with statistics from the year they begin tracking.

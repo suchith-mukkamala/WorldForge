@@ -25,6 +25,8 @@ import {cameraScrollTarget} from './motion';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
+import {DivineDescentCreator} from './DivineDescentCreator';
+import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
 import {freshWorldSeed} from './worldSeeds';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
@@ -67,7 +69,7 @@ function initialWorld():World{
   });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
-  'settlements'|'culture';
+  'settlements'|'culture'|'descent';
 const format=(n:number)=>n.toLocaleString('en-US');
 const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
   ['low','LOW'],['classic','CLASSIC'],['high','HIGH'],
@@ -178,6 +180,7 @@ export function WorldforgeApp(){
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
+  const restoredDescentRef=useRef<number|null>(null);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
@@ -573,7 +576,8 @@ export function WorldforgeApp(){
     requestSimulation,publishPrepared]);
   useEffect(()=>{
     if(playing&&(!world.agents.length||world.year>=9999))setPlaying(false);
-  },[world.agents.length,world.year,playing]);
+    if(playing&&world.descent?.mode==='mortal')setPlaying(false);
+  },[world.agents.length,world.year,world.descent?.mode,playing]);
   const counts=useMemo(()=>population(world),[world]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
@@ -583,6 +587,25 @@ export function WorldforgeApp(){
       setNotice('The person you were following is no longer alive. Camera follow ended.');
     }
   },[followId,world.agents]);
+  // A saved mortal opens centered on their own life, rather than an empty
+  // corner of the map. Reapply only when entering descent, not every year.
+  useEffect(()=>{
+    if(!storageReady)return;
+    const id=world.descent?.mode==='mortal'?world.descent.agentId:null;
+    if(id===null){restoredDescentRef.current=null;return;}
+    if(restoredDescentRef.current===id)return;
+    const mortal=world.agents.find(a=>a.id===id);
+    if(!mortal){
+      setWorld(w=>setDescentMode(w,'divine'));
+      setNotice('Your mortal has passed away. You have returned to god mode.');
+      return;
+    }
+    restoredDescentRef.current=id;
+    setPlaying(false);setMapView('depth');setZoom(v=>Math.max(4,v));
+    setSelected({x:mortal.x,y:mortal.y});setSelectedAgentId(id);
+    setFollowId(id);setMapFocus(id);setTab('world');
+  },[storageReady,world.descent?.agentId,world.descent?.mode,world.agents,
+    setWorld,setPlaying]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
@@ -724,11 +747,46 @@ export function WorldforgeApp(){
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
   const step=(days:number)=>{
+    if(currentWorld.current.descent?.mode==='mortal'){
+      setNotice('The mortal preview is paused. Real-time world time arrives in v2.5.1.');
+      return;
+    }
     setPlaying(false);setWorld(w=>advanceWorldDays(w,days));
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
+    if(next==='powers'&&currentWorld.current.descent?.mode==='mortal'){
+      setWorld(w=>setDescentMode(w,'divine'));setFollowId(null);
+    }
     setTab(next);setNotice('');
+  };
+  const enterMortalView=(id:number)=>{
+    const person=currentWorld.current.agents.find(a=>a.id===id);
+    if(!person){setNotice('That mortal is no longer alive.');return;}
+    setPlaying(false);
+    setWorld(w=>setDescentMode(w,'mortal'));
+    setMapView('depth');setZoom(v=>Math.max(4,v));
+    setSelected({x:person.x,y:person.y});setSelectedAgentId(id);
+    setFollowId(id);setMapFocus(id);setBrush({kind:'inspect'});
+    setTab('world');setNotice('Mortal preview active. WASD movement is next in v2.5.1.');
+  };
+  const createDescent=(options:MortalCreation)=>{
+    try{
+      const result=createMortal(currentWorld.current,options);
+      setWorld(result.world);
+      // State has not committed yet; use the newly created agent directly.
+      setPlaying(false);setMapView('depth');setZoom(v=>Math.max(4,v));
+      setSelected({x:result.agent.x,y:result.agent.y});
+      setSelectedAgentId(result.agent.id);setFollowId(result.agent.id);
+      setMapFocus(result.agent.id);setBrush({kind:'inspect'});
+      setTab('world');setNotice('A new mortal has entered the world. '+
+        'Real-time movement is coming in v2.5.1.');
+    }catch(error){setNotice(error instanceof Error?error.message:
+      'Unable to create your mortal.');}
+  };
+  const leaveMortalView=()=>{
+    setPlaying(false);setWorld(w=>setDescentMode(w,'divine'));
+    setFollowId(null);setTab('world');setNotice('Returned to god mode.');
   };
   const applyDivine=(action:DivineAction)=>{
     setPlaying(false);
@@ -758,6 +816,9 @@ export function WorldforgeApp(){
         <button aria-current={tab==='powers'?'page':undefined}
           className={tab==='powers'?'active':''} onClick={()=>navigate('powers')}>
           ⚡ GOD MODE</button>
+        <button aria-current={tab==='descent'?'page':undefined}
+          className={tab==='descent'?'active':''} onClick={()=>navigate('descent')}>
+          ◇ DESCEND</button>
         <details key={tab} className="evo-nav-more">
           <summary>☰ EXPLORE</summary>
           <div className="evo-nav-more-panel">
@@ -777,13 +838,22 @@ export function WorldforgeApp(){
         {savedDate&&<small> · SAVED Y{savedDate.year} {MONTH_NAMES[savedDate.month]}
           {' '}{savedDate.day}</small>}</div>
     </header>
-    {tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
+    {tab==='descent'?<DivineDescentCreator world={world} error={notice}
+      onCreate={createDescent}
+      onResume={()=>world.descent&&enterMortalView(world.descent.agentId)}
+      onReturn={leaveMortalView}/>:
+    tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
       current={world.settings} onCreate={startWorld} onReturn={()=>navigate('world')}/>:
     tab==='history'?<EvolutionHistory world={world}/>:
     tab==='settlements'?<Suspense fallback={<main className="evo-history-page" role="status">
       Opening the settlement atlas…</main>}><SettlementView world={world}
       selectedId={selectedSettlementId} onFindOnMap={findSettlement}
-      playing={playing} onTogglePlay={()=>setPlaying(v=>!v)}
+      playing={playing} onTogglePlay={()=>{
+        if(world.descent?.mode==='mortal'){
+          setNotice('Return to god mode before advancing the world clock.');return;
+        }
+        setPlaying(v=>!v);
+      }}
       onAdvance={step}/></Suspense>:
     tab==='family'?<WorldFamily world={world} focusId={selectedAgentId}
       onChoose={focusPerson} onShowOnMap={findOnMap}
@@ -807,6 +877,12 @@ export function WorldforgeApp(){
       onFindOnMap={findOnMap}/>
       {notice&&<p className="evo-notice" role="status">{notice}</p>}</>:
     <main className="evo-playground">
+      {world.descent?.mode==='mortal'&&<div className="evo-mortal-banner" role="status">
+        <div><strong>✦ DIVINE DESCENT — MORTAL PREVIEW</strong>
+          <span>Living character created. WASD movement and real-time pacing
+            arrive in v2.5.1.</span></div>
+        <button onClick={leaveMortalView}>↑ RETURN TO GOD MODE</button>
+      </div>}
       <header className="evo-playground-heading">
         <div>
           <span className="evo-overline">YOUR LIVING WORLD</span>
@@ -818,11 +894,13 @@ export function WorldforgeApp(){
           <button className="evo-new-world-button" onClick={()=>navigate('creator')}>
             ✧ NEW WORLD</button>
           <button className={playing?'playing evo-play-main':'evo-play-main'}
-            disabled={!world.agents.length||world.year>=9999}
+            disabled={!world.agents.length||world.year>=9999||
+              world.descent?.mode==='mortal'}
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
           <div className="evo-step-actions" role="group"
             aria-label="Advance the world clock">
-            <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
+            <button onClick={()=>step(365)} disabled={world.descent?.mode==='mortal'}
+              title="Advance one simulated year">+YEAR</button>
             <details className="evo-more-steps">
               <summary aria-label="More time advances">OTHER STEPS</summary>
               <div className="evo-extra-steps">
