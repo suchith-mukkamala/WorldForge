@@ -11,6 +11,7 @@ import {bridgeTiles,caravanPace,considerTradeBridge,findTradeRoute} from './tran
 import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
 import {accordBetween} from './institutions';
 import {addResident,removeResident,residentIndex,tileCapacity} from './density';
+import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
 
 export const JOBS=['farmer','woodcutter','miner','builder','artisan','trader'] as const;
 export type Job=typeof JOBS[number];
@@ -173,10 +174,14 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
   const slots=JOBS.flatMap(job=>Array.from({length:caps[job]},(_,index)=>({job,
     priority:priorities[job]-index*.75}))).sort((a,b)=>b.priority-a.priority||
       JOBS.indexOf(a.job)-JOBS.indexOf(b.job));
-  for(const slot of slots){
-    let selected:Agent|undefined,best=-Infinity;
-    for(const a of adults){
-      if(assigned.has(a.id))continue;
+  // Rank each profession once per adult. Rescanning every adult for every
+  // available work slot made crowded towns quadratic in population. Original
+  // resident order breaks score ties, preserving deterministic assignments.
+  const candidates=new Map<Job,{agent:Agent;score:number;order:number}[]>();
+  const offsets=new Map<Job,number>();
+  for(const job of JOBS){
+    if(!caps[job])continue;
+    const ranked=adults.map((a,order)=>{
       const d=a.development,skill=d?.skills;
       const bonus={farmer:(skill?.foraging??0)*.07+(d?.career==='forager'?9:0)+
           (knows(a,'agriculture')?8:0),
@@ -190,11 +195,19 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
           (knows(a,'metallurgy')?8:0),
         trader:(skill?.diplomacy??0)*.09+(d?.career==='trader'?16:0)+
           (knows(a,'navigation')?5:0),
-      }[slot.job];
+      }[job];
       const score=bonus+a.energy*.03+(d?.values.community??50)*.008+
         ((a.id*17+w.year*7)%13)*.001;
-      if(score>best){best=score;selected=a;}
-    }
+      return {agent:a,score,order};
+    }).sort((a,b)=>b.score-a.score||a.order-b.order);
+    candidates.set(job,ranked);offsets.set(job,0);
+  }
+  for(const slot of slots){
+    const ranked=candidates.get(slot.job)!;
+    let offset=offsets.get(slot.job)!;
+    while(offset<ranked.length&&assigned.has(ranked[offset].agent.id))offset++;
+    offsets.set(slot.job,offset+1);
+    const selected=ranked[offset]?.agent;
     if(!selected)break;
     selected.work={job:slot.job,settlementId:s.id};
     assigned.add(selected.id);e.jobs[slot.job]++;
@@ -541,12 +554,14 @@ export function advanceEconomy(w:World,moved:number[]=[]):void{
   const travelling=resolveShipments(w,moved);
   for(const a of w.agents)if(!travelling.has(a.id))a.work=undefined;
   const assigned=new Set<number>();
+  const byTile=indexAgentsByTile(w.agents,w.width);
   const deposits=new Map((w.deposits??[]).map(d=>[d.index,d]));
   for(const s of w.settlements){
     // A burned-out or abandoned warehouse may reduce capacity between ticks.
     // Excess provisions are lost on the next economic update, never duplicated.
     s.economy!.food=rounded(Math.min(s.economy!.food,capacity(s,'food')));
-    const residents=w.agents.filter(a=>distance(a,s)<=6&&!assigned.has(a.id));
+    const residents=nearbyAgents(byTile,w.width,s,6)
+      .filter(a=>!assigned.has(a.id));
     s.economy!.specialty=inferSpecialty(w,s,deposits);
     allocateJobs(w,s,residents,travelling);
     for(const a of residents){if(a.work?.settlementId===s.id)assigned.add(a.id);}

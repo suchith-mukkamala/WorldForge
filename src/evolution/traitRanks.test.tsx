@@ -19,9 +19,14 @@ describe('v2.1.1 — potential is rare, fixed and separate from real training',(
         TRAIT_RANK_INFO[TRAIT_RANKS[i-1]].birthRate);
     }
     expect(rankForRoll(0)).toBe('F');
-    expect(rankForRoll(.5)).toBe('D');
-    expect(rankForRoll(.985)).toBe('SS');
-    expect(rankForRoll(.9999)).toBe('SSS');
+    expect(rankForRoll(.5)).toBe('F');
+    expect(rankForRoll(.985)).toBe('C');
+    expect(rankForRoll(.9999)).toBe('S+');
+    let start=0;
+    for(const rank of TRAIT_RANKS){
+      expect(rankForRoll(start+TRAIT_RANK_INFO[rank].birthRate/200)).toBe(rank);
+      start+=TRAIT_RANK_INFO[rank].birthRate/100;
+    }
     expect(proficiencyRank(0)).toBe('F');
     expect(proficiencyRank(67)).toBe('S');
     expect(proficiencyRank(100)).toBe('SSS');
@@ -38,12 +43,24 @@ describe('v2.1.1 — potential is rare, fixed and separate from real training',(
     const counts=Object.fromEntries(TRAIT_RANKS.map(r=>[r,0])) as
       Record<(typeof TRAIT_RANKS)[number],number>;
     for(let id=1;id<=20000;id++)counts[birthPotentialRank(514,id,genes)]++;
-    expect(counts.F).toBeGreaterThan(4500);
-    expect(counts.F).toBeLessThan(6800);
-    expect(counts.SSS).toBeGreaterThan(10);
-    expect(counts.SSS).toBeLessThan(55);
-    expect(counts.SSS).toBeLessThan(counts.SS);
+    expect(counts.F).toBeGreaterThan(15500);
+    expect(counts.F).toBeLessThan(16500);
+    expect(counts.SSS).toBe(0);
+    expect(counts['SS+']).toBeLessThan(2);
+    expect(counts.S).toBeLessThan(25);
+    expect(counts.SSS).toBeLessThanOrEqual(counts.SS);
     expect(counts['S+']).toBeLessThan(counts.S);
+  });
+
+  it('reserves the exceptional tail for genuinely rare births',()=>{
+    expect(TRAIT_RANK_INFO.SSS.birthRate).toBeLessThanOrEqual(.00005);
+    expect(TRAIT_RANK_INFO.SS.birthRate).toBeLessThanOrEqual(.003);
+    expect(TRAIT_RANK_INFO.S.birthRate).toBeLessThanOrEqual(.06);
+    expect(TRAIT_RANK_INFO.F.birthRate).toBeGreaterThanOrEqual(80);
+    // A stable seed must never consume simulation RNG or favor one species.
+    const genes={vigor:1,curiosity:1,fertility:1,social:1};
+    expect(birthPotentialRank(12,778,genes)).toBe(
+      birthPotentialRank(12,778,genes));
   });
 
   it('assigns a permanent seed-derived potential to founders and their archive',()=>{

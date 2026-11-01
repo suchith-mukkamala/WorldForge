@@ -16,7 +16,7 @@ export const depthArtDetail=(zoom:number):DepthArtDetail=>
 export type PersonSpriteCache=Map<string,HTMLCanvasElement>;
 // Characters have a fixed footprint in world coordinates. Zoom magnifies the
 // entire canvas uniformly; crossing detail thresholds must not inflate people.
-export const DEPTH_PERSON_SIZE={width:3,height:5} as const;
+export const DEPTH_PERSON_SIZE={width:2,height:3} as const;
 const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);
 };
