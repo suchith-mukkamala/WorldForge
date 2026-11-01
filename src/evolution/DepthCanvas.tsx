@@ -10,16 +10,18 @@ import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
   depthRoadSignature} from './depthWorldArt';
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
-import {depthArtDetail,paintDepthBuilding,paintDepthPerson,paintDepthTree,
+import {buildingVisualScale,depthArtDetail,depthRenderDensity,
+  paintDepthBuilding,paintDepthPerson,paintDepthTree,
   paintDepthSettlementHub,
   type DepthArtDetail,type PersonSpriteCache} from './depthSprites';
-import {depthStructureSignature,visibleDistrictBuildings} from './depthPerformance';
+import {depthStructureSignature,uncrowdedDistrictBuildings,
+  visibleDistrictBuildings} from './depthPerformance';
 import {buildingTier,settlementStage,type Building} from './construction';
 import type {Agent} from './engine';
 import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
-  type Motion,type Point} from './motion';
+  type Facing,type Motion,type Point} from './motion';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
   tileFromHit,tileHitColor,type DepthCamera} from './depthProjection';
 
@@ -258,7 +260,10 @@ function paintCachedBuilding(ctx:CanvasRenderingContext2D,b:Building,
     if(cache.size>160)cache.clear();
     cache.set(key,sprite);
   }
-  ctx.drawImage(sprite,Math.round(p.x)-32,Math.round(p.y)-54);
+  const scale=buildingVisualScale(b.type);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(sprite,Math.round(p.x-32*scale),
+    Math.round(p.y-54*scale),64*scale,64*scale);
 }
 /** Geometry and structures are immutable throughout an animation. Build
  * projected actors only when the world or camera changes. */
@@ -266,6 +271,7 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
   projector:Projector,cache:BuildingSpriteCache,
   detail:DepthArtDetail):DepthActor[]{
   const heights=topographyForWorld(w).heights,actors:DepthActor[]=[];
+  const projected:{building:Building;x:number;y:number;p:Pt}[]=[];
   for(const s of w.settlements){
     const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
     actors.push({order:p.y+.2,paint:()=>{
@@ -276,10 +282,12 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
         heights[building.y*w.width+building.x]);
       return {building,x:p.x,y:p.y,p};
     });
-    for(const {building,p} of visibleDistrictBuildings(buildings,detail)){
-      actors.push({order:p.y+.4,
-        paint:()=>paintCachedBuilding(ctx,building,p,cache,detail)});
-    }
+    projected.push(...buildings);
+  }
+  for(const {building,p} of uncrowdedDistrictBuildings(
+    visibleDistrictBuildings(projected,detail))){
+    actors.push({order:p.y+.4,
+      paint:()=>paintCachedBuilding(ctx,building,p,cache,detail)});
   }
   return actors;
 }
@@ -287,7 +295,8 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   selected:{x:number;y:number}|null,zoom:number,
   positions:Map<number,Point>,walking:Set<number>,projector:Projector,
   structures:DepthActor[],visibleAgents:readonly Agent[],
-  sprites:PersonSpriteCache):void{
+  sprites:PersonSpriteCache,
+  facing:Map<number,Facing>,stride:Map<number,0|1|2|3>):void{
   const heights=topographyForWorld(w).heights;
   const actors:DepthActor[]=[...structures];
   for(const a of visibleAgents){
@@ -295,7 +304,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     const p=projector.project(pos.x,pos.y,heights[a.y*w.width+a.x]);
     actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id),
       zoom>=2||!!selected&&selected.x===a.x&&selected.y===a.y,
-      sprites)});
+      sprites,facing.get(a.id)??'south',stride.get(a.id)??0)});
   }
   actors.sort((a,b)=>a.order-b.order);
   for(const actor of actors)actor.paint();
@@ -341,12 +350,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
+  const facingRef=useRef<Map<number,Facing>>(new Map());
   const projector=createDepthProjector(world,relief,camera);
   const size=projector.size;
   // Pinch changes the canvas CSS scale continuously. Rebuilding the terrain
   // and NPC layers on every fractional zoom would cause trackpad stutter.
   // Only population visibility/detail thresholds require an actual repaint.
   const zoomDetailTier=depthArtDetail(zoom);
+  const density=depthRenderDensity(zoom,size);
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
@@ -356,8 +367,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const atmosphere=atmosphereRef.current??document.createElement('canvas');
     atmosphereRef.current=atmosphere;
     const resize=(c:HTMLCanvasElement)=>{
-      if(c.width!==canvas.width)c.width=canvas.width;
-      if(c.height!==canvas.height)c.height=canvas.height;
+      if(c.width!==size.width)c.width=size.width;
+      if(c.height!==size.height)c.height=size.height;
     };
     resize(scenery);resize(picking);resize(atmosphere);
     if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
@@ -405,6 +416,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       world.year<previous.year||world.year-previous.year>1||
       world.year===previous.year&&day<previous.day){
       motionsRef.current.clear();
+      facingRef.current.clear();
     }else if(previous.year!==world.year||previous.day!==day){
       const moving=new Map<number,Motion>();
       for(const [id,to] of positions){
@@ -433,18 +445,26 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       actors:structures};
     let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // Maintain identical world-space positions and hit-testing at every
+      // zoom; additional pixels resolve the atlas instead of enlarging it.
+      ctx.setTransform(density,0,0,density,0,0);
+      ctx.clearRect(0,0,size.width,size.height);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
       if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
+      const strides=new Map<number,0|1|2|3>();
       for(const [id,target] of positions){
         const motion=motionsRef.current.get(id);
         const frame=motion?motionFrame(motion,time):null;
         interpolated.set(id,frame??target);
-        if(frame?.walking)walking.add(id);
+        if(frame?.walking){
+          walking.add(id);strides.set(id,frame.stride);
+          facingRef.current.set(id,frame.facing);
+        }
       }
       paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
-        projector,structures,visibleAgents,personSpritesRef.current);
+        projector,structures,visibleAgents,personSpritesRef.current,
+        facingRef.current,strides);
       const tracked=followId!==null?interpolated.get(followId):undefined;
       if(tracked&&onFollowPosition&&(!lastFollow||
         Math.abs(tracked.x-lastFollow.x)>.12||
@@ -458,7 +478,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     // synchronously inside the effect stalls input at every world tick.
     frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
-  },[world,overlay,selected,zoomDetailTier,speed,relief,
+  },[world,overlay,selected,zoomDetailTier,density,speed,relief,
     camera.yaw,camera.pitch,followId,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
@@ -490,7 +510,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     }else onSelect(x,y);
   };
   return <canvas ref={canvasRef} className="evo-world-canvas evo-depth-canvas"
-    width={size.width} height={size.height}
+    width={size.width*density} height={size.height*density}
     style={{width:(zoom*100)+'%'}} role="grid" tabIndex={0}
     aria-label={'Isometric terrain depth view with exaggerated cliffs and orbit camera: '+world.width+' by '+
       world.height+' world cells. Click a raised tile to '+

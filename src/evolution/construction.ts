@@ -66,6 +66,16 @@ const clamp=(v:number,a=0,b=100)=>Math.max(a,Math.min(b,v));
 const round=(v:number)=>Math.round(v*100)/100;
 const distance=(a:{x:number;y:number},b:{x:number;y:number})=>
   Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
+/** Buildings are physical plots, not single-pixel markers. A buffer around
+ * adjacent plots preserves walking lanes and prevents stacked roof silhouettes
+ * in the isometric view, irrespective of the current camera angle. */
+export function buildingSiteClear(at:{x:number;y:number},type:BuildingType,
+  buildings:readonly Pick<Building,'x'|'y'|'type'>[],
+  center:{x:number;y:number}):boolean{
+  if(distance(at,center)<(type==='communal'?3:2))return false;
+  return buildings.every(other=>distance(at,other)>=
+    (type==='communal'||other.type==='communal'?3:2));
+}
 const position=(w:World,x:number,y:number)=>y*w.width+x;
 const inWorld=(w:World,x:number,y:number)=>x>=0&&y>=0&&x<w.width&&y<w.height;
 const complete=(b:Building)=>b.stage==='complete';
@@ -188,13 +198,17 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
 
 /** Site selection is based on safety, biome suitability and real routes. */
 function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:number}|null{
-  const infra=s.infrastructure!,used=new Set(infra.buildings.map(b=>position(w,b.x,b.y)));
+  const infra=s.infrastructure!;
+  const neighbors=w.settlements.filter(other=>other.id!==s.id&&
+    distance(other,s)<=12);
+  const buildings=[...infra.buildings,...neighbors.flatMap(other=>
+    other.infrastructure?.buildings??[])];
   const roads=new Set(infra.roads);
   let best=-Infinity,target:null|{x:number;y:number}=null;
   for(const id of infra.land){
-    if(used.has(id))continue;
     const x=id%w.width,y=Math.floor(id/w.width),tile=w.tiles[id];
     if(tile.biome==='water')continue;
+    if(!buildingSiteClear({x,y},type,buildings,s))continue;
     if(type==='dock'&&![-1,0,1].some(dx=>[-1,0,1].some(dy=>
       (dx||dy)&&inWorld(w,x+dx,y+dy)&&
       w.tiles[position(w,x+dx,y+dy)].biome==='water')))continue;
