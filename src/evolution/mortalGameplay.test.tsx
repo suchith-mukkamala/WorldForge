@@ -265,7 +265,7 @@ describe('v2.5.3 — physical entrances and assisted movement',()=>{
       onClose:()=>{},onToggleTime:()=>{},onLeave:()=>{},
     }));
     expect(markup).toContain('Nearby building');
-    expect(markup).toContain('Explorable interiors');
+    expect(markup).toContain('ready to explore');
     expect(w.descent?.mode).toBe('mortal');
   });
 });
