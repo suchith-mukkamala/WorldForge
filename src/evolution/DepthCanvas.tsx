@@ -10,7 +10,7 @@ import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
   depthRoadSignature} from './depthWorldArt';
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
-import {buildingVisualScale,depthArtDetail,depthRenderDensity,
+import {buildingVisualScale,depthArtDetail,depthRenderDensity,depthSceneryDensity,
   paintDepthBuilding,paintDepthPerson,paintDepthTree,
   paintDepthSettlementHub,
   type DepthArtDetail,type PersonSpriteCache} from './depthSprites';
@@ -24,6 +24,7 @@ import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalMovementDelay} from './mortalGameplay';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
+  interpolatedGroundHeight,
   tileFromHit,tileHitColor,type DepthCamera} from './depthProjection';
 
 const BASINS=['#385e60','#4a6758','#536072','#637056',
@@ -101,15 +102,17 @@ function paintCachedTree(ctx:CanvasRenderingContext2D,p:Pt,pine:boolean,
  */
 function renderTerrain(w:World,overlay:MapOverlay,
   ctx:CanvasRenderingContext2D,hit:CanvasRenderingContext2D,
-  projector:Projector,detailTier:DepthArtDetail,trees:TreeSpriteCache){
+  projector:Projector,detailTier:DepthArtDetail,trees:TreeSpriteCache,
+  sceneryDensity:number){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
-  const skyline=ctx.createLinearGradient(0,0,0,ctx.canvas.height);
+  const skyline=ctx.createLinearGradient(0,0,0,ctx.canvas.height/sceneryDensity);
   skyline.addColorStop(0,'#10233b');
   skyline.addColorStop(.5,'#142a3b');
   skyline.addColorStop(1,'#091928');
-  ctx.fillStyle=skyline;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  ctx.fillStyle=skyline;ctx.fillRect(0,0,
+    ctx.canvas.width/sceneryDensity,ctx.canvas.height/sceneryDensity);
   hit.clearRect(0,0,hit.canvas.width,hit.canvas.height);
   ctx.imageSmoothingEnabled=false;hit.imageSmoothingEnabled=false;
   const ordered=Array.from({length:W*H},(_,i)=>i);
@@ -302,7 +305,11 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   const actors:DepthActor[]=[...structures];
   for(const a of visibleAgents){
     const pos=positions.get(a.id)??{x:a.x,y:a.y};
-    const p=projector.project(pos.x,pos.y,heights[a.y*w.width+a.x]);
+    // Both the horizontal position and the changing elevation must advance
+    // continuously. Sampling only the destination tile used to make people
+    // leap vertically as soon as a step onto a slope began.
+    const ground=interpolatedGroundHeight(heights,w.width,w.height,pos.x,pos.y);
+    const p=projector.projectSmooth(pos.x,pos.y,ground);
     actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id),
       zoom>=2||!!selected&&selected.x===a.x&&selected.y===a.y,
       sprites,facing.get(a.id)??'south',stride.get(a.id)??0)});
@@ -347,7 +354,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
-    detail:DepthArtDetail}|null>(null);
+    detail:DepthArtDetail;sceneryDensity:number}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
@@ -359,6 +366,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   // Only population visibility/detail thresholds require an actual repaint.
   const zoomDetailTier=depthArtDetail(zoom);
   const density=depthRenderDensity(zoom,size);
+  const sceneryDensity=depthSceneryDensity(zoom,size);
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
@@ -367,11 +375,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     sceneryRef.current=scenery;pickingRef.current=picking;
     const atmosphere=atmosphereRef.current??document.createElement('canvas');
     atmosphereRef.current=atmosphere;
-    const resize=(c:HTMLCanvasElement)=>{
-      if(c.width!==size.width)c.width=size.width;
-      if(c.height!==size.height)c.height=size.height;
+    const resize=(c:HTMLCanvasElement,scale=1)=>{
+      if(c.width!==size.width*scale)c.width=size.width*scale;
+      if(c.height!==size.height*scale)c.height=size.height*scale;
     };
-    resize(scenery);resize(picking);resize(atmosphere);
+    resize(scenery,sceneryDensity);resize(picking);resize(atmosphere);
     if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
       world.settings.seed,world.year,world.dayOfYear??0,'depth');
     const backdrop=scenery.getContext('2d'),hit=picking.getContext('2d',
@@ -386,15 +394,18 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
       stamp.detail!==zoomDetailTier||
+      stamp.sceneryDensity!==sceneryDensity||
       stamp.yaw!==camera.yaw||
       stamp.pitch!==camera.pitch||
       overlay==='deposits'&&stamp.deposits!==world.deposits){
+      backdrop.setTransform(sceneryDensity,0,0,sceneryDensity,0,0);
       renderTerrain(world,overlay,backdrop,hit,projector,
-        zoomDetailTier,treeSpritesRef.current);
+        zoomDetailTier,treeSpritesRef.current,sceneryDensity);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
-      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier};
+      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,
+      sceneryDensity};
     // Only painted residents need animation coordinates. Tracking every agent
     // previously allocated thousands of points on every simulation commit,
     // even though the depth view paints at most 350 residents.
@@ -461,7 +472,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       // zoom; additional pixels resolve the atlas instead of enlarging it.
       ctx.setTransform(density,0,0,density,0,0);
       ctx.clearRect(0,0,size.width,size.height);
-      ctx.imageSmoothingEnabled=false;ctx.drawImage(scenery,0,0);
+      ctx.imageSmoothingEnabled=false;
+      ctx.drawImage(scenery,0,0,size.width,size.height);
       if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
       const strides=new Map<number,0|1|2|3>();
@@ -474,7 +486,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
           facingRef.current.set(id,frame.facing);
         }
       }
-      paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
+      // The inspect diamond is grid-snapped by design. While playing as a
+      // mortal it visibly jumped ahead of the interpolated sprite every
+      // footstep, making smooth travel look like teleporting.
+      paintInhabitants(ctx,world,world.descent?.mode==='mortal'?null:selected,
+        zoom,interpolated,walking,
         projector,structures,visibleAgents,personSpritesRef.current,
         facingRef.current,strides);
       const tracked=followId!==null?interpolated.get(followId):undefined;
@@ -490,7 +506,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     // synchronously inside the effect stalls input at every world tick.
     frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
-  },[world,overlay,selected,zoomDetailTier,density,speed,relief,
+  },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
     camera.yaw,camera.pitch,followId,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);

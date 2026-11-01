@@ -25,6 +25,15 @@ export function depthRenderDensity(zoom:number,size:{width:number;height:number}
     Math.max(1,size.width*size.height)));
   return Math.max(1,Math.min(requested,safe));
 }
+/** The terrain must remain as sharp as the foreground when zooming in.
+ * A smaller memory budget than the moving layer avoids doubling the GPU
+ * cost of the entire continent, and the cache only rebuilds on scene edits. */
+export function depthSceneryDensity(zoom:number,size:{width:number;height:number}):number{
+  const requested=zoom>=4?4:zoom>=2?2:1;
+  const safe=Math.floor(Math.sqrt(6_000_000/
+    Math.max(1,size.width*size.height)));
+  return Math.max(1,Math.min(requested,safe));
+}
 /** Shrink houses much more than civic landmarks, without changing the site
  * position, save format, or the world's actual construction rules. */
 export const buildingVisualScale=(type:BuildingType):number=>
@@ -58,7 +67,10 @@ export function paintDepthPerson(ctx:Painter,a:Agent,
     }
     const {width:w,height:h}=DEPTH_PERSON_SIZE;
     ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(image,Math.round(p.x-w/2),Math.round(p.y-h+1),w,h);
+    // The high-density foreground supplies sub-pixel movement in world
+    // coordinates. Rounding here used to make each footstep visibly snap
+    // across a full terrain pixel, even during smooth motion interpolation.
+    ctx.drawImage(image,p.x-w/2,p.y-h+1,w,h);
     if(showGlow&&a.awakening&&a.innateTrait){
       const color=TRAIT_DOMAIN_INFO[INNATE_TRAIT_INFO[a.innateTrait].domain].color;
       draw(ctx,color,p.x-w/2-2,p.y-h,2,2);
