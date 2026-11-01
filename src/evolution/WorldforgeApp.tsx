@@ -9,6 +9,8 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
 import {MapLayerLegend} from './MapLayerLegend';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
+import {ADVENTURE_PITCH,cameraVerticalAnchor,enterAdventureZoom,enterAtlasZoom,
+  type MortalCameraMode} from './adventureCamera';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -185,6 +187,12 @@ export function WorldforgeApp(){
   const [followId,setFollowId]=useState<number|null>(null);
   const restoredDescentRef=useRef<number|null>(null);
   const [mortalRunning,setMortalRunning]=useState(true);
+  const [mortalCameraMode,setMortalCameraMode]=useState<MortalCameraMode>('adventure');
+  const adventureView=world.descent?.mode==='mortal'&&
+    mortalCameraMode==='adventure'&&mapView==='depth';
+  const activeCameraPitch=adventureView?ADVENTURE_PITCH:CAMERA_PITCHES[cameraPitch];
+  const divineCameraRef=useRef<{view:'depth'|'overhead';zoom:number;
+    yaw:number;pitch:CameraPitch;overlay:MapOverlay}|null>(null);
   const [mortalTargetId,setMortalTargetId]=useState<number|null>(null);
   const [mortalMessage,setMortalMessage]=useState('');
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
@@ -207,21 +215,31 @@ export function WorldforgeApp(){
     if(mapView==='depth'){
       const current=currentWorld.current;
       const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
-        {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
+        {yaw:orbitYaw,pitch:activeCameraPitch});
       const elevation=interpolatedGroundHeight(
         topographyForWorld(current).heights,w,h,x,y);
       const point=projector.projectSmooth(x,y,elevation);
       const scaleX=viewport.scrollWidth/projector.size.width;
       const scaleY=viewport.scrollHeight/projector.size.height;
+      const verticalAnchor=cameraVerticalAnchor(adventureView?'adventure':'atlas');
       return {left:Math.max(0,Math.min(point.x*scaleX-viewport.clientWidth/2,
           viewport.scrollWidth-viewport.clientWidth)),
-        top:Math.max(0,Math.min(point.y*scaleY-viewport.clientHeight/2,
+        top:Math.max(0,Math.min(point.y*scaleY-viewport.clientHeight*verticalAnchor,
           viewport.scrollHeight-viewport.clientHeight))};
     }
     return cameraScrollTarget({x,y},{x:w,y:h},
       {x:viewport.scrollWidth,y:viewport.scrollHeight},
       {x:viewport.clientWidth,y:viewport.clientHeight});
-  },[mapView,reliefLevel,orbitYaw,cameraPitch]);
+  },[mapView,reliefLevel,orbitYaw,activeCameraPitch,adventureView]);
+  const toggleMortalCamera=useCallback(()=>{
+    const id=currentWorld.current.descent?.mode==='mortal'?
+      currentWorld.current.descent.agentId:null;
+    if(id===null)return;
+    const next=mortalCameraMode==='adventure'?'atlas':'adventure';
+    setMortalCameraMode(next);
+    setZoom(next==='adventure'?enterAdventureZoom:enterAtlasZoom);
+    setMapView('depth');setFollowId(id);setMapFocus(id);
+  },[mortalCameraMode]);
   const centerCamera=useCallback((x:number,y:number)=>{
     const viewport=mapScrollRef.current,target=cameraPosition(x,y);
     if(!viewport||!target)return;
@@ -275,7 +293,7 @@ export function WorldforgeApp(){
         x:Math.max(0,Math.min(rect.width,x)),
         y:Math.max(0,Math.min(rect.height,y)),
       });
-      setFollowId(null);
+      if(!adventureView)setFollowId(null);
       setZoom(value=>boundedMapZoom(value*factor));
     };
     const wheel=(event:WheelEvent)=>{
@@ -310,7 +328,7 @@ export function WorldforgeApp(){
       viewport.removeEventListener('gesturestart',startGesture);
       viewport.removeEventListener('gesturechange',safariGesture);
     };
-  },[tab,storageReady]);
+  },[tab,storageReady,adventureView]);
   // Left-button navigation uses mouse events on the window so a quick drag
   // remains reliable even when it crosses the viewport edge. A small wobble
   // remains a real click for the canvas inspector.
@@ -392,7 +410,7 @@ export function WorldforgeApp(){
       // world's center every time a player orbits a nearby settlement.
       const w=currentWorld.current;
       const projector=createDepthProjector(w,RELIEF_LEVELS[reliefLevel],
-        {yaw:orbitYawRef.current,pitch:CAMERA_PITCHES[cameraPitch]});
+        {yaw:orbitYawRef.current,pitch:activeCameraPitch});
       const scaleX=viewport.scrollWidth/projector.size.width;
       const scaleY=viewport.scrollHeight/projector.size.height;
       const cx=(viewport.scrollLeft+viewport.clientWidth/2)/Math.max(.001,scaleX);
@@ -434,7 +452,7 @@ export function WorldforgeApp(){
       viewport.removeEventListener('pointercancel',finish);
       viewport.removeEventListener('contextmenu',contextMenu);
     };
-  },[tab,mapView,reliefLevel,cameraPitch]);
+  },[tab,mapView,reliefLevel,activeCameraPitch]);
   // After the canvas changes size, restore the exact world point below the
   // fingers instead of jumping to the top-left of the projected panorama.
   useLayoutEffect(()=>{
@@ -652,7 +670,9 @@ export function WorldforgeApp(){
     if(restoredDescentRef.current===id)return;
     restoredDescentRef.current=id;
     setPlaying(false);setMortalRunning(true);
-    setMapView('depth');setZoom(v=>Math.max(4,v));
+    setMortalCameraMode('adventure');
+    setMapView('depth');setZoom(enterAdventureZoom);
+    setOverlay('terrain');
     setSelected({x:mortal.x,y:mortal.y});setSelectedAgentId(id);
     setFollowId(id);setMapFocus(id);setTab('world');
   },[storageReady,world.descent?.agentId,world.descent?.mode,world.agents,
@@ -689,7 +709,7 @@ export function WorldforgeApp(){
         dx:Number(held.has('d'))-Number(held.has('a')),
         dy:Number(held.has('s'))-Number(held.has('w')),
       }:mortalDirection(held,{yaw:orbitYawRef.current,
-        pitch:CAMERA_PITCHES[cameraPitch]});
+        pitch:activeCameraPitch});
       if(!direction||!direction.dx&&!direction.dy)return;
       lastMove=now;
       const result=walkMortal(current,direction.dx,direction.dy);
@@ -713,7 +733,9 @@ export function WorldforgeApp(){
         event.preventDefault();held.add(key);move();return;
       }
       if(event.repeat)return;
-      if(key==='e'){
+      if(key==='v'){
+        event.preventDefault();toggleMortalCamera();
+      }else if(key==='e'){
         event.preventDefault();
         const nearby=nearbyMortals(currentWorld.current);
         const picked=nearby.find(a=>a.id===selectedAgentId)??nearby[0];
@@ -738,7 +760,7 @@ export function WorldforgeApp(){
       window.removeEventListener('blur',clear);
     };
   },[storageReady,tab,world.descent?.mode,world.descent?.agentId,
-    cameraPitch,mapView,selectedAgentId,setWorld]);
+    activeCameraPitch,mapView,selectedAgentId,setWorld,toggleMortalCamera]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
@@ -920,31 +942,41 @@ export function WorldforgeApp(){
   const enterMortalView=(id:number)=>{
     const person=currentWorld.current.agents.find(a=>a.id===id);
     if(!person){setNotice('That mortal is no longer alive.');return;}
+    divineCameraRef.current={view:mapView,zoom,yaw:orbitYaw,
+      pitch:cameraPitch,overlay};
     setPlaying(false);setMortalRunning(true);
     setMortalTargetId(null);setMortalMessage('');
     setWorld(w=>setDescentMode(w,'mortal'));
-    setMapView('depth');setZoom(v=>Math.max(4,v));
+    setMortalCameraMode('adventure');
+    setMapView('depth');setZoom(enterAdventureZoom);setOverlay('terrain');
     setSelected({x:person.x,y:person.y});setSelectedAgentId(id);
     setFollowId(id);setMapFocus(id);setBrush({kind:'inspect'});
-    setTab('world');setNotice('Your mortal is ready. WASD to walk, E to talk, P to pause.');
+    setTab('world');setNotice('Adventure view ready. WASD walk, V changes view, E talks.');
   };
   const createDescent=(options:MortalCreation)=>{
     try{
       const result=createMortal(currentWorld.current,options);
+      divineCameraRef.current={view:mapView,zoom,yaw:orbitYaw,
+        pitch:cameraPitch,overlay};
       setWorld(result.world);
       // State has not committed yet; use the newly created agent directly.
       setMortalRunning(true);setMortalTargetId(null);setMortalMessage('');
-      setPlaying(false);setMapView('depth');setZoom(v=>Math.max(4,v));
+      setPlaying(false);setMortalCameraMode('adventure');
+      setMapView('depth');setZoom(enterAdventureZoom);setOverlay('terrain');
       setSelected({x:result.agent.x,y:result.agent.y});
       setSelectedAgentId(result.agent.id);setFollowId(result.agent.id);
       setMapFocus(result.agent.id);setBrush({kind:'inspect'});
-      setTab('world');setNotice('A new mortal has entered the world. WASD to walk, E to talk.');
+      setTab('world');setNotice('A new mortal enters the world. WASD walk, V changes view.');
     }catch(error){setNotice(error instanceof Error?error.message:
       'Unable to create your mortal.');}
   };
   const leaveMortalView=()=>{
     setPlaying(false);setWorld(w=>setDescentMode(w,'divine'));
     setMortalRunning(false);setMortalTargetId(null);setMortalMessage('');
+    const previous=divineCameraRef.current;
+    if(previous){setMapView(previous.view);setZoom(previous.zoom);
+      setOrbitYaw(previous.yaw);setCameraPitch(previous.pitch);
+      setOverlay(previous.overlay);divineCameraRef.current=null;}
     setFollowId(null);setTab('world');setNotice('Returned to god mode.');
   };
   const applyDivine=(action:DivineAction)=>{
@@ -1035,10 +1067,12 @@ export function WorldforgeApp(){
       selectedTile={selected} onApply={applyDivine} onOpenPerson={openPerson}
       onFindOnMap={findOnMap}/>
       {notice&&<p className="evo-notice" role="status">{notice}</p>}</>:
-    <main className={'evo-playground'+(world.descent?.mode==='mortal'?' is-mortal':'')}>
+    <main className={'evo-playground'+(world.descent?.mode==='mortal'?' is-mortal':'')+
+      (adventureView?' is-adventure':'')}>
       {world.descent?.mode==='mortal'&&<MortalHUD world={world}
         nearby={mortalNearby} targetId={mortalTargetId}
         message={mortalMessage} running={mortalRunning}
+        cameraMode={mortalCameraMode} onToggleCamera={toggleMortalCamera}
         onTalk={mortalAction}
         onSelect={id=>{setMortalTargetId(id);setMortalMessage('');}}
         onClose={()=>{setMortalTargetId(null);setMortalMessage('');}}
@@ -1123,6 +1157,10 @@ export function WorldforgeApp(){
       </section>
       <div className="evo-playground-layout">
         <section className="evo-map-card">
+          {adventureView&&<div className="evo-adventure-banner" aria-hidden="true">
+            ✧ ADVENTURE CAMERA
+            <small>WASD WALK · RIGHT-DRAG ORBIT · V ATLAS</small>
+          </div>}
           <div className="evo-card-heading evo-map-heading">
             <div><strong>◈ LIVING WORLD</strong>
               <small>{world.width} × {world.height} TILES · {world.settings.size.toUpperCase()} WORLD</small>
@@ -1284,7 +1322,8 @@ export function WorldforgeApp(){
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
-                camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
+                camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
+                adventure={adventureView}
                 followId={followId}
                 onFollowPosition={world.descent?.mode==='mortal'?followMortalCamera:centerCamera}/>}
           </div>
