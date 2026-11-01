@@ -63,11 +63,12 @@ export function findInteriorBuilding(world:World,
 }
 
 export function moveInside(type:BuildingType,from:InteriorPosition,
-  dx:number,dy:number):InteriorPosition{
+  dx:number,dy:number,occupied?:ReadonlySet<string>):InteriorPosition{
   if(!Number.isInteger(dx)||!Number.isInteger(dy)||
     Math.abs(dx)>1||Math.abs(dy)>1||!dx&&!dy)return from;
   const next={x:from.x+dx,y:from.y+dy};
   if(next.x<1||next.x>=ROOM_WIDTH-1||next.y<1||next.y>=ROOM_HEIGHT)return from;
+  if(occupied?.has(`${next.x}:${next.y}`))return from;
   const props=INTERIOR_TEMPLATES[type].props;
   if(props.some(p=>p.x===next.x&&p.y===next.y&&p.kind!=='rug'))return from;
   if(dx&&dy&&props.some(p=>p.x===from.x+dx&&p.y===from.y&&p.kind!=='rug')&&

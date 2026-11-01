@@ -30,6 +30,7 @@ import {WorldCreator} from './WorldCreator';
 import {DivineDescentCreator} from './DivineDescentCreator';
 import {MortalHUD} from './MortalHUD';
 import {MortalInterior} from './MortalInterior';
+import {livingHousehold,nearestIndoorResident} from './livingHouseholds';
 import {atInteriorDoor,canEnterMortalBuilding,findInteriorBuilding,
   INTERIOR_DOOR,moveInside,type InteriorPosition} from './mortalInteriors';
 import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
@@ -202,6 +203,7 @@ export function WorldforgeApp(){
   const [interiorRef,setInteriorRef]=useState<{
     settlementId:number;buildingId:number}|null>(null);
   const [interiorPosition,setInteriorPosition]=useState<InteriorPosition>(INTERIOR_DOOR);
+  const [interiorTargetId,setInteriorTargetId]=useState<number|null>(null);
   const interiorPositionRef=useRef(interiorPosition);
   interiorPositionRef.current=interiorPosition;
   const [interiorMessage,setInteriorMessage]=useState('');
@@ -763,6 +765,7 @@ export function WorldforgeApp(){
           if(site&&canEnterMortalBuilding(currentWorld.current,site)){
             setInteriorRef({settlementId:site.settlementId,buildingId:site.building.id});
             setInteriorPosition(INTERIOR_DOOR);setInteriorMessage('');
+            setInteriorTargetId(null);
             setMortalBuildingTarget(null);setFollowId(null);
           }else setMortalMessage('This entrance is not ready for exploration.');
           return;
@@ -815,10 +818,13 @@ export function WorldforgeApp(){
       const dy=Number(held.has('s'))-Number(held.has('w'));
       if(!dx&&!dy)return;
       last=now;
-      const next=moveInside(interiorSite.building.type,interiorPositionRef.current,dx,dy);
+      const occupied=new Set(livingHousehold(currentWorld.current,interiorSite)
+        .present.map(p=>`${p.position.x}:${p.position.y}`));
+      const next=moveInside(interiorSite.building.type,
+        interiorPositionRef.current,dx,dy,occupied);
       if(next!==interiorPositionRef.current){
         interiorPositionRef.current=next;setInteriorPosition(next);
-        setInteriorMessage('');
+        setInteriorMessage('');setInteriorTargetId(null);
       }
     };
     const down=(event:KeyboardEvent)=>{
@@ -831,11 +837,23 @@ export function WorldforgeApp(){
         event.preventDefault();held.add(key);move();return;
       }
       if(event.repeat)return;
-      if(key==='escape'){event.preventDefault();exitInterior();}
+      if(key==='escape'){
+        event.preventDefault();
+        if(interiorTargetId!==null){setInteriorTargetId(null);setInteriorMessage('');}
+        else exitInterior();
+      }
       if(key==='e'){
         event.preventDefault();
         if(atInteriorDoor(interiorPositionRef.current))exitInterior();
-        else setInteriorMessage('Walk back to the lit doorway to leave.');
+        else {
+          const nearby=nearestIndoorResident(currentWorld.current,
+            interiorSite,interiorPositionRef.current);
+          if(nearby){setInteriorTargetId(nearby.agent.id);setInteriorMessage('');}
+          else setInteriorMessage(
+            interiorSite.building.type==='house'||interiorSite.building.type==='shelter'?
+              'Move next to a resident to talk, or return to the doorway to leave.':
+              'Return to the lit doorway to leave this building.');
+        }
       }
       if(key==='p'){event.preventDefault();setMortalRunning(r=>!r);}
     };
@@ -849,10 +867,11 @@ export function WorldforgeApp(){
       window.removeEventListener('keydown',down);
       window.removeEventListener('keyup',up);
       window.removeEventListener('blur',clear);};
-  },[interiorRef,interiorSite?.building.type,tab,storageReady]);
+  },[interiorRef,interiorSite?.building.type,interiorTargetId,tab,storageReady]);
   useEffect(()=>{
     if(interiorRef&&!interiorSite){setInteriorRef(null);
-      setInteriorMessage('');setMortalMessage('The building is no longer accessible.');}
+      setInteriorMessage('');setInteriorTargetId(null);
+      setMortalMessage('The building is no longer accessible.');}
   },[interiorRef,interiorSite]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
@@ -964,14 +983,34 @@ export function WorldforgeApp(){
     }
     setInteriorRef({settlementId:site.settlementId,buildingId:site.building.id});
     setInteriorPosition(INTERIOR_DOOR);setInteriorMessage('');
+    setInteriorTargetId(null);
     setMortalBuildingTarget(null);setMortalTargetId(null);
     setMortalMessage('');setFollowId(null);
   };
   const exitInterior=()=>{
     setInteriorRef(null);setInteriorPosition(INTERIOR_DOOR);
-    setInteriorMessage('');
+    setInteriorMessage('');setInteriorTargetId(null);
     const actorId=currentWorld.current.descent?.agentId;
     if(actorId!==undefined){setFollowId(actorId);setMapFocus(actorId);}
+  };
+  const talkInside=(action:MortalAction)=>{
+    if(interiorTargetId===null||!interiorSite)return;
+    const nearby=livingHousehold(currentWorld.current,interiorSite).present
+      .find(p=>p.agent.id===interiorTargetId&&
+        Math.max(Math.abs(p.position.x-interiorPositionRef.current.x),
+          Math.abs(p.position.y-interiorPositionRef.current.y))<=1);
+    // A resident who has left, or one now too far away, cannot be addressed
+    // from a stale dialogue panel. The same outdoor social rules still apply.
+    if(!nearby||nearby.agent.id!==interiorTargetId){
+      setInteriorTargetId(null);
+      setInteriorMessage('They have moved away. Approach them again.');return;
+    }
+    const result=interactWithMortal(currentWorld.current,interiorTargetId,
+      action,'home');
+    if(result.world!==currentWorld.current){
+      currentWorld.current=result.world;setWorld(result.world);
+    }
+    setInteriorMessage(result.message);
   };
   const brushAt=(x:number,y:number)=>{
     if(world.descent?.mode==='mortal'){
@@ -1434,6 +1473,18 @@ export function WorldforgeApp(){
           </div>}
           {interiorSite?<MortalInterior world={world} site={interiorSite}
             position={interiorPosition} message={interiorMessage}
+            targetId={interiorTargetId}
+            onSelectResident={id=>{
+              if(livingHousehold(currentWorld.current,interiorSite).present
+                .some(p=>p.agent.id===id&&
+                  Math.max(Math.abs(p.position.x-interiorPositionRef.current.x),
+                    Math.abs(p.position.y-interiorPositionRef.current.y))<=1)){
+                setInteriorTargetId(id);setInteriorMessage('');
+              }
+            }}
+            onTalk={talkInside}
+            onCloseConversation={()=>{setInteriorTargetId(null);
+              setInteriorMessage('');}}
             running={mortalRunning} onExit={exitInterior}
             onToggleTime={()=>setMortalRunning(r=>!r)}
             onAscend={()=>{exitInterior();leaveMortalView();}}/>:

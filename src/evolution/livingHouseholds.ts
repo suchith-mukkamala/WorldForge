@@ -46,8 +46,7 @@ const action=(a:Agent,hasCompany:boolean,hasFood:boolean):string=>{
 /** No arbitrary NPCs, no remote relatives magically teleported indoors.
  * The player is drawn separately; assigned chairs exclude no walkable floor.
  */
-export function livingHousehold(world:World,site:MortalBuilding,
-  playerTile?:InteriorPosition):LivingHousehold{
+export function livingHousehold(world:World,site:MortalBuilding):LivingHousehold{
   const home=world.households?.find(h=>h.id===site.building.householdId&&
     h.residence?.settlementId===site.settlementId&&
     h.residence.buildingId===site.building.id);
@@ -62,7 +61,6 @@ export function livingHousehold(world:World,site:MortalBuilding,
   const settlement=world.settlements.find(s=>s.id===site.settlementId);
   const hasFood=(settlement?.stores??0)>=atHome.length*.001;
   const occupied=new Set<string>(),present:HouseholdPresence[]=[];
-  if(playerTile)occupied.add(`${playerTile.x}:${playerTile.y}`);
   // At most eight visible residents in a room. Everyone else remains in the
   // roster, without inventing a new person or changing the outdoor state.
   for(const agent of atHome.slice(0,8)){
@@ -80,4 +78,18 @@ export function livingHousehold(world:World,site:MortalBuilding,
     present.push({agent,position,action:action(agent,atHome.length>1,hasFood)});
   }
   return {members,present,away,hasFood};
+}
+
+/** The same stable indoor resident locations are used for targeting and
+ * collision. Walking the player must not cause a family member to jump to
+ * another chair or silently rearrange the room. */
+export function nearestIndoorResident(world:World,site:MortalBuilding,
+  position:InteriorPosition):HouseholdPresence|undefined{
+  const present=livingHousehold(world,site).present;
+  return present.filter(p=>Math.max(Math.abs(p.position.x-position.x),
+    Math.abs(p.position.y-position.y))<=1)
+    .sort((a,b)=>Math.max(Math.abs(a.position.x-position.x),
+      Math.abs(a.position.y-position.y))-
+      Math.max(Math.abs(b.position.x-position.x),
+        Math.abs(b.position.y-position.y))||a.agent.id-b.agent.id)[0];
 }

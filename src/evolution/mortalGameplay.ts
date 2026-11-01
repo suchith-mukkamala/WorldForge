@@ -9,7 +9,7 @@ import {terrainStepEffort} from './terrainPhysics';
 import {cloneCognition} from './mindII';
 import {cloneDailyLife,initialDailyLife,
   type Encounter,type Familiarity} from './dailyLife';
-import {cloneDevelopment} from './development';
+import {cloneDevelopment,lifeStage} from './development';
 import {refusesConversation} from './socialJudgment';
 import {rememberSocialEpisode} from './socialMemory';
 import {personName} from './identity';
@@ -225,7 +225,7 @@ function rememberEncounter(agent:Agent,otherId:number,kind:Encounter['kind'],
 /** NPCs can decline. Once per in-world day per person keeps familiarity and
  * rare skill growth from being farmed by repeated clicking or key presses. */
 export function interactWithMortal(w:World,targetId:number,
-  action:MortalAction):MortalTalk{
+  action:MortalAction,context:'outside'|'home'='outside'):MortalTalk{
   const id=w.descent?.mode==='mortal'?w.descent.agentId:null;
   const actor=id===null?undefined:w.agents.find(a=>a.id===id);
   const other=w.agents.find(a=>a.id===targetId);
@@ -235,6 +235,9 @@ export function interactWithMortal(w:World,targetId:number,
     message:'Move closer to speak with this person.'};
   if(!['greet','ask','help'].includes(action))return {world:w,accepted:false,
     message:'Unknown interaction.'};
+  if(context==='home'&&action==='ask'&&lifeStage(other)==='infant')
+    return {world:w,accepted:false,
+      message:'This little one is still too young for a conversation.'};
   const year=w.year,day=w.dayOfYear??0;
   if(actor.dailyLife?.encounters.some(e=>e.withId===targetId&&
     e.year===year&&e.day===day))return {world:w,accepted:false,
@@ -249,7 +252,11 @@ export function interactWithMortal(w:World,targetId:number,
   const target:Agent={...other,dailyLife:cloneDailyLife(other.dailyLife??initialDailyLife())};
   const name=personName(w,w.lineage.find(r=>r.id===target.id)??
     {id:target.id,species:target.species});
-  const detail=action==='greet'?'Exchanged greetings at the roadside.':
+  const detail=context==='home'?(action==='greet'? 
+    'Caught up with someone inside their home.':action==='ask'?
+    'Talked about home, family and daily hopes.':
+    'Shared strength and comfort inside the home.'):
+    action==='greet'?'Exchanged greetings at the roadside.':
     action==='ask'?'Talked about daily work, hopes and obligations.':
     'Shared supplies and comfort during a difficult day.';
   const kind:Encounter['kind']=action==='help'?'comfort':'conversation';
@@ -257,12 +264,27 @@ export function interactWithMortal(w:World,targetId:number,
     action==='help'?'hardship':'family';
   rememberEncounter(player,target.id,kind,topic,detail,year,day);
   rememberEncounter(target,player.id,kind,topic,detail,year,day);
+  const family=context==='home'&&player.development?.householdId!==undefined&&
+    player.development.householdId===target.development?.householdId;
+  if(family){
+    // Meaningful but modest family connection, earned only through an actual
+    // accepted encounter and constrained by the once-per-day social cooldown.
+    for(const a of [player,target]){
+      a.dailyLife!.morale=clamp(a.dailyLife!.morale+.5,0,100);
+      a.dailyLife!.socialNeed=clamp(a.dailyLife!.socialNeed-1,0,100);
+      if(a.development){a.development=cloneDevelopment(a.development);
+        a.development.trust=clamp(a.development.trust+.12,0,100);}
+    }
+  }
   if(action==='help'){
     player.energy=Math.round(clamp(player.energy-3,0,100)*100)/100;
     target.energy=Math.round(clamp(target.energy+3,0,100)*100)/100;
   }
-  const message=action==='greet'?`You greeted ${name}. A new acquaintance begins.`:
-    action==='help'?`You shared some of your strength with ${name}.`:
+  const message=action==='greet'?(context==='home'?
+    `You caught up with ${name} at home.`:
+    `You greeted ${name}. A new acquaintance begins.`):
+    action==='help'?(context==='home'?`You helped ${name} at home.`:
+      `You shared some of your strength with ${name}.`):
     `${name}: ${other.dailyLife?.reason??'I am finding my place in this world.'}`;
   return {world:{...w,agents:w.agents.map(a=>a.id===id?player:
     a.id===targetId?target:a)},accepted:true,message};

@@ -3,10 +3,11 @@ import type {World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS} from './construction';
 import {paintPerson} from './pixelArt';
 import {personName} from './identity';
+import {lifeStage} from './development';
 import {livingHousehold} from './livingHouseholds';
 import {atInteriorDoor,INTERIOR_DOOR,INTERIOR_TEMPLATES,
   ROOM_HEIGHT,ROOM_WIDTH,type InteriorPosition} from './mortalInteriors';
-import type {MortalBuilding} from './mortalGameplay';
+import type {MortalAction,MortalBuilding} from './mortalGameplay';
 
 const CELL=28,OX=78,OY=74,CW=520,CH=374;
 const rect=(ctx:CanvasRenderingContext2D,c:string,x:number,y:number,
@@ -123,15 +124,21 @@ export function drawMortalRoom(ctx:CanvasRenderingContext2D,
 type Motion={from:InteriorPosition;to:InteriorPosition;start:number};
 
 export function MortalInterior({world,site,position,running,message,
+  targetId=null,onSelectResident,onTalk,onCloseConversation,
   onExit,onToggleTime,onAscend}:{world:World;site:MortalBuilding;
   position:InteriorPosition;running:boolean;message:string;
+  targetId?:number|null;onSelectResident?:(id:number)=>void;
+  onTalk?:(action:MortalAction)=>void;onCloseConversation?:()=>void;
   onExit:()=>void;onToggleTime:()=>void;onAscend:()=>void}){
   const canvas=useRef<HTMLCanvasElement>(null);
   const motion=useRef<Motion>({from:position,to:position,start:0});
   const person=world.agents.find(a=>a.id===world.descent?.agentId);
   const household=site.building.householdId===undefined?undefined:
     world.households?.find(h=>h.id===site.building.householdId);
-  const life=livingHousehold(world,site,position);
+  const life=livingHousehold(world,site);
+  const near=(p:InteriorPosition)=>Math.max(Math.abs(p.x-position.x),
+    Math.abs(p.y-position.y))<=1;
+  const active=life.present.find(p=>p.agent.id===targetId&&near(p.position));
   const nameOf=(id:number)=>personName(world,
     world.lineage.find(p=>p.id===id)??{
       id,species:world.agents.find(a=>a.id===id)?.species??'human'});
@@ -148,7 +155,7 @@ export function MortalInterior({world,site,position,running,message,
     staticArt.width=CW;staticArt.height=CH;
     const staticCtx=staticArt.getContext('2d');
     if(staticCtx)drawMortalRoom(staticCtx,site.building.type,site.building.culture);
-    const occupants=livingHousehold(world,site,position).present;
+    const occupants=livingHousehold(world,site).present;
     let frame=0,lastPaint=-Infinity;
     const paint=(time:number)=>{
       // Keep idle family scenes alive without repainting at 60 FPS.
@@ -164,10 +171,11 @@ export function MortalInterior({world,site,position,running,message,
       // All sprites use the same appearance code and fixed scale as outdoors.
       const sprites=[...occupants.map(resident=>({
         person:resident.agent,x:resident.position.x,y:resident.position.y,
-        facing:'south' as const,walking:false})),{
+        facing:'south' as const,walking:false,
+        selected:resident.agent.id===targetId})),{
         person,x,y,facing:(y>from.y?'south':y<from.y?'north':
           x>from.x?'east':x<from.x?'west':'south') as
-          'north'|'south'|'east'|'west',walking:progress<1}];
+          'north'|'south'|'east'|'west',walking:progress<1,selected:false}];
       sprites.sort((a,b)=>a.y-b.y||a.x-b.x);
       for(const sprite of sprites){
         const bob=!sprite.walking&&sprite.person.id!==person.id&&
@@ -176,11 +184,15 @@ export function MortalInterior({world,site,position,running,message,
           py=OY+sprite.y*CELL+CELL/2-17+bob;
         paintPerson(ctx,sprite.person,px,py,sprite.facing,
           sprite.walking?1:0,sprite.walking?'walk':'idle');
+        if(sprite.selected){
+          ctx.strokeStyle='#f2d28e';ctx.lineWidth=1;
+          ctx.strokeRect(px-3,py-5,22,28);
+        }
       }
     };
     frame=requestAnimationFrame(paint);
     return ()=>cancelAnimationFrame(frame);
-  },[world,site.building.type,site.building.culture,person,
+  },[world,site.building.type,site.building.culture,person,targetId,
     position.x,position.y]);
   return <section className="evo-interior" aria-label="Enterable building interior">
     <header className="evo-interior-header">
@@ -198,9 +210,28 @@ export function MortalInterior({world,site,position,running,message,
       aria-label={`${INTERIOR_TEMPLATES[site.building.type].name} with walkable floor, furniture and an exit`}/>
     <div className="evo-interior-footer">
       <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move inside ·
-        {' '}<kbd>E</kbd> Exit at doorway · <kbd>Esc</kbd> Leave</span>
+        {' '}<kbd>E</kbd> Talk nearby / Exit at door ·
+        {' '}<kbd>Esc</kbd> Close / Leave</span>
       {message&&<span role="status" className="evo-interior-message">{message}</span>}
     </div>
+    {active&&<aside className="evo-interior-dialogue"
+      aria-label="Speak with a resident inside this home">
+      <div className="evo-interior-dialogue-head">
+        <strong>◈ {nameOf(active.agent.id)}</strong>
+        {onCloseConversation&&<button onClick={onCloseConversation}
+          aria-label="Close household conversation">✕</button>}
+      </div>
+      <p>{active.agent.dailyLife?.reason??'Spending time at home.'}</p>
+      <small>{active.action} · Energy {Math.round(active.agent.energy)}
+        {' '}· Morale {Math.round(active.agent.dailyLife?.morale??60)}</small>
+      {onTalk&&<div className="evo-interior-talk-actions">
+        <button onClick={()=>onTalk('greet')}>GREET</button>
+        {lifeStage(active.agent)!=='infant'&&<button
+          onClick={()=>onTalk('ask')}>ASK ABOUT LIFE</button>}
+        <button onClick={()=>onTalk('help')}>
+          {lifeStage(active.agent)==='infant'?'OFFER CARE':'OFFER HELP'}</button>
+      </div>}
+    </aside>}
     {household&&<aside className="evo-interior-household">
       <strong>HOUSEHOLD · {life.members.length} LIVING RESIDENT{life.members.length===1?'':'S'}</strong>
       <p>{life.present.length?`${life.present.length} at home`:
@@ -208,8 +239,14 @@ export function MortalInterior({world,site,position,running,message,
         {life.away.length?` · ${life.away.length} away`:''}
         {life.members.some(a=>a.id===person?.id)?' · You are home':''}</p>
       {life.present.length>0&&<ul className="evo-interior-residents">
-        {life.present.map(({agent,action})=><li key={agent.id}>
-          <span>{nameOf(agent.id)}</span><em>{action}</em>
+        {life.present.map(({agent,action,position:residentPosition})=><li key={agent.id}>
+          {onSelectResident?<button
+            className={agent.id===targetId?'active':''}
+            disabled={!near(residentPosition)}
+            title={near(residentPosition)?'Speak with this resident':'Walk closer to talk'}
+            onClick={()=>onSelectResident(agent.id)}>{nameOf(agent.id)}</button>:
+            <span>{nameOf(agent.id)}</span>}
+          <em>{action}</em>
         </li>)}
       </ul>}
       {life.away.length>0&&<small>Away: {life.away.slice(0,5).map(a=>
