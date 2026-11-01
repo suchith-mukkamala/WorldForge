@@ -4,8 +4,9 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {createWorld,type Agent,type Settlement,type World} from './engine';
 import {initialDailyLife,advanceWeeklyLife} from './dailyLife';
 import {MortalInterior} from './MortalInterior';
-import {livingHousehold} from './livingHouseholds';
-import {INTERIOR_DOOR,INTERIOR_TEMPLATES} from './mortalInteriors';
+import {livingHousehold,nearestIndoorResident} from './livingHouseholds';
+import {INTERIOR_DOOR,INTERIOR_TEMPLATES,moveInside} from './mortalInteriors';
+import {interactWithMortal} from './mortalGameplay';
 import type {Building} from './construction';
 import type {MortalBuilding} from './mortalGameplay';
 
@@ -52,9 +53,13 @@ describe('v2.6.1 — living households',()=>{
       expect(INTERIOR_TEMPLATES.house.props.some(prop=>
         prop.kind!=='rug'&&prop.x===position.x&&prop.y===position.y)).toBe(false);
     }
+    // Occupants keep their positions while the player moves; the controller
+    // rejects walking directly through someone instead of teleporting them.
     const playerAt=room.present[0].position;
-    expect(livingHousehold(world,site,playerAt).present.some(p=>
-      p.position.x===playerAt.x&&p.position.y===playerAt.y)).toBe(false);
+    const from={x:playerAt.x,y:playerAt.y+1};
+    expect(livingHousehold(world,site).present).toEqual(room.present);
+    expect(moveInside('house',from,0,-1,cells)).toEqual(from);
+    expect(nearestIndoorResident(world,site,from)?.agent.id).toBe(people[0].id);
     expect(room.present.some(p=>p.action==='Caring for family')).toBe(true);
   });
 
@@ -86,6 +91,62 @@ describe('v2.6.1 — living households',()=>{
     expect(markup).toContain('2 at home');
     expect(markup).toContain('1 away');
     expect(JSON.stringify(world)).toBe(before);
+  });
+
+  it('offers dialogue only for residents next to the player',()=>{
+    const {world,site,people}=fixture();
+    const near=livingHousehold(world,site).present[0].position;
+    const markup=renderToStaticMarkup(createElement(MortalInterior,{
+      world,site,position:{x:near.x,y:near.y+1},
+      targetId:people[0].id,running:false,message:'',
+      onSelectResident:()=>{},onTalk:()=>{},onCloseConversation:()=>{},
+      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+    }));
+    expect(markup).toContain('Speak with a resident inside this home');
+    expect(markup).toContain('ASK ABOUT LIFE');
+    const far=renderToStaticMarkup(createElement(MortalInterior,{
+      world,site,position:INTERIOR_DOOR,targetId:people[0].id,
+      running:false,message:'',onTalk:()=>{},
+      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+    }));
+    expect(far).not.toContain('Speak with a resident inside this home');
+  });
+
+  it('uses genuine social encounters for conversations at home',()=>{
+    const {world,people}=fixture();
+    const playable={...world,descent:{agentId:people[0].id,
+      mode:'mortal' as const,createdYear:world.year}};
+    const indoor=interactWithMortal(playable,people[1].id,'greet','home');
+    const outdoor=interactWithMortal(playable,people[1].id,'greet');
+    expect(indoor.accepted).toBe(true);
+    expect(indoor.message).toContain('at home');
+    const family=indoor.world.agents[0];
+    expect(family.dailyLife!.encounters.at(-1)?.detail).toContain('home');
+    expect(family.dailyLife!.morale).toBeGreaterThan(
+      outdoor.world.agents[0].dailyLife!.morale);
+    expect(family.development!.trust).toBeGreaterThan(
+      outdoor.world.agents[0].development!.trust);
+    expect(interactWithMortal(indoor.world,people[1].id,'help','home').accepted)
+      .toBe(false);
+  });
+
+  it('does not make infants deliver adult conversations',()=>{
+    const {world,site,people}=fixture();
+    const baby={...world,agents:world.agents.map(a=>a.id===people[1].id?
+      {...a,age:0}:a),descent:{agentId:people[0].id,
+      mode:'mortal' as const,createdYear:world.year}};
+    const response=interactWithMortal(baby,people[1].id,'ask','home');
+    expect(response.accepted).toBe(false);
+    expect(response.world).toBe(baby);
+    const infant=livingHousehold(baby,site).present.find(p=>
+      p.agent.id===people[1].id)!;
+    const markup=renderToStaticMarkup(createElement(MortalInterior,{
+      world:baby,site,position:{x:infant.position.x,y:infant.position.y+1},
+      targetId:people[1].id,running:false,message:'',onTalk:()=>{},
+      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+    }));
+    expect(markup).toContain('OFFER CARE');
+    expect(markup).not.toContain('ASK ABOUT LIFE');
   });
 
   it('makes home rest, family care and affordable meals real weekly effects',()=>{

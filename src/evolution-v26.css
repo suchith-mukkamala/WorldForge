@@ -42,7 +42,28 @@
   font:10px/1.6 'Space Mono',monospace}
 .evo-interior-residents li span{color:#f1d4ac;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
+.evo-interior-residents li button{border:0;background:transparent;
+  color:#f1d4ac;padding:2px 0;font:inherit;text-align:left;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.evo-interior-residents li button:hover:not(:disabled),
+.evo-interior-residents li button.active{background:#355c51;
+  color:#fff4c8;text-decoration:underline}
+.evo-interior-residents li button:disabled{color:#abc2b4;
+  opacity:.8;cursor:default}
 .evo-interior-residents li em{color:#a9d1c0;white-space:nowrap;
   font-style:normal;font-size:9px}
+.evo-interior-dialogue{width:100%;max-width:1040px;padding:12px 15px;
+  border:1px solid #b79c69;background:#2e3738;
+  box-shadow:inset 0 0 0 2px #263d3b}
+.evo-interior-dialogue-head{display:flex;align-items:center;
+  justify-content:space-between;gap:12px}
+.evo-interior-dialogue-head strong{color:#f5da9d;
+  font:10px var(--pixel,monospace)}
+.evo-interior-dialogue-head button{padding:4px 9px}
+.evo-interior-dialogue p{font:11px/1.6 'Space Mono',monospace;
+  margin:9px 0 5px;color:#f1e7d4}
+.evo-interior-dialogue small{color:#a5cbbb;
+  font:10px/1.5 'Space Mono',monospace}
+.evo-interior-talk-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
 @media(max-width:750px){.evo-interior{padding:10px 8px}
   .evo-interior button{padding:8px 9px;font-size:8px}}
