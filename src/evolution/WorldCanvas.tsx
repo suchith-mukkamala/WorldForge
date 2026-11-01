@@ -437,7 +437,7 @@ export function WorldCanvas({
           visible.fillRect(px+5,py+5,2,2);
         }
       }
-      if(selected){
+      if(selected&&world.descent?.mode!=='mortal'){
         const marked=ordered.find(a=>a.x===selected.x&&a.y===selected.y);
         const marker=marked?positions.get(marked.id):selected;
         const px=(marker?.x??selected.x)*CELL,py=(marker?.y??selected.y)*CELL;

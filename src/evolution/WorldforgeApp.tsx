@@ -8,7 +8,7 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
 import {sceneAtmosphere} from './sceneAtmosphere';
-import {createDepthProjector} from './depthProjection';
+import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -208,10 +208,9 @@ export function WorldforgeApp(){
       const current=currentWorld.current;
       const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]});
-      const tx=Math.max(0,Math.min(w-1,Math.floor(x)));
-      const ty=Math.max(0,Math.min(h-1,Math.floor(y)));
-      const elevation=topographyForWorld(current).heights[ty*w+tx]??0;
-      const point=projector.project(x,y,elevation);
+      const elevation=interpolatedGroundHeight(
+        topographyForWorld(current).heights,w,h,x,y);
+      const point=projector.projectSmooth(x,y,elevation);
       const scaleX=viewport.scrollWidth/projector.size.width;
       const scaleY=viewport.scrollHeight/projector.size.height;
       return {left:Math.max(0,Math.min(point.x*scaleX-viewport.clientWidth/2,

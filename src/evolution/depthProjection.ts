@@ -19,6 +19,22 @@ type WorldSize=Pick<World,'width'|'height'>;
 type Pt={x:number;y:number};
 const RAD=Math.PI/180;
 
+/** Visual-only ground interpolation for fractional person positions. Tile
+ * elevations remain integers for pathing, ecology, saves and click picking. */
+export function interpolatedGroundHeight(heights:ArrayLike<number>,
+  width:number,height:number,x:number,y:number):number{
+  const px=Math.max(0,Math.min(width-1,x));
+  const py=Math.max(0,Math.min(height-1,y));
+  const x0=Math.floor(px),x1=Math.min(width-1,x0+1);
+  const y0=Math.floor(py),y1=Math.min(height-1,y0+1);
+  const fx=px-x0,fy=py-y0;
+  const upper=(heights[y0*width+x0]??0)*(1-fx)+
+    (heights[y0*width+x1]??0)*fx;
+  const lower=(heights[y1*width+x0]??0)*(1-fx)+
+    (heights[y1*width+x1]??0)*fx;
+  return upper*(1-fy)+lower*fy;
+}
+
 /** Project actual square geometry; this projector is shared by terrain,
  * sprites, waterways, highlights and the color-picking surface. */
 export function createDepthProjector(w:WorldSize,relief=1,
@@ -49,11 +65,16 @@ export function createDepthProjector(w:WorldSize,relief=1,
     y:x*uy+y*vy+offsetY-
       Math.round((elevation-SEA_LEVEL)/DEPTH_RISE*relief*vertical),
   });
+  const projectSmooth=(x:number,y:number,elevation:number):Pt=>({
+    x:x*ux+y*vx+offsetX,
+    y:x*uy+y*vy+offsetY-
+      (elevation-SEA_LEVEL)/DEPTH_RISE*relief*vertical,
+  });
   const tileCorners=(x:number,y:number,elevation:number):[Pt,Pt,Pt,Pt]=>[
     project(x-.5,y-.5,elevation),project(x+.5,y-.5,elevation),
     project(x+.5,y+.5,elevation),project(x-.5,y+.5,elevation),
   ];
-  return {project,tileCorners,size,
+  return {project,projectSmooth,tileCorners,size,
     frontX:Math.abs(uy)<1e-9?0:Math.sign(uy),
     frontY:Math.abs(vy)<1e-9?0:Math.sign(vy),
     order:(x:number,y:number)=>x*uy+y*vy,

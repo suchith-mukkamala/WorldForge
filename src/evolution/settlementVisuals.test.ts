@@ -1,8 +1,11 @@
 import {describe,expect,it} from 'vitest';
 import {buildingSiteClear,type Building} from './construction';
-import {buildingVisualScale,depthRenderDensity,DEPTH_PERSON_SIZE}
+import {buildingVisualScale,depthRenderDensity,depthSceneryDensity,
+  DEPTH_PERSON_SIZE,paintDepthPerson}
   from './depthSprites';
 import {uncrowdedDistrictBuildings} from './depthPerformance';
+import {createWorld} from './engine';
+import {spriteKey} from './pixelArt';
 
 const residence=(id:number,x:number,y:number):Building=>({
   id,x,y,type:'house',culture:'human',stage:'complete',progress:100,
@@ -54,6 +57,23 @@ describe('v2.4.4 — readable settlements and close-up mortals',()=>{
     expect(depthRenderDensity(4,size)).toBe(4);
     expect(depthRenderDensity(6,size)).toBe(6);
     expect(depthRenderDensity(8,{width:2000,height:2000})).toBe(2);
+    expect(depthSceneryDensity(1,size)).toBe(1);
+    expect(depthSceneryDensity(4,size)).toBe(4);
+    expect(depthSceneryDensity(6,{width:2000,height:2000})).toBe(1);
+    expect(depthSceneryDensity(4,{width:1000,height:1000})).toBe(2);
     expect(DEPTH_PERSON_SIZE).toEqual({width:2,height:3});
+  });
+
+  it('keeps fractional walking positions in the high-resolution sprite layer',()=>{
+    const agent=createWorld({seed:91,size:'small'}).agents[0];
+    const sprite={} as HTMLCanvasElement;
+    const cached=new Map([[spriteKey(agent)+':south:idle',sprite]]);
+    const args:number[][]=[];
+    const ctx={imageSmoothingEnabled:true,
+      drawImage:(_image:HTMLCanvasElement,...coords:number[])=>args.push(coords),
+    } as unknown as CanvasRenderingContext2D;
+    paintDepthPerson(ctx,agent,{x:12.25,y:17.75},false,false,cached);
+    expect(args).toEqual([[11.25,15.75,2,3]]);
+    expect(ctx.imageSmoothingEnabled).toBe(false);
   });
 });
