@@ -1,0 +1,10 @@
+/* v2.5.3 — one contextual doorway prompt, not another permanent menu. */
+.evo-mortal-door-prompt{margin:8px 16px;padding:8px 12px;
+  max-width:max-content;border:1px solid #72897d;
+  background:#152e31e8;color:#e9dcb4;
+  font:10px/1.6 'Space Mono',monospace}
+.evo-mortal-door-prompt kbd{padding:2px 6px;background:#2b554d;
+  border:1px solid #8bb4a0;color:#fff5d7}
+.evo-mortal-building .evo-mortal-voice{min-height:0}
+.evo-mortal-building .evo-mortal-building-note{color:#a9cdbd;
+  border-top:1px solid #49645d;padding-top:10px}

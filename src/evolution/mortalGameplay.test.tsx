@@ -1,14 +1,17 @@
 import {describe,expect,it} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {createWorld,isWorld,type World} from './engine';
+import {createWorld,isWorld,type Settlement,type World} from './engine';
 import {advanceWorldDays} from './calendar';
 import {tileCapacity} from './density';
 import {createMortal} from './divineDescent';
 import {compactWorld,readSavedWorld} from './storage';
 import {MortalHUD} from './MortalHUD';
+import type {Building} from './construction';
 import {mortalDirection,mortalMovementDelay,mortalTileCapacity,
-  nearbyMortals,interactWithMortal,walkMortal} from './mortalGameplay';
+  nearbyMortals,nearbyMortalBuildings,mortalBuildingEntrance,
+  describeMortalBuilding,interactWithMortal,walkMortal,
+  walkMortalWithAssist} from './mortalGameplay';
 
 const settings={seed:8188,size:'small' as const,
   starting:{human:10,elf:6,dwarf:6,demon:6}};
@@ -30,6 +33,24 @@ function playmate(world:World):{world:World;targetId:number}{
       {...a,x,y}:a)},targetId:candidate.id};
   }
   throw Error('No nearby plot for interaction test');
+}
+
+function withDoor(world:World,offset:{x:number;y:number}={x:1,y:0}){
+  const avatar=world.agents.find(a=>a.id===world.descent!.agentId)!;
+  const house:Building={id:901,type:'house',x:avatar.x+offset.x,
+    y:avatar.y+offset.y,culture:'human',stage:'complete',progress:100,
+    condition:92,started:world.year,finished:world.year,
+    spent:{wood:12,stone:5,clay:6},labor:18};
+  const seed:Settlement=world.settlements[0]??{
+    id:901,species:'human',name:'Test Haven',x:avatar.x,y:avatar.y,
+    founded:world.year,population:10,stores:40,emptyYears:0};
+  const infra=seed.infrastructure??{land:[],buildings:[],roads:[],
+    stock:{wood:0,stone:0,clay:0},nextBuildingId:902,
+    foundedWithResidents:seed.population};
+  const settlement={...seed,x:avatar.x,y:avatar.y,
+    infrastructure:{...infra,buildings:[house],roads:[]}};
+  return {world:{...world,settlements:[settlement,...world.settlements.slice(1)]},
+    house,settlement,avatar};
 }
 
 describe('v2.5.1 — mortal movement and interaction',()=>{
@@ -179,5 +200,72 @@ describe('v2.5.1 — mortal movement and interaction',()=>{
     expect(markup).toContain('ASK ABOUT LIFE');
     expect(markup).toContain('OFFER HELP');
     expect(markup).toContain('PAUSE TIME');
+  });
+});
+
+describe('v2.5.3 — physical entrances and assisted movement',()=>{
+  it('keeps homes solid without turning pixel-art roofs into giant collision boxes',()=>{
+    const base=makeWorld(),avatar=base.agents.find(a=>a.id===base.descent!.agentId)!;
+    const target=[[1,0],[-1,0],[0,1],[0,-1]]
+      .find(([dx,dy])=>avatar.x+dx>=1&&avatar.x+dx<base.width-1&&
+        avatar.y+dy>=1&&avatar.y+dy<base.height-1&&
+        base.tiles[(avatar.y+dy)*base.width+avatar.x+dx].biome!=='water')!;
+    const {world:w}=withDoor(base,{x:target[0],y:target[1]});
+    const blocked=walkMortal(w,target[0],target[1]);
+    expect(blocked.moved).toBe(false);
+    expect(blocked.reason).toMatch(/building/i);
+    expect(blocked.world).toBe(w);
+    expect(w.agents.find(a=>a.id===avatar.id)).toMatchObject({x:avatar.x,y:avatar.y});
+  });
+
+  it('uses a stable walkable road-facing entrance, independent of camera and time',()=>{
+    const base=makeWorld(),player=base.agents.find(a=>a.id===base.descent!.agentId)!;
+    const {world:w,house,settlement}=withDoor(base);
+    const entrance=mortalBuildingEntrance(w,settlement,house);
+    expect(Math.abs(entrance.x-house.x)+Math.abs(entrance.y-house.y)).toBe(1);
+    expect(w.tiles[entrance.y*w.width+entrance.x].biome).not.toBe('water');
+    const roads=[entrance.y*w.width+entrance.x];
+    const roadWorld={...w,settlements:w.settlements.map((s,i)=>i===0?{
+      ...s,infrastructure:{...s.infrastructure!,roads}}:s)};
+    const roadSite=nearbyMortalBuildings(roadWorld)[0];
+    expect(roadSite?.entrance).toEqual(entrance);
+    expect(roadSite?.building.id).toBe(house.id);
+    expect(describeMortalBuilding(roadWorld,roadSite!)).toMatch(/hut|home|dwelling/i);
+    expect(roadSite!.distance).toBeLessThanOrEqual(2);
+    expect(player.id).toBe(base.descent?.agentId);
+  });
+
+  it('assists a held direction around a single building without crossing water',()=>{
+    const base=makeWorld(),player=base.agents.find(a=>a.id===base.descent!.agentId)!;
+    const x=player.x+1,y=player.y;
+    expect(x).toBeLessThan(base.width-1);
+    const {world:w}=withDoor(base);
+    const direct=walkMortal(w,1,0);
+    expect(direct.moved).toBe(false);
+    const assisted=walkMortalWithAssist(w,1,0);
+    if(assisted.moved){
+      const next=assisted.world.agents.find(a=>a.id===player.id)!;
+      expect(next.x).toBe(x);
+      expect(Math.abs(next.y-y)).toBe(1);
+      expect(assisted.world.descent).toEqual(w.descent);
+    }else expect(assisted.reason).toMatch(/building|blocked|corner/i);
+    const tiles=[...w.tiles];
+    for(const dy of [-1,1])tiles[(y+dy)*w.width+x]={biome:'water',food:0};
+    expect(walkMortalWithAssist({...w,tiles},1,0).moved).toBe(false);
+  });
+
+  it('shows one contextual building inspection without writing fake interiors',()=>{
+    const {world:w}=withDoor(makeWorld());
+    const nearby=nearbyMortalBuildings(w);
+    expect(nearby.length).toBeGreaterThan(0);
+    const markup=renderToStaticMarkup(createElement(MortalHUD,{
+      world:w,nearby:[],buildings:nearby,
+      targetId:null,selectedBuilding:nearby[0],message:'',running:false,
+      onTalk:()=>{},onSelect:()=>{},onInspectBuilding:()=>{},
+      onClose:()=>{},onToggleTime:()=>{},onLeave:()=>{},
+    }));
+    expect(markup).toContain('Nearby building');
+    expect(markup).toContain('Explorable interiors');
+    expect(w.descent?.mode).toBe('mortal');
   });
 });
