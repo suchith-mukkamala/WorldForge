@@ -4,6 +4,7 @@
  */
 import type {Biome,World} from './engine';
 import {settlementStage} from './construction';
+import {wornPathTiles} from './trailNetwork';
 type Point={x:number;y:number};
 type Projector={project:(x:number,y:number,elevation:number)=>Point};
 const shades:Record<Biome,readonly string[]>={
@@ -73,19 +74,23 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
   const roads=new Set<number>();
   const maintained=new Set<number>();
   const townStreets=new Set<number>();
+  const worn=wornPathTiles(world.trails??[],world.width,world.height);
   for(const s of world.settlements){
     const civic=settlementStage(s)==='town'||settlementStage(s)==='city';
     for(const i of s.infrastructure?.roads??[]){
-      if(i>=0&&i<heights.length){roads.add(i);maintained.add(i);}
-      if(civic)townStreets.add(i);
+      // Old saves may contain pavement on every walked tile. Rendering only
+      // the connected, worn spine cleans those saves without erasing roads.
+      if(worn.has(i)&&i>=0&&i<heights.length){
+        roads.add(i);maintained.add(i);
+        if(civic)townStreets.add(i);
+      }
     }
   }
   for(const segment of world.transport?.roads??[])
     if(segment.index>=0&&segment.index<heights.length){
       roads.add(segment.index);maintained.add(segment.index);
     }
-  for(const segment of world.trails??[])
-    if(segment.index>=0&&segment.index<heights.length)roads.add(segment.index);
+  for(const index of worn)if(index<heights.length)roads.add(index);
   for(const i of roads){
     const x=i%world.width,y=Math.floor(i/world.width);
     const p=projector.project(x,y,heights[i]);
@@ -98,15 +103,26 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
     ctx.fillRect(px-4,py-1,8,2);
     ctx.fillStyle=civic?'#dbd3b5':paved?'#f3d9a1':'#bbad85';
     ctx.fillRect(px-2,py-2,4,1);
-    const adjacent=[i-1,i+1,i-world.width,i+world.width];
-    for(let direction=0;direction<4;direction++){
+    const adjacent=[i-1,i+1,i-world.width,i+world.width,
+      i-world.width-1,i-world.width+1,i+world.width-1,i+world.width+1];
+    for(let direction=0;direction<adjacent.length;direction++){
       const neighbor=adjacent[direction];
       if(!roads.has(neighbor))continue;
       if(direction===0&&x===0||direction===1&&x===world.width-1||
-        direction===2&&y===0||direction===3&&y===world.height-1)continue;
+        direction===2&&y===0||direction===3&&y===world.height-1||
+        direction>=4&&(y===(direction<=5?0:world.height-1)||
+          x===(direction===4||direction===6?0:world.width-1)))continue;
+      if(direction>=4){
+        const dx=direction===4||direction===6?-1:1;
+        const dy=direction<=5?-world.width:world.width;
+        // A diagonal shortcut is only needed when neither orthogonal leg
+        // exists. Otherwise crowded intersections gain distracting X marks.
+        if(roads.has(i+dx)||roads.has(i+dy))continue;
+      }
       const q=projector.project(neighbor%world.width,
         Math.floor(neighbor/world.width),heights[neighbor]);
-      ctx.strokeStyle=civic?'#949c97':paved?'#bda178':'#877862';ctx.lineWidth=2;
+      ctx.strokeStyle=civic?'#949c97':paved?'#bda178':'#877862';
+      ctx.lineWidth=direction>=4?1.3:2;
       ctx.beginPath();ctx.moveTo(p.x,p.y);
       ctx.lineTo((p.x+q.x)/2,(p.y+q.y)/2);ctx.stroke();
     }
@@ -116,23 +132,27 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
 
 /** Minimal visual invalidation key: re-rasterize the raised road layer only
  * when existing path tiles change, not on every advancing world snapshot. */
-export function depthRoadSignature(world:Pick<World,'settlements'|'transport'|'trails'>):
+export function depthRoadSignature(world:Pick<World,
+  'width'|'height'|'settlements'|'transport'|'trails'>):
   number{
   let hash=2166136261;
   const add=(value:number)=>{hash=Math.imul(hash^(value>>>0),16777619);};
+  const worn=wornPathTiles(world.trails??[],world.width,world.height);
   add(world.settlements.length);
   for(const s of world.settlements){
     add(s.id);
     add(['encampment','hamlet','village','town','city'].indexOf(settlementStage(s)));
     const roads=s.infrastructure?.roads??[];
-    add(roads.length);
-    for(const index of roads)add(index);
+    // No invalidation for one-off foot scuffs in legacy street lists.
+    const visible=roads.filter(index=>worn.has(index));
+    add(visible.length);
+    for(const index of visible)add(index);
   }
   const transportRoads=world.transport?.roads??[];
   add(transportRoads.length);
   for(const segment of transportRoads)add(segment.index);
-  const trails=world.trails??[];
-  add(trails.length);
-  for(const trail of trails)add(trail.index);
+  const drawn=[...worn].sort((a,b)=>a-b);
+  add(drawn.length);
+  for(const index of drawn)add(index);
   return hash>>>0;
 }

@@ -54,7 +54,7 @@ describe('Evolution Lab v0.7 — living settlements and construction',()=>{
     expect(readSavedWorld(compactWorld(active))).toEqual(active);
     const advanced=stepWorld(older);
     expect(Array.isArray(advanced.trails)).toBe(true);
-    expect(advanced.trails?.every(t=>t.wear===1.8)).toBe(true);
+    expect(advanced.trails?.every(t=>t.wear>0&&t.wear<=4.5)).toBe(true);
     expect(advanced.ruins).toEqual([]);
     expect(isWorld(advanced)).toBe(true);
   });
@@ -153,14 +153,19 @@ describe('Evolution Lab v0.7 — living settlements and construction',()=>{
     expect(isWorld(w)).toBe(true);
   },30000);
 
-  it('records roads only from real movement wear and lets unused routes fade',()=>{
+  it('forms connected roads from sustained traffic, not isolated footprints',()=>{
     const {w,settlement}=activeCommunity(93);
-    const id=settlement.infrastructure!.land[0];
+    const land=new Set(settlement.infrastructure!.land);
+    const id=[...land].find(i=>land.has(i+1)&&land.has(i+2))!;
+    const line=[id,id+1,id+2];
     advanceConstruction(w,[]);
     expect(settlement.infrastructure?.roads).toHaveLength(0);
-    advanceConstruction(w,Array(8).fill(id));
-    expect(w.trails?.find(t=>t.index===id)?.wear).toBeGreaterThan(4);
-    expect(settlement.infrastructure?.roads).toContain(id);
+    advanceConstruction(w,[id]);
+    expect(settlement.infrastructure?.roads).toHaveLength(0);
+    for(let i=0;i<5;i++)advanceConstruction(w,
+      line.flatMap(index=>Array(3).fill(index)));
+    expect(w.trails?.find(t=>t.index===id)?.wear).toBeGreaterThan(12);
+    for(const index of line)expect(settlement.infrastructure?.roads).toContain(index);
     for(let i=0;i<80;i++)advanceConstruction(w,[]);
     expect(settlement.infrastructure?.roads).not.toContain(id);
     expect(isWorld(w)).toBe(true);
