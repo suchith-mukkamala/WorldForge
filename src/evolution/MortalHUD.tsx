@@ -3,24 +3,30 @@ import {calendarDate,MONTH_NAMES} from './calendar';
 import {personName} from './identity';
 import {SPECIES_INFO} from './engine';
 import type {MortalAction} from './mortalGameplay';
+import {describeMortalBuilding,type MortalBuilding} from './mortalGameplay';
+import {ARCHITECTURE,BUILDING_LABELS} from './construction';
 import type {MortalCameraMode} from './adventureCamera';
 
 const nameOf=(world:World,agent:Agent)=>personName(world,
   world.lineage.find(r=>r.id===agent.id)??{id:agent.id,species:agent.species});
 
 /** Small in-world controls; the underlying map stays the primary screen. */
-export function MortalHUD({world,nearby,targetId,message,running,
-  cameraMode='adventure',onToggleCamera,onTalk,onSelect,onClose,onToggleTime,onLeave}:{
+export function MortalHUD({world,nearby,buildings=[],targetId,selectedBuilding,
+  message,running,cameraMode='adventure',onToggleCamera,onTalk,onSelect,
+  onInspectBuilding,onClose,onToggleTime,onLeave}:{
   world:World;nearby:Agent[];targetId:number|null;message:string;
+  buildings?:MortalBuilding[];selectedBuilding?:MortalBuilding|null;
   running:boolean;cameraMode?:MortalCameraMode;onToggleCamera?:()=>void;
   onTalk:(action:MortalAction)=>void;
-  onSelect:(id:number)=>void;onClose:()=>void;
+  onSelect:(id:number)=>void;onInspectBuilding?:(site:MortalBuilding)=>void;
+  onClose:()=>void;
   onToggleTime:()=>void;onLeave:()=>void;
 }){
   const person=world.agents.find(a=>a.id===world.descent?.agentId);
   if(!person)return null;
   const date=calendarDate(world);
   const active=nearby.find(a=>a.id===targetId);
+  const doorway=buildings.find(b=>b.distance<=1);
   return <>
     <section className="evo-mortal-hud" aria-label="Mortal player controls">
       <div className="evo-mortal-identity">
@@ -31,7 +37,7 @@ export function MortalHUD({world,nearby,targetId,message,running,
       </div>
       <div className="evo-mortal-keys">
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk</span>
-        <span><kbd>E</kbd> Talk</span>
+        <span><kbd>E</kbd> Interact</span>
         <span><kbd>V</kbd> View</span>
         <span><kbd>P</kbd> Time</span>
       </div>
@@ -43,14 +49,34 @@ export function MortalHUD({world,nearby,targetId,message,running,
         <button onClick={()=>nearby.length&&onSelect(nearby[0].id)}
           disabled={!nearby.length} title="Talk with a nearby inhabitant">
           ◈ INTERACT {nearby.length?'('+nearby.length+')':''}</button>
+        {doorway&&onInspectBuilding&&<button onClick={()=>onInspectBuilding(doorway)}
+          title="Examine this real structure and its inhabitants">
+          ⌂ {BUILDING_LABELS[doorway.building.type].toUpperCase()}</button>}
         <button onClick={onToggleTime} aria-pressed={!running}>
           {running?'Ⅱ PAUSE TIME':'▶ RESUME TIME'}</button>
         <button onClick={onLeave}>↑ ASCEND</button>
       </div>
     </section>
-    {targetId===null&&message&&<p className="evo-mortal-feedback" role="status">
+    {targetId===null&&!selectedBuilding&&message&&
+      <p className="evo-mortal-feedback" role="status">
       {message}</p>}
-    {targetId!==null&&<section className="evo-mortal-dialogue"
+    {!selectedBuilding&&targetId===null&&doorway&&
+      <p className="evo-mortal-door-prompt">⌂ {BUILDING_LABELS[doorway.building.type]}
+        {' '}— {doorway.distance===0||!nearby.length?<>
+          <kbd>E</kbd> examine entrance</>:'Use the building button to examine'}</p>}
+    {selectedBuilding&&<section className="evo-mortal-dialogue evo-mortal-building"
+      aria-label="Nearby building">
+      <header><strong>⌂ {BUILDING_LABELS[selectedBuilding.building.type].toUpperCase()}</strong>
+        <button onClick={onClose} aria-label="Close building inspection">✕</button></header>
+      <p className="evo-mortal-voice">
+        {describeMortalBuilding(world,selectedBuilding)}</p>
+      <p>{ARCHITECTURE[selectedBuilding.building.culture].name}
+        {' '}· {selectedBuilding.building.stage.replace('_',' ')}
+        {' '}· {Math.round(selectedBuilding.building.condition)}% condition</p>
+      <p className="evo-mortal-building-note">You are standing outside the real
+        structure. Explorable interiors are planned for the next update.</p>
+    </section>}
+    {!selectedBuilding&&targetId!==null&&<section className="evo-mortal-dialogue"
       aria-label="Talk with a nearby inhabitant">
       <header><strong>◈ CONVERSATION</strong>
         <button onClick={onClose} aria-label="Close conversation">✕</button></header>

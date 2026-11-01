@@ -31,7 +31,8 @@ import {DivineDescentCreator} from './DivineDescentCreator';
 import {MortalHUD} from './MortalHUD';
 import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
 import {interactWithMortal,mortalDirection,mortalMovementDelay,
-  nearbyMortals,walkMortal,type MortalAction,type MortalKey} from './mortalGameplay';
+  nearbyMortalBuildings,nearbyMortals,walkMortalWithAssist,
+  type MortalAction,type MortalBuilding,type MortalKey} from './mortalGameplay';
 import {freshWorldSeed} from './worldSeeds';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
@@ -194,6 +195,7 @@ export function WorldforgeApp(){
   const divineCameraRef=useRef<{view:'depth'|'overhead';zoom:number;
     yaw:number;pitch:CameraPitch;overlay:MapOverlay}|null>(null);
   const [mortalTargetId,setMortalTargetId]=useState<number|null>(null);
+  const [mortalBuildingTarget,setMortalBuildingTarget]=useState<string|null>(null);
   const [mortalMessage,setMortalMessage]=useState('');
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
@@ -646,6 +648,10 @@ export function WorldforgeApp(){
   const counts=useMemo(()=>population(world),[world]);
   const mortalNearby=useMemo(()=>world.descent?.mode==='mortal'?
     nearbyMortals(world):[],[world]);
+  const mortalBuildings=useMemo(()=>world.descent?.mode==='mortal'?
+    nearbyMortalBuildings(world):[],[world]);
+  const activeMortalBuilding=mortalBuildings.find(site=>
+    `${site.settlementId}:${site.building.id}`===mortalBuildingTarget)??null;
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -662,7 +668,8 @@ export function WorldforgeApp(){
     if(id===null){restoredDescentRef.current=null;return;}
     const mortal=world.agents.find(a=>a.id===id);
     if(!mortal){
-      setMortalRunning(false);setMortalTargetId(null);setFollowId(null);
+      setMortalRunning(false);setMortalTargetId(null);
+      setMortalBuildingTarget(null);setFollowId(null);
       setWorld(w=>setDescentMode(w,'divine'));
       setNotice('Your mortal has passed away. You have returned to god mode.');
       return;
@@ -712,12 +719,14 @@ export function WorldforgeApp(){
         pitch:activeCameraPitch});
       if(!direction||!direction.dx&&!direction.dy)return;
       lastMove=now;
-      const result=walkMortal(current,direction.dx,direction.dy);
+      const result=walkMortalWithAssist(current,direction.dx,direction.dy);
       if(result.moved){
         currentWorld.current=result.world;
         setWorld(result.world);
-        setSelected({x:actor.x+direction.dx,y:actor.y+direction.dy});
+        const moved=result.world.agents.find(a=>a.id===id)!;
+        setSelected({x:moved.x,y:moved.y});
         setSelectedAgentId(id);setFollowId(id);
+        setMortalTargetId(null);setMortalBuildingTarget(null);
         setMortalMessage('');
       }else if(result.reason)setMortalMessage(result.reason);
     };
@@ -737,14 +746,23 @@ export function WorldforgeApp(){
         event.preventDefault();toggleMortalCamera();
       }else if(key==='e'){
         event.preventDefault();
+        if(mortalTargetId!==null||mortalBuildingTarget!==null){
+          setMortalTargetId(null);setMortalBuildingTarget(null);return;
+        }
         const nearby=nearbyMortals(currentWorld.current);
+        const buildings=nearbyMortalBuildings(currentWorld.current);
+        const atDoor=buildings.find(site=>site.distance===0);
         const picked=nearby.find(a=>a.id===selectedAgentId)??nearby[0];
-        if(picked){setMortalTargetId(picked.id);setMortalMessage('');}
-        else setMortalMessage('No one nearby. Walk toward another person.');
+        const approach=atDoor??(!picked?buildings.find(b=>b.distance<=1):undefined);
+        if(approach){setMortalBuildingTarget(
+          `${approach.settlementId}:${approach.building.id}`);
+          setMortalMessage('');}
+        else if(picked){setMortalTargetId(picked.id);setMortalMessage('');}
+        else setMortalMessage('No one nearby. Approach a person or a doorway.');
       }else if(key==='p'){
         event.preventDefault();setMortalRunning(r=>!r);
       }else if(key==='escape'){
-        setMortalTargetId(null);setMortalMessage('');
+        setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
       }
     };
     const up=(event:KeyboardEvent)=>held.delete(event.key.toLowerCase() as MortalKey);
@@ -760,7 +778,8 @@ export function WorldforgeApp(){
       window.removeEventListener('blur',clear);
     };
   },[storageReady,tab,world.descent?.mode,world.descent?.agentId,
-    activeCameraPitch,mapView,selectedAgentId,setWorld,toggleMortalCamera]);
+    activeCameraPitch,mapView,selectedAgentId,mortalTargetId,
+    mortalBuildingTarget,setWorld,toggleMortalCamera]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
@@ -846,7 +865,8 @@ export function WorldforgeApp(){
     setSelectedAgentId(individual?.id??null);
     if(world.descent?.mode==='mortal'){
       const target=mortalNearby.find(a=>a.id===individual?.id);
-      if(target){setMortalTargetId(target.id);setMortalMessage('');}
+      if(target){setMortalBuildingTarget(null);
+        setMortalTargetId(target.id);setMortalMessage('');}
       setFollowId(world.descent.agentId);
       return;
     }
@@ -859,6 +879,10 @@ export function WorldforgeApp(){
       currentWorld.current=result.world;setWorld(result.world);
     }
     setMortalMessage(result.message);
+  };
+  const inspectMortalBuilding=(site:MortalBuilding)=>{
+    setMortalTargetId(null);setMortalMessage('');
+    setMortalBuildingTarget(`${site.settlementId}:${site.building.id}`);
   };
   const brushAt=(x:number,y:number)=>{
     if(world.descent?.mode==='mortal'){
@@ -882,7 +906,7 @@ export function WorldforgeApp(){
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
     restoredDescentRef.current=null;
-    setMortalTargetId(null);setMortalMessage('');
+    setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
     setZoom(mapView==='depth'?1.5:1);
     setNotice('New world created with seed '+settings.seed+'.');
   };
@@ -900,7 +924,7 @@ export function WorldforgeApp(){
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
     restoredDescentRef.current=null;
-    setMortalTargetId(null);setMortalMessage('');
+    setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
     setNotice('World replayed from the same starting seed.');
   };
   const importWorld=async(event:ChangeEvent<HTMLInputElement>)=>{
@@ -919,7 +943,7 @@ export function WorldforgeApp(){
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
       restoredDescentRef.current=null;
-      setMortalTargetId(null);setMortalMessage('');
+      setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
       setZoom(mapView==='depth'?1.5:1);setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
@@ -935,7 +959,7 @@ export function WorldforgeApp(){
     if(next!=='settlements')setPlaying(false);
     if(next==='powers'&&currentWorld.current.descent?.mode==='mortal'){
       setWorld(w=>setDescentMode(w,'divine'));setFollowId(null);
-      setMortalRunning(false);setMortalTargetId(null);
+      setMortalRunning(false);setMortalTargetId(null);setMortalBuildingTarget(null);
     }
     setTab(next);setNotice('');
   };
@@ -945,13 +969,13 @@ export function WorldforgeApp(){
     divineCameraRef.current={view:mapView,zoom,yaw:orbitYaw,
       pitch:cameraPitch,overlay};
     setPlaying(false);setMortalRunning(true);
-    setMortalTargetId(null);setMortalMessage('');
+    setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
     setWorld(w=>setDescentMode(w,'mortal'));
     setMortalCameraMode('adventure');
     setMapView('depth');setZoom(enterAdventureZoom);setOverlay('terrain');
     setSelected({x:person.x,y:person.y});setSelectedAgentId(id);
     setFollowId(id);setMapFocus(id);setBrush({kind:'inspect'});
-    setTab('world');setNotice('Adventure view ready. WASD walk, V changes view, E talks.');
+    setTab('world');setNotice('Adventure view ready. WASD walk, V changes view, E interacts.');
   };
   const createDescent=(options:MortalCreation)=>{
     try{
@@ -960,7 +984,8 @@ export function WorldforgeApp(){
         pitch:cameraPitch,overlay};
       setWorld(result.world);
       // State has not committed yet; use the newly created agent directly.
-      setMortalRunning(true);setMortalTargetId(null);setMortalMessage('');
+      setMortalRunning(true);setMortalTargetId(null);
+      setMortalBuildingTarget(null);setMortalMessage('');
       setPlaying(false);setMortalCameraMode('adventure');
       setMapView('depth');setZoom(enterAdventureZoom);setOverlay('terrain');
       setSelected({x:result.agent.x,y:result.agent.y});
@@ -972,7 +997,8 @@ export function WorldforgeApp(){
   };
   const leaveMortalView=()=>{
     setPlaying(false);setWorld(w=>setDescentMode(w,'divine'));
-    setMortalRunning(false);setMortalTargetId(null);setMortalMessage('');
+    setMortalRunning(false);setMortalTargetId(null);
+    setMortalBuildingTarget(null);setMortalMessage('');
     const previous=divineCameraRef.current;
     if(previous){setMapView(previous.view);setZoom(previous.zoom);
       setOrbitYaw(previous.yaw);setCameraPitch(previous.pitch);
@@ -1070,12 +1096,16 @@ export function WorldforgeApp(){
     <main className={'evo-playground'+(world.descent?.mode==='mortal'?' is-mortal':'')+
       (adventureView?' is-adventure':'')}>
       {world.descent?.mode==='mortal'&&<MortalHUD world={world}
-        nearby={mortalNearby} targetId={mortalTargetId}
+        nearby={mortalNearby} buildings={mortalBuildings}
+        targetId={mortalTargetId} selectedBuilding={activeMortalBuilding}
         message={mortalMessage} running={mortalRunning}
         cameraMode={mortalCameraMode} onToggleCamera={toggleMortalCamera}
         onTalk={mortalAction}
-        onSelect={id=>{setMortalTargetId(id);setMortalMessage('');}}
-        onClose={()=>{setMortalTargetId(null);setMortalMessage('');}}
+        onInspectBuilding={inspectMortalBuilding}
+        onSelect={id=>{setMortalBuildingTarget(null);
+          setMortalTargetId(id);setMortalMessage('');}}
+        onClose={()=>{setMortalTargetId(null);setMortalBuildingTarget(null);
+          setMortalMessage('');}}
         onToggleTime={()=>setMortalRunning(r=>!r)} onLeave={leaveMortalView}/>}
       <header className="evo-playground-heading">
         <div>
