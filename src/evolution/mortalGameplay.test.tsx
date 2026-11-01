@@ -84,6 +84,35 @@ describe('v2.5.1 — mortal movement and interaction',()=>{
     expect(mortalMovementDelay(player)).toBeGreaterThan(0);
   });
 
+  it('lets a crowded street yield without overlapping or deleting inhabitants',()=>{
+    const base=makeWorld();
+    const avatar=base.agents.find(a=>a.id===base.descent!.agentId)!;
+    const step=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1]]
+      .find(([dx,dy])=>{
+        const x=avatar.x+dx,y=avatar.y+dy;
+        return x>=0&&y>=0&&x<base.width&&y<base.height&&
+          base.tiles[y*base.width+x].biome!=='water';
+      })!;
+    const x=avatar.x+step[0],y=avatar.y+step[1];
+    const occupants=base.agents.filter(a=>a.id!==avatar.id&&a.x===x&&a.y===y);
+    const vacancies=mortalTileCapacity(base,x,y)-occupants.length;
+    const additional=base.agents.filter(a=>a.id!==avatar.id&&
+      (a.x!==x||a.y!==y)&&!a.work?.tradeId).slice(0,vacancies);
+    expect(additional).toHaveLength(vacancies);
+    const crowded={...base,agents:base.agents.map(a=>
+      additional.some(b=>b.id===a.id)?{...a,x,y}:a)};
+    expect(isWorld(crowded)).toBe(true);
+    const result=walkMortal(crowded,step[0],step[1]);
+    expect(result.moved).toBe(true);
+    expect(result.world.agents).toHaveLength(crowded.agents.length);
+    expect(result.world.agents.find(a=>a.id===avatar.id)).toMatchObject({x,y});
+    expect(result.world.agents.filter(a=>a.x===x&&a.y===y)).toHaveLength(
+      mortalTileCapacity(base,x,y));
+    expect(result.world.agents.filter(a=>a.x===avatar.x&&a.y===avatar.y)
+      .some(a=>a.id!==avatar.id)).toBe(true);
+    expect(isWorld(result.world)).toBe(true);
+  });
+
   it('creates real two-way social memories and prevents same-day farming',()=>{
     const {world:w,targetId}=playmate(makeWorld());
     expect(isWorld(w)).toBe(true);

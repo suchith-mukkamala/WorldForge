@@ -14,6 +14,7 @@ import {buildTerrainDetailAtlas,paintTerrainDetail,
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalWorldPoint} from './spatialDetails';
+import {mortalMovementDelay} from './mortalGameplay';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
@@ -267,14 +268,20 @@ export function WorldCanvas({
       })){
       const duration=visualMotionDuration(speed);
       const nextMotions=new Map<number,Motion>();
+      const agentsById=new Map(world.agents.map(a=>[a.id,a]));
       for(const [id,to] of current){
-        const from=previous.positions.get(id);if(!from)continue;
+        const isMortal=world.descent?.mode==='mortal'&&id===world.descent.agentId;
+        const old=motions.current.get(id);
+        const from=isMortal&&old?.to&&previous.positions.has(id)?
+          motionFrame(old,now):previous.positions.get(id);
+        if(!from)continue;
         if(canAnimate(from,to)){
           const direction=directionBetween(from,to,facing.current.get(id));
           facing.current.set(id,direction);
           nextMotions.set(id,{from,to,start:now,
-            duration:world.descent?.mode==='mortal'&&id===world.descent.agentId?
-              125:duration,facing:direction});
+            duration:isMortal&&agentsById.has(id)?
+              mortalMovementDelay(agentsById.get(id)!)+25:duration,
+            facing:direction});
         }
       }
       motions.current=nextMotions;

@@ -22,6 +22,7 @@ import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
+import {mortalMovementDelay} from './mortalGameplay';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
   tileFromHit,tileHitColor,type DepthCamera} from './depthProjection';
 
@@ -425,12 +426,16 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
         return !!from&&(to.x!==from.x||to.y!==from.y);
       })){
       const moving=new Map<number,Motion>();
+      const agentsById=new Map(visibleAgents.map(a=>[a.id,a]));
       for(const [id,to] of positions){
-        const from=previous.positions.get(id);
+        const isMortal=world.descent?.mode==='mortal'&&id===world.descent.agentId;
+        const old=motionsRef.current.get(id);
+        const from=isMortal&&old?.to&&previous.positions.has(id)?
+          motionFrame(old,now):previous.positions.get(id);
         if(!from||!canAnimate(from,to))continue;
         moving.set(id,{from,to,start:now,
-          duration:world.descent?.mode==='mortal'&&id===world.descent.agentId?
-            125:visualMotionDuration(speed),
+          duration:isMortal&&agentsById.has(id)?
+            mortalMovementDelay(agentsById.get(id)!)+25:visualMotionDuration(speed),
           facing:directionBetween(from,to)});
       }
       motionsRef.current=moving;
