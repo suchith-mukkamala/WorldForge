@@ -57,6 +57,7 @@ function advanceMonthlyTravel(w:World,month:number):World{
   let moved=false;
   for(let i=0;i<agents.length;i++){
     const a=agents[i];
+    if(w.descent?.mode==='mortal'&&w.descent.agentId===a.id)continue;
     const speed=traitProfile(a.ancestry).speed*
       (knows(a,'navigation')?1.2:1);
     if(a.work?.tradeId||a.cognition?.agenda.some(p=>p.status==='active'&&
