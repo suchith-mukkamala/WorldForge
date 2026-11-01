@@ -41,6 +41,7 @@ export function PopulationDiagnostics({world}:{world:World}){
   const totalDeaths=populations.reduce((n,p)=>n+(p.ledger?.deaths??0),0);
   const causes=Object.fromEntries(DEATH_CAUSES.map(c=>[c,
     populations.reduce((n,p)=>n+(p.ledger?.causes[c]??0),0)])) as Record<(typeof DEATH_CAUSES)[number],number>;
+  const health=world.publicHealth;
   const reportedYears=world.year-(recorded?.sinceYear??world.year);
   return <section className="evo-section-card evo-pop-diagnostics"
     aria-label="Population and mortality diagnostics">
@@ -58,6 +59,22 @@ export function PopulationDiagnostics({world}:{world:World}){
       <div><small>RECORDED DEATHS</small>
         <strong>{fmt(totalDeaths)}</strong></div>
     </div>
+    <details className="evo-health-details">
+      <summary>✚ PLAGUES &amp; PUBLIC HEALTH · {fmt(health?.active??0)} infected or incubating
+        {health?.affectedSettlements?' · '+health.affectedSettlements+' communities affected':''}</summary>
+      <div className="evo-health-numbers">
+        <span>New cases this year <b>{fmt(health?.newCases??0)}</b></span>
+        <span>Recovered this year <b>{fmt(health?.recovered??0)}</b></span>
+        <span>Plague deaths this year <b>{fmt(health?.deaths??0)}</b></span>
+        <span>Care responses <b>{fmt(health?.responses??0)}</b></span>
+        <span>Cases since tracking began <b>{fmt(health?.cumulativeCases??0)}</b></span>
+        <span>Recorded plague deaths <b>{fmt(health?.cumulativeDeaths??0)}</b></span>
+      </div>
+      <p className="evo-diagnostic-note">Infections arise from local encounters and
+        crowded living conditions. Wells, communal buildings, medical knowledge
+        and a town's spending on care can reduce their impact. An immune survivor
+        is protected temporarily. No population limit or scripted cull is used.</p>
+    </details>
     {world.agents.length>=1500&&<p className="evo-pop-cap-note">
       The population has grown beyond 1,500 individuals. There is no artificial
       birth ceiling; available habitat and resources constrain survival.
@@ -113,9 +130,9 @@ export function PopulationDiagnostics({world}:{world:World}){
         </div>
         <p className="evo-diagnostic-note">
           Tracking spans {reportedYears} {label(reportedYears)}.
-          Causes reflect real simulation checks—not invented illness events.
-          Harsh terrain means environmental health loss; declining health is
-          reserved for other non-hunger health failures.
+          Causes reflect real simulation checks. Infectious disease deaths are
+          counted separately when an active illness proves fatal; harsh terrain
+          remains environmental exposure.
         </p>
       </div>
     </div>

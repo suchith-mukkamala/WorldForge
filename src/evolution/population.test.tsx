@@ -17,7 +17,7 @@ describe('Evolution Lab v0.2.1: honest population diagnostics',()=>{
     for(const s of SPECIES){
       expect(world.demography?.bySpecies[s]).toEqual({
         births:0,deaths:0,juvenileDeaths:0,ageAtDeathSum:0,
-        causes:{old_age:0,starvation:0,exposure:0,ill_health:0},
+        causes:{old_age:0,starvation:0,exposure:0,ill_health:0,plague:0},
       });
     }
     expect(world.history[0].vitals).toBeUndefined();

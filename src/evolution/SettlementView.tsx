@@ -14,6 +14,7 @@ import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt,type TerrainDetail} from './terrainDetails';
 import {populationScene,renderedPopulation} from './populationVisibility';
+import {settlementSanitation} from './publicHealth';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
   playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
@@ -457,6 +458,10 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
           </section>}
           <div className="evo-city-metrics">
             <div><small>LOCAL RESIDENTS</small><strong>{num(residents.length)}</strong></div>
+            {place&&<><div><small>ACTIVE ILLNESSES</small><strong>{residents.filter(a=>
+              a.disease?.stage==='sick'||a.disease?.stage==='incubating').length}</strong></div>
+            <div><small>PUBLIC SANITATION</small><strong>{Math.round(
+              settlementSanitation(place,residents)*100)}%</strong></div></>}
             <div><small>COMPLETE BUILDINGS</small><strong>{completed}</strong></div>
             <div><small>UNDER CONSTRUCTION</small><strong>{active.length}</strong></div>
             <div><small>HOUSED FAMILIES</small><strong>{homes}</strong></div>
