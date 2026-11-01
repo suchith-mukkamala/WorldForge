@@ -540,6 +540,8 @@ export function advanceMindDay(previous:World,day:number,
     return copy;
   };
   for(const old of previous.agents){
+    if(previous.descent?.mode==='mortal'&&previous.descent.agentId===old.id)
+      continue;
     const active=old.cognition?.agenda.some(p=>p.status==='active');
     const due=day%7===1||!!active||!!urgency(old);
     if(due&&old.development&&!old.work?.tradeId){

@@ -46,7 +46,7 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
 
   return <main className="evo-descent-page">
     <header className="evo-descent-heading">
-      <span className="evo-overline">v2.5.0 · DIVINE DESCENT</span>
+      <span className="evo-overline">v2.5.1 · DIVINE DESCENT</span>
       <h1>A world to <em>live in.</em></h1>
       <p>Leave the heavens and begin a mortal story in the world you shaped.
         Your character joins the same living simulation as everyone else.</p>
@@ -61,9 +61,9 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
         <p className="evo-descent-detail">You will have genuine abilities,
           needs, and a place in the world's history. Legendary talents are
           earned or rolled with the same rarity as everyone else's.</p>
-        <p className="evo-descent-detail">Real-time WASD movement and
-          interactions arrive in v2.5.1. This first release establishes your
-          character, identity, and world save.</p>
+        <p className="evo-descent-detail">Walk with WASD, speak with nearby
+          inhabitants using E, and press P to pause the living world's clock.
+          Right-drag rotates the 2.5D camera around your journey.</p>
       </section>
       {current?<section className="evo-descent-form">
         <span className="evo-descent-eyebrow">YOUR LIVING MORTAL</span>

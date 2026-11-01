@@ -408,8 +408,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const visibleAgents=renderedPopulation(world.agents,popScene,{
       bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
       selected,focusId:followId,zoom:Math.max(1,zoom),maxVisible:350});
-    const positions=new Map(visibleAgents.map(a=>
-      [a.id,mortalWorldPoint(a,world)]));
+    const positions=new Map(visibleAgents.map(a=>[
+      a.id,world.descent?.mode==='mortal'&&world.descent.agentId===a.id?
+        {x:a.x,y:a.y}:mortalWorldPoint(a,world),
+    ]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
     if(!previous||previous.seed!==world.settings.seed||
@@ -417,13 +419,18 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       world.year===previous.year&&day<previous.day){
       motionsRef.current.clear();
       facingRef.current.clear();
-    }else if(previous.year!==world.year||previous.day!==day){
+    }else if(previous.year!==world.year||previous.day!==day||
+      [...positions].some(([id,to])=>{
+        const from=previous.positions.get(id);
+        return !!from&&(to.x!==from.x||to.y!==from.y);
+      })){
       const moving=new Map<number,Motion>();
       for(const [id,to] of positions){
         const from=previous.positions.get(id);
         if(!from||!canAnimate(from,to))continue;
         moving.set(id,{from,to,start:now,
-          duration:visualMotionDuration(speed),
+          duration:world.descent?.mode==='mortal'&&id===world.descent.agentId?
+            125:visualMotionDuration(speed),
           facing:directionBetween(from,to)});
       }
       motionsRef.current=moving;

@@ -26,7 +26,10 @@ import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
 import {DivineDescentCreator} from './DivineDescentCreator';
+import {MortalHUD} from './MortalHUD';
 import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
+import {interactWithMortal,mortalDirection,mortalMovementDelay,
+  nearbyMortals,walkMortal,type MortalAction,type MortalKey} from './mortalGameplay';
 import {freshWorldSeed} from './worldSeeds';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
@@ -181,6 +184,9 @@ export function WorldforgeApp(){
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
   const restoredDescentRef=useRef<number|null>(null);
+  const [mortalRunning,setMortalRunning]=useState(true);
+  const [mortalTargetId,setMortalTargetId]=useState<number|null>(null);
+  const [mortalMessage,setMortalMessage]=useState('');
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
@@ -366,7 +372,7 @@ export function WorldforgeApp(){
         startYaw:orbitYawRef.current};
       viewport.classList.add('is-orbit-dragging');
       viewport.setPointerCapture(event.pointerId);
-      setFollowId(null);
+      if(currentWorld.current.descent?.mode!=='mortal')setFollowId(null);
     };
     const move=(event:PointerEvent)=>{
       if(!drag||event.pointerId!==drag.pointerId)return;
@@ -429,7 +435,10 @@ export function WorldforgeApp(){
     return ()=>{window.clearInterval(timer);window.removeEventListener('pagehide',save);save();};
   },[storageReady]);
   useEffect(()=>{
-    if(playing||!storageReady)return; // The periodic checkpoint handles play.
+    if(playing||world.descent?.mode==='mortal'||!storageReady)return;
+    // Direct-control movement can commit several times a second. During
+    // descent, the periodic checkpoint owns saves; debounce would serialize
+    // the entire population after nearly every single footstep.
     const timer=window.setTimeout(()=>{
       void saveSnapshot(world).then(()=>setSavedDate(calendarDate(world)))
         .catch(()=>setNotice('Autosave failed. Export World JSON to keep your progress.'));
@@ -579,6 +588,8 @@ export function WorldforgeApp(){
     if(playing&&world.descent?.mode==='mortal')setPlaying(false);
   },[world.agents.length,world.year,world.descent?.mode,playing]);
   const counts=useMemo(()=>population(world),[world]);
+  const mortalNearby=useMemo(()=>world.descent?.mode==='mortal'?
+    nearbyMortals(world):[],[world]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -593,19 +604,103 @@ export function WorldforgeApp(){
     if(!storageReady)return;
     const id=world.descent?.mode==='mortal'?world.descent.agentId:null;
     if(id===null){restoredDescentRef.current=null;return;}
-    if(restoredDescentRef.current===id)return;
     const mortal=world.agents.find(a=>a.id===id);
     if(!mortal){
+      setMortalRunning(false);setMortalTargetId(null);setFollowId(null);
       setWorld(w=>setDescentMode(w,'divine'));
       setNotice('Your mortal has passed away. You have returned to god mode.');
       return;
     }
+    if(restoredDescentRef.current===id)return;
     restoredDescentRef.current=id;
-    setPlaying(false);setMapView('depth');setZoom(v=>Math.max(4,v));
+    setPlaying(false);setMortalRunning(true);
+    setMapView('depth');setZoom(v=>Math.max(4,v));
     setSelected({x:mortal.x,y:mortal.y});setSelectedAgentId(id);
     setFollowId(id);setMapFocus(id);setTab('world');
   },[storageReady,world.descent?.agentId,world.descent?.mode,world.agents,
     setWorld,setPlaying]);
+  // The living world keeps its day/week/month routines while the player is
+  // walking. This is deliberately much slower than god-mode fast-forward;
+  // one day per two seconds keeps individual actions meaningful and avoids
+  // throwing large yearly calculations at the browser every few frames.
+  useEffect(()=>{
+    if(!storageReady||tab!=='world'||world.descent?.mode!=='mortal'||
+      !mortalRunning)return;
+    const timer=window.setInterval(()=>{
+      const current=currentWorld.current;
+      if(current.descent?.mode!=='mortal'||current.year>=9999)return;
+      const next=advanceWorldDays(current,1);
+      if(next!==current){currentWorld.current=next;setWorld(next);}
+    },2000);
+    return ()=>window.clearInterval(timer);
+  },[storageReady,tab,world.descent?.mode,mortalRunning,setWorld]);
+  // Window-level input works without forcing the canvas to hold keyboard
+  // focus. Text boxes, shortcuts and other tabs continue to behave normally.
+  useEffect(()=>{
+    if(!storageReady||tab!=='world'||world.descent?.mode!=='mortal')return;
+    const held=new Set<MortalKey>();
+    let lastMove=0;
+    const move=()=>{
+      const current=currentWorld.current;
+      const id=current.descent?.mode==='mortal'?current.descent.agentId:null;
+      const actor=id===null?undefined:current.agents.find(a=>a.id===id);
+      if(!actor||!held.size)return;
+      const now=performance.now();
+      if(now-lastMove<mortalMovementDelay(actor))return;
+      const direction=mapView==='overhead'?{
+        dx:Number(held.has('d'))-Number(held.has('a')),
+        dy:Number(held.has('s'))-Number(held.has('w')),
+      }:mortalDirection(held,{yaw:orbitYawRef.current,
+        pitch:CAMERA_PITCHES[cameraPitch]});
+      if(!direction||!direction.dx&&!direction.dy)return;
+      lastMove=now;
+      const result=walkMortal(current,direction.dx,direction.dy);
+      if(result.moved){
+        currentWorld.current=result.world;
+        setWorld(result.world);
+        setSelected({x:actor.x+direction.dx,y:actor.y+direction.dy});
+        setSelectedAgentId(id);setFollowId(id);
+        setMortalMessage('');
+      }else if(result.reason)setMortalMessage(result.reason);
+    };
+    const editable=(event:KeyboardEvent)=>{
+      const target=event.target;
+      return target instanceof HTMLElement&&(
+        target.isContentEditable||!!target.closest('input,textarea,select'));
+    };
+    const down=(event:KeyboardEvent)=>{
+      if(event.altKey||event.ctrlKey||event.metaKey||editable(event))return;
+      const key=event.key.toLowerCase();
+      if(key==='w'||key==='a'||key==='s'||key==='d'){
+        event.preventDefault();held.add(key);move();return;
+      }
+      if(event.repeat)return;
+      if(key==='e'){
+        event.preventDefault();
+        const nearby=nearbyMortals(currentWorld.current);
+        const picked=nearby.find(a=>a.id===selectedAgentId)??nearby[0];
+        if(picked){setMortalTargetId(picked.id);setMortalMessage('');}
+        else setMortalMessage('No one nearby. Walk toward another person.');
+      }else if(key==='p'){
+        event.preventDefault();setMortalRunning(r=>!r);
+      }else if(key==='escape'){
+        setMortalTargetId(null);setMortalMessage('');
+      }
+    };
+    const up=(event:KeyboardEvent)=>held.delete(event.key.toLowerCase() as MortalKey);
+    const clear=()=>held.clear();
+    const timer=window.setInterval(move,45);
+    window.addEventListener('keydown',down);
+    window.addEventListener('keyup',up);
+    window.addEventListener('blur',clear);
+    return ()=>{
+      window.clearInterval(timer);
+      window.removeEventListener('keydown',down);
+      window.removeEventListener('keyup',up);
+      window.removeEventListener('blur',clear);
+    };
+  },[storageReady,tab,world.descent?.mode,world.descent?.agentId,
+    cameraPitch,mapView,selectedAgentId,setWorld]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
@@ -689,9 +784,26 @@ export function WorldforgeApp(){
     setSelected({x,y});
     const individual=world.agents.find(a=>a.x===x&&a.y===y);
     setSelectedAgentId(individual?.id??null);
+    if(world.descent?.mode==='mortal'){
+      const target=mortalNearby.find(a=>a.id===individual?.id);
+      if(target){setMortalTargetId(target.id);setMortalMessage('');}
+      setFollowId(world.descent.agentId);
+      return;
+    }
     if(followId!==null)setFollowId(individual?.id??null);
   };
+  const mortalAction=(action:MortalAction)=>{
+    if(mortalTargetId===null)return;
+    const result=interactWithMortal(currentWorld.current,mortalTargetId,action);
+    if(result.world!==currentWorld.current){
+      currentWorld.current=result.world;setWorld(result.world);
+    }
+    setMortalMessage(result.message);
+  };
   const brushAt=(x:number,y:number)=>{
+    if(world.descent?.mode==='mortal'){
+      setNotice('Ascend to god mode before using divine world tools.');return;
+    }
     const before=world;
     const next=editWorld(before,x,y,brush);
     if(next===before){
@@ -709,6 +821,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
+    restoredDescentRef.current=null;
+    setMortalTargetId(null);setMortalMessage('');
     setZoom(mapView==='depth'?1.5:1);
     setNotice('New world created with seed '+settings.seed+'.');
   };
@@ -725,6 +839,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
+    restoredDescentRef.current=null;
+    setMortalTargetId(null);setMortalMessage('');
     setNotice('World replayed from the same starting seed.');
   };
   const importWorld=async(event:ChangeEvent<HTMLInputElement>)=>{
@@ -742,13 +858,15 @@ export function WorldforgeApp(){
       setSavedDate(null);
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
+      restoredDescentRef.current=null;
+      setMortalTargetId(null);setMortalMessage('');
       setZoom(mapView==='depth'?1.5:1);setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
   const step=(days:number)=>{
     if(currentWorld.current.descent?.mode==='mortal'){
-      setNotice('The mortal preview is paused. Real-time world time arrives in v2.5.1.');
+      setNotice('Use P or the mortal HUD to pause or resume lived time.');
       return;
     }
     setPlaying(false);setWorld(w=>advanceWorldDays(w,days));
@@ -757,35 +875,38 @@ export function WorldforgeApp(){
     if(next!=='settlements')setPlaying(false);
     if(next==='powers'&&currentWorld.current.descent?.mode==='mortal'){
       setWorld(w=>setDescentMode(w,'divine'));setFollowId(null);
+      setMortalRunning(false);setMortalTargetId(null);
     }
     setTab(next);setNotice('');
   };
   const enterMortalView=(id:number)=>{
     const person=currentWorld.current.agents.find(a=>a.id===id);
     if(!person){setNotice('That mortal is no longer alive.');return;}
-    setPlaying(false);
+    setPlaying(false);setMortalRunning(true);
+    setMortalTargetId(null);setMortalMessage('');
     setWorld(w=>setDescentMode(w,'mortal'));
     setMapView('depth');setZoom(v=>Math.max(4,v));
     setSelected({x:person.x,y:person.y});setSelectedAgentId(id);
     setFollowId(id);setMapFocus(id);setBrush({kind:'inspect'});
-    setTab('world');setNotice('Mortal preview active. WASD movement is next in v2.5.1.');
+    setTab('world');setNotice('Your mortal is ready. WASD to walk, E to talk, P to pause.');
   };
   const createDescent=(options:MortalCreation)=>{
     try{
       const result=createMortal(currentWorld.current,options);
       setWorld(result.world);
       // State has not committed yet; use the newly created agent directly.
+      setMortalRunning(true);setMortalTargetId(null);setMortalMessage('');
       setPlaying(false);setMapView('depth');setZoom(v=>Math.max(4,v));
       setSelected({x:result.agent.x,y:result.agent.y});
       setSelectedAgentId(result.agent.id);setFollowId(result.agent.id);
       setMapFocus(result.agent.id);setBrush({kind:'inspect'});
-      setTab('world');setNotice('A new mortal has entered the world. '+
-        'Real-time movement is coming in v2.5.1.');
+      setTab('world');setNotice('A new mortal has entered the world. WASD to walk, E to talk.');
     }catch(error){setNotice(error instanceof Error?error.message:
       'Unable to create your mortal.');}
   };
   const leaveMortalView=()=>{
     setPlaying(false);setWorld(w=>setDescentMode(w,'divine'));
+    setMortalRunning(false);setMortalTargetId(null);setMortalMessage('');
     setFollowId(null);setTab('world');setNotice('Returned to god mode.');
   };
   const applyDivine=(action:DivineAction)=>{
@@ -876,13 +997,14 @@ export function WorldforgeApp(){
       selectedTile={selected} onApply={applyDivine} onOpenPerson={openPerson}
       onFindOnMap={findOnMap}/>
       {notice&&<p className="evo-notice" role="status">{notice}</p>}</>:
-    <main className="evo-playground">
-      {world.descent?.mode==='mortal'&&<div className="evo-mortal-banner" role="status">
-        <div><strong>✦ DIVINE DESCENT — MORTAL PREVIEW</strong>
-          <span>Living character created. WASD movement and real-time pacing
-            arrive in v2.5.1.</span></div>
-        <button onClick={leaveMortalView}>↑ RETURN TO GOD MODE</button>
-      </div>}
+    <main className={'evo-playground'+(world.descent?.mode==='mortal'?' is-mortal':'')}>
+      {world.descent?.mode==='mortal'&&<MortalHUD world={world}
+        nearby={mortalNearby} targetId={mortalTargetId}
+        message={mortalMessage} running={mortalRunning}
+        onTalk={mortalAction}
+        onSelect={id=>{setMortalTargetId(id);setMortalMessage('');}}
+        onClose={()=>{setMortalTargetId(null);setMortalMessage('');}}
+        onToggleTime={()=>setMortalRunning(r=>!r)} onLeave={leaveMortalView}/>}
       <header className="evo-playground-heading">
         <div>
           <span className="evo-overline">YOUR LIVING WORLD</span>
@@ -1021,11 +1143,11 @@ export function WorldforgeApp(){
               {mapView==='depth'&&<button className={advancedView?'is-on':''}
                 aria-expanded={advancedView} aria-controls="evo-camera-panel"
                 onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
-              <button className={toolPanel?'is-on':''}
+              {world.descent?.mode!=='mortal'&&<button className={toolPanel?'is-on':''}
                 aria-expanded={toolPanel} aria-controls="evo-world-tools"
                 onClick={()=>setToolPanel(v=>!v)}>
                 ✧ WORLD TOOLS{brush.kind==='inspect'?'':' • ACTIVE'}
-              </button>
+              </button>}
             </div>
           </div>
           {mapView==='depth'&&advancedView&&
@@ -1064,7 +1186,7 @@ export function WorldforgeApp(){
                     setReliefLevel('dramatic');}}>RESET</button>
               </div>
             </div>}
-          {toolPanel&&<div id="evo-world-tools"
+          {world.descent?.mode!=='mortal'&&toolPanel&&<div id="evo-world-tools"
             className="evo-map-options evo-world-tools-panel">
             <div className="evo-option-group">
               <small>MAP ACTION</small>

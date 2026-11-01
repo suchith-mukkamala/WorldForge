@@ -250,7 +250,9 @@ export function WorldCanvas({
       width:canvas.width,height:canvas.height};
     }
     else if(stamp)stamp.tiles=world.tiles;
-    const current=new Map(world.agents.map(a=>[a.id,mortalWorldPoint(a,world)]));
+    const current=new Map(world.agents.map(a=>[a.id,
+      world.descent?.mode==='mortal'&&world.descent.agentId===a.id?
+        {x:a.x,y:a.y}:mortalWorldPoint(a,world)]));
     const previous=prior.current;
     const now=performance.now();
     const day=world.dayOfYear??0;
@@ -258,7 +260,11 @@ export function WorldCanvas({
       world.year<previous.year||world.year-previous.year>1||
       world.year===previous.year&&day<previous.day){
       motions.current.clear();facing.current.clear();spriteCache.current.clear();
-    }else if(world.year>previous.year||day!==previous.day){
+    }else if(world.year>previous.year||day!==previous.day||
+      [...current].some(([id,to])=>{
+        const from=previous.positions.get(id);
+        return !!from&&(from.x!==to.x||from.y!==to.y);
+      })){
       const duration=visualMotionDuration(speed);
       const nextMotions=new Map<number,Motion>();
       for(const [id,to] of current){
@@ -266,7 +272,9 @@ export function WorldCanvas({
         if(canAnimate(from,to)){
           const direction=directionBetween(from,to,facing.current.get(id));
           facing.current.set(id,direction);
-          nextMotions.set(id,{from,to,start:now,duration,facing:direction});
+          nextMotions.set(id,{from,to,start:now,
+            duration:world.descent?.mode==='mortal'&&id===world.descent.agentId?
+              125:duration,facing:direction});
         }
       }
       motions.current=nextMotions;

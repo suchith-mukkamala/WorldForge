@@ -475,7 +475,10 @@ export function stepWorld(previous:World):World{
     const motivated=!!destination&&distance(a,destination)>1;
     // Merchant movement is handled on the caravan's physical route later in
     // the same world tick. A courier cannot wander off with communal cargo.
-    if(!a.work?.tradeId&&
+    // An actively descended mortal controls their own physical movement.
+    // They still age, eat, learn and face the same risks as all other people.
+    if(!(world.descent?.mode==='mortal'&&world.descent.agentId===a.id)&&
+      !a.work?.tradeId&&
       (random(state)<travel||motivated||a.energy<48||tile.food<.75)){
       const choices:{x:number;y:number;score:number}[]=[];
       for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
