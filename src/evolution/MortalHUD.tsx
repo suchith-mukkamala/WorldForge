@@ -5,6 +5,7 @@ import {SPECIES_INFO} from './engine';
 import type {MortalAction} from './mortalGameplay';
 import {describeMortalBuilding,type MortalBuilding} from './mortalGameplay';
 import {ARCHITECTURE,BUILDING_LABELS} from './construction';
+import {canEnterMortalBuilding} from './mortalInteriors';
 import type {MortalCameraMode} from './adventureCamera';
 
 const nameOf=(world:World,agent:Agent)=>personName(world,
@@ -13,12 +14,13 @@ const nameOf=(world:World,agent:Agent)=>personName(world,
 /** Small in-world controls; the underlying map stays the primary screen. */
 export function MortalHUD({world,nearby,buildings=[],targetId,selectedBuilding,
   message,running,cameraMode='adventure',onToggleCamera,onTalk,onSelect,
-  onInspectBuilding,onClose,onToggleTime,onLeave}:{
+  onInspectBuilding,onEnterBuilding,onClose,onToggleTime,onLeave}:{
   world:World;nearby:Agent[];targetId:number|null;message:string;
   buildings?:MortalBuilding[];selectedBuilding?:MortalBuilding|null;
   running:boolean;cameraMode?:MortalCameraMode;onToggleCamera?:()=>void;
   onTalk:(action:MortalAction)=>void;
   onSelect:(id:number)=>void;onInspectBuilding?:(site:MortalBuilding)=>void;
+  onEnterBuilding?:(site:MortalBuilding)=>void;
   onClose:()=>void;
   onToggleTime:()=>void;onLeave:()=>void;
 }){
@@ -73,8 +75,14 @@ export function MortalHUD({world,nearby,buildings=[],targetId,selectedBuilding,
       <p>{ARCHITECTURE[selectedBuilding.building.culture].name}
         {' '}· {selectedBuilding.building.stage.replace('_',' ')}
         {' '}· {Math.round(selectedBuilding.building.condition)}% condition</p>
-      <p className="evo-mortal-building-note">You are standing outside the real
-        structure. Explorable interiors are planned for the next update.</p>
+      {canEnterMortalBuilding(world,selectedBuilding)?<>
+        <p className="evo-mortal-building-note">This building is ready to explore.
+          {' '}Press E or use the button to step inside.</p>
+        {onEnterBuilding&&<div className="evo-mortal-talk-actions">
+          <button onClick={()=>onEnterBuilding(selectedBuilding)}>
+            ↳ ENTER BUILDING</button></div>}
+      </>:<p className="evo-mortal-building-note">This site is unfinished or
+        inaccessible. You can return when it is ready.</p>}
     </section>}
     {!selectedBuilding&&targetId!==null&&<section className="evo-mortal-dialogue"
       aria-label="Talk with a nearby inhabitant">
