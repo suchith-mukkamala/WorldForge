@@ -34,7 +34,7 @@ describe('2.5D structure layer caching',()=>{
     expect(depthArtDetail(3.99)).toBe(1);
     expect(depthArtDetail(4)).toBe(2);
     // The detail tiers now affect the landscape, never mortal scale.
-    expect(DEPTH_PERSON_SIZE).toEqual({width:3,height:5});
+    expect(DEPTH_PERSON_SIZE).toEqual({width:2,height:3});
   });
   it('keeps district landmarks and active construction visible in crowded views',()=>{
     const house=home.infrastructure!.buildings[0];

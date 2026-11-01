@@ -8,6 +8,7 @@ import {harvestDeposit,type ResourceDeposit,
   type ResourceKind} from './resources';
 import {hasHarbor} from './shipping';
 import {terrainBuildPenalty,terrainFarmFactor} from './terrainPhysics';
+import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
   'workshop','market','dock','communal'] as const;
@@ -481,9 +482,10 @@ export function archiveRuins(w:World,s:Settlement):void{
 export function advanceConstruction(w:World,moved:number[]):void{
   prepareInfrastructure(w);
   const deposits=new Map((w.deposits??[]).map(d=>[d.index,d]));
+  const residentsByTile=indexAgentsByTile(w.agents,w.width);
   for(const s of w.settlements){
     const i=s.infrastructure!;
-    const residents=w.agents.filter(a=>distance(a,s)<=7);
+    const residents=nearbyAgents(residentsByTile,w.width,s,7);
     const targetRadius=Math.min(9,5+Math.floor(i.buildings.filter(complete).length/8));
     if(targetRadius>5&&w.year%4===0){
       const additional=landClaim(w,s,targetRadius);

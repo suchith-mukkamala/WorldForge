@@ -1,5 +1,5 @@
 import {lazy,Suspense,useEffect,useMemo,useState} from 'react';
-import {SPECIES,SPECIES_INFO,type LineageRecord,type Species,type World} from './engine';
+import {SPECIES,SPECIES_INFO,type Agent,type LineageRecord,type Species,type World} from './engine';
 import {ancestryLabel,traitProfile} from './family';
 import {TOPIC_INFO} from './knowledge';
 import {faithOf} from './culture';
@@ -22,11 +22,12 @@ type Props={world:World;selectedId:number|null;onOpen:(id:number)=>void;
   onFindOnMap:(id:number)=>void;onInvoke?:(id:number)=>void};
 type Filter='all'|'living'|'deceased'|'favorites';
 
-function LifeChip({world,record,focused,onPick,onFavorite}:{
+function LifeChip({world,record,focused,living,onPick,onFavorite}:{
   world:World;record:LineageRecord;focused:boolean;
+  living:ReadonlyMap<number,Agent>;
   onPick:(id:number)=>void;onFavorite:(id:number)=>void;
 }){
-  const alive=record.died===undefined&&world.agents.some(a=>a.id===record.id);
+  const alive=record.died===undefined&&living.has(record.id);
   const favorite=isPersonFavorite(world,record.id);
   const gift=INNATE_TRAIT_INFO[innateTrait(world.settings.seed,record)];
   return <div className={'evo-directory-person'+(focused?' is-selected':'')}>
@@ -36,7 +37,7 @@ function LifeChip({world,record,focused,onPick,onFavorite}:{
         background:SPECIES_INFO[record.species].color}}/>
       <span><strong>{personName(world,record)}</strong>
         <small>#{record.id} · Gen {record.generation} · {ancestryLabel(record.ancestry)}
-          · {alive?'Age '+world.agents.find(a=>a.id===record.id)?.age:'Archive'}
+          · {alive?'Age '+living.get(record.id)?.age:'Archive'}
           {' · Potential '}<RankBadge rank={potentialRank(world.settings.seed,record)}/></small>
         <small className="evo-directory-gift-line">✦ {gift.name} ·{' '}
           {TRAIT_DOMAIN_INFO[gift.domain].name}</small>
@@ -201,7 +202,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
         </div>
         <div className="evo-directory-scroll">
           {results.slice(0,120).map(r=><LifeChip key={r.id} record={r}
-            world={world} focused={focused?.id===r.id}
+            world={world} living={living} focused={focused?.id===r.id}
             onPick={setActiveId} onFavorite={onFavorite}/>)}
           {!results.length&&<p className="evo-family-help">
             No people match the selected filters.</p>}

@@ -11,17 +11,20 @@ export type TraitRank=typeof TRAIT_RANKS[number];
 export const TRAIT_RANK_INFO:Record<TraitRank,{
   title:string;color:string;potency:number;birthRate:number;
 }>={
-  F:{title:'Ordinary',color:'#8eabb6',potency:1,birthRate:28},
-  E:{title:'Developing',color:'#85baa8',potency:1.3,birthRate:22},
-  D:{title:'Promising',color:'#7abed0',potency:1.7,birthRate:17},
-  C:{title:'Uncommon',color:'#90ca8b',potency:2.2,birthRate:12},
-  B:{title:'Gifted',color:'#d8cb88',potency:2.9,birthRate:9},
-  A:{title:'Exceptional',color:'#f0bd79',potency:3.8,birthRate:6},
-  S:{title:'Extraordinary',color:'#e998aa',potency:5,birthRate:3},
-  'S+':{title:'Mythic',color:'#e7a4e4',potency:6.4,birthRate:1.5},
-  SS:{title:'Legendary',color:'#c4b4fa',potency:8.2,birthRate:.9},
-  'SS+':{title:'Transcendent',color:'#a3d9f6',potency:10.5,birthRate:.45},
-  SSS:{title:'World-changing',color:'#f4e6a7',potency:13.5,birthRate:.15},
+  // Birth percentages, not training grades. The upper tail should remain
+  // genuinely extraordinary even in worlds with thousands of inhabitants.
+  // SSS is 1 in 2,000,000 births, versus the old 1 in ~667.
+  F:{title:'Ordinary',color:'#8eabb6',potency:1,birthRate:80},
+  E:{title:'Developing',color:'#85baa8',potency:1.3,birthRate:12},
+  D:{title:'Promising',color:'#7abed0',potency:1.7,birthRate:5},
+  C:{title:'Uncommon',color:'#90ca8b',potency:2.2,birthRate:2},
+  B:{title:'Gifted',color:'#d8cb88',potency:2.9,birthRate:.7},
+  A:{title:'Exceptional',color:'#f0bd79',potency:3.8,birthRate:.23},
+  S:{title:'Extraordinary',color:'#e998aa',potency:5,birthRate:.055},
+  'S+':{title:'Mythic',color:'#e7a4e4',potency:6.4,birthRate:.012},
+  SS:{title:'Legendary',color:'#c4b4fa',potency:8.2,birthRate:.0025},
+  'SS+':{title:'Transcendent',color:'#a3d9f6',potency:10.5,birthRate:.00045},
+  SSS:{title:'World-changing',color:'#f4e6a7',potency:13.5,birthRate:.00005},
 };
 
 export const isTraitRank=(rank:unknown):rank is TraitRank=>
