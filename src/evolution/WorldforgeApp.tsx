@@ -765,7 +765,7 @@ export function WorldforgeApp(){
               ['people','◉ PEOPLE'],['family','♡ FAMILIES'],
               ['knowledge','✧ EXPEDITIONS & KNOWLEDGE'],
               ['culture','⚖ BELIEFS & GOVERNMENT'],
-              ['codex','✦ WORLD CODEX'],['history','≋ HISTORY']] as const)
+              ['codex','✦ DIVINE CODEX'],['history','≋ HISTORY']] as const)
               .map(([page,title])=><button key={page}
                 className={tab===page?'active':''}
                 aria-current={tab===page?'page':undefined}
