@@ -29,6 +29,9 @@ import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
 import {DivineDescentCreator} from './DivineDescentCreator';
 import {MortalHUD} from './MortalHUD';
+import {MortalInterior} from './MortalInterior';
+import {atInteriorDoor,canEnterMortalBuilding,findInteriorBuilding,
+  INTERIOR_DOOR,moveInside,type InteriorPosition} from './mortalInteriors';
 import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
 import {interactWithMortal,mortalDirection,mortalMovementDelay,
   nearbyMortalBuildings,nearbyMortals,walkMortalWithAssist,
@@ -196,6 +199,12 @@ export function WorldforgeApp(){
     yaw:number;pitch:CameraPitch;overlay:MapOverlay}|null>(null);
   const [mortalTargetId,setMortalTargetId]=useState<number|null>(null);
   const [mortalBuildingTarget,setMortalBuildingTarget]=useState<string|null>(null);
+  const [interiorRef,setInteriorRef]=useState<{
+    settlementId:number;buildingId:number}|null>(null);
+  const [interiorPosition,setInteriorPosition]=useState<InteriorPosition>(INTERIOR_DOOR);
+  const interiorPositionRef=useRef(interiorPosition);
+  interiorPositionRef.current=interiorPosition;
+  const [interiorMessage,setInteriorMessage]=useState('');
   const [mortalMessage,setMortalMessage]=useState('');
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
   const [mapFocus,setMapFocus]=useState<number|null>(null);
@@ -652,6 +661,7 @@ export function WorldforgeApp(){
     nearbyMortalBuildings(world):[],[world]);
   const activeMortalBuilding=mortalBuildings.find(site=>
     `${site.settlementId}:${site.building.id}`===mortalBuildingTarget)??null;
+  const interiorSite=interiorRef?findInteriorBuilding(world,interiorRef):null;
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -702,7 +712,8 @@ export function WorldforgeApp(){
   // Window-level input works without forcing the canvas to hold keyboard
   // focus. Text boxes, shortcuts and other tabs continue to behave normally.
   useEffect(()=>{
-    if(!storageReady||tab!=='world'||world.descent?.mode!=='mortal')return;
+    if(!storageReady||tab!=='world'||world.descent?.mode!=='mortal'||
+      interiorRef)return;
     const held=new Set<MortalKey>();
     let lastMove=0;
     const move=()=>{
@@ -746,7 +757,17 @@ export function WorldforgeApp(){
         event.preventDefault();toggleMortalCamera();
       }else if(key==='e'){
         event.preventDefault();
-        if(mortalTargetId!==null||mortalBuildingTarget!==null){
+        if(mortalBuildingTarget!==null){
+          const site=nearbyMortalBuildings(currentWorld.current).find(s=>
+            `${s.settlementId}:${s.building.id}`===mortalBuildingTarget);
+          if(site&&canEnterMortalBuilding(currentWorld.current,site)){
+            setInteriorRef({settlementId:site.settlementId,buildingId:site.building.id});
+            setInteriorPosition(INTERIOR_DOOR);setInteriorMessage('');
+            setMortalBuildingTarget(null);setFollowId(null);
+          }else setMortalMessage('This entrance is not ready for exploration.');
+          return;
+        }
+        if(mortalTargetId!==null){
           setMortalTargetId(null);setMortalBuildingTarget(null);return;
         }
         const nearby=nearbyMortals(currentWorld.current);
@@ -779,7 +800,60 @@ export function WorldforgeApp(){
     };
   },[storageReady,tab,world.descent?.mode,world.descent?.agentId,
     activeCameraPitch,mapView,selectedAgentId,mortalTargetId,
-    mortalBuildingTarget,setWorld,toggleMortalCamera]);
+    mortalBuildingTarget,interiorRef,setWorld,toggleMortalCamera]);
+  // Indoor navigation is a local presentation state. The actual mortal
+  // remains at the doorway in the same authoritative world simulation.
+  useEffect(()=>{
+    if(!interiorRef||!storageReady||tab!=='world'||!interiorSite)return;
+    const held=new Set<MortalKey>();
+    let last=0;
+    const move=()=>{
+      if(!held.size)return;
+      const now=performance.now();
+      if(now-last<150)return;
+      const dx=Number(held.has('d'))-Number(held.has('a'));
+      const dy=Number(held.has('s'))-Number(held.has('w'));
+      if(!dx&&!dy)return;
+      last=now;
+      const next=moveInside(interiorSite.building.type,interiorPositionRef.current,dx,dy);
+      if(next!==interiorPositionRef.current){
+        interiorPositionRef.current=next;setInteriorPosition(next);
+        setInteriorMessage('');
+      }
+    };
+    const down=(event:KeyboardEvent)=>{
+      const target=event.target;
+      if(event.altKey||event.metaKey||event.ctrlKey||
+        target instanceof HTMLElement&&
+        (target.isContentEditable||!!target.closest('input,textarea,select')))return;
+      const key=event.key.toLowerCase();
+      if(key==='w'||key==='a'||key==='s'||key==='d'){
+        event.preventDefault();held.add(key);move();return;
+      }
+      if(event.repeat)return;
+      if(key==='escape'){event.preventDefault();exitInterior();}
+      if(key==='e'){
+        event.preventDefault();
+        if(atInteriorDoor(interiorPositionRef.current))exitInterior();
+        else setInteriorMessage('Walk back to the lit doorway to leave.');
+      }
+      if(key==='p'){event.preventDefault();setMortalRunning(r=>!r);}
+    };
+    const up=(event:KeyboardEvent)=>held.delete(event.key.toLowerCase() as MortalKey);
+    const clear=()=>held.clear();
+    const timer=window.setInterval(move,40);
+    window.addEventListener('keydown',down);
+    window.addEventListener('keyup',up);
+    window.addEventListener('blur',clear);
+    return ()=>{window.clearInterval(timer);
+      window.removeEventListener('keydown',down);
+      window.removeEventListener('keyup',up);
+      window.removeEventListener('blur',clear);};
+  },[interiorRef,interiorSite?.building.type,tab,storageReady]);
+  useEffect(()=>{
+    if(interiorRef&&!interiorSite){setInteriorRef(null);
+      setInteriorMessage('');setMortalMessage('The building is no longer accessible.');}
+  },[interiorRef,interiorSite]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
@@ -883,6 +957,21 @@ export function WorldforgeApp(){
   const inspectMortalBuilding=(site:MortalBuilding)=>{
     setMortalTargetId(null);setMortalMessage('');
     setMortalBuildingTarget(`${site.settlementId}:${site.building.id}`);
+  };
+  const enterInterior=(site:MortalBuilding)=>{
+    if(!canEnterMortalBuilding(currentWorld.current,site)){
+      setMortalMessage('Move to the entrance of a completed building first.');return;
+    }
+    setInteriorRef({settlementId:site.settlementId,buildingId:site.building.id});
+    setInteriorPosition(INTERIOR_DOOR);setInteriorMessage('');
+    setMortalBuildingTarget(null);setMortalTargetId(null);
+    setMortalMessage('');setFollowId(null);
+  };
+  const exitInterior=()=>{
+    setInteriorRef(null);setInteriorPosition(INTERIOR_DOOR);
+    setInteriorMessage('');
+    const actorId=currentWorld.current.descent?.agentId;
+    if(actorId!==undefined){setFollowId(actorId);setMapFocus(actorId);}
   };
   const brushAt=(x:number,y:number)=>{
     if(world.descent?.mode==='mortal'){
@@ -1095,13 +1184,14 @@ export function WorldforgeApp(){
       {notice&&<p className="evo-notice" role="status">{notice}</p>}</>:
     <main className={'evo-playground'+(world.descent?.mode==='mortal'?' is-mortal':'')+
       (adventureView?' is-adventure':'')}>
-      {world.descent?.mode==='mortal'&&<MortalHUD world={world}
+      {world.descent?.mode==='mortal'&&!interiorRef&&<MortalHUD world={world}
         nearby={mortalNearby} buildings={mortalBuildings}
         targetId={mortalTargetId} selectedBuilding={activeMortalBuilding}
         message={mortalMessage} running={mortalRunning}
         cameraMode={mortalCameraMode} onToggleCamera={toggleMortalCamera}
         onTalk={mortalAction}
         onInspectBuilding={inspectMortalBuilding}
+        onEnterBuilding={enterInterior}
         onSelect={id=>{setMortalBuildingTarget(null);
           setMortalTargetId(id);setMortalMessage('');}}
         onClose={()=>{setMortalTargetId(null);setMortalBuildingTarget(null);
@@ -1342,6 +1432,11 @@ export function WorldforgeApp(){
               setNotice('Physical terrain enabled. Your existing world was preserved.');
             }}>ENABLE PHYSICAL TERRAIN</button>
           </div>}
+          {interiorSite?<MortalInterior world={world} site={interiorSite}
+            position={interiorPosition} message={interiorMessage}
+            running={mortalRunning} onExit={exitInterior}
+            onToggleTime={()=>setMortalRunning(r=>!r)}
+            onAscend={()=>{exitInterior();leaveMortalView();}}/>:
           <div className="evo-map-scroll" ref={mapScrollRef}>
             {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
               overlay={overlay} zoom={zoom}
@@ -1356,7 +1451,7 @@ export function WorldforgeApp(){
                 adventure={adventureView}
                 followId={followId}
                 onFollowPosition={world.descent?.mode==='mortal'?followMortalCamera:centerCamera}/>}
-          </div>
+          </div>}
           {[0,world.width-1,world.width*(world.height-1),
             world.tiles.length-1].some(i=>world.tiles[i]?.biome!=='water')&&
             <div className="evo-terrain-upgrade" role="note">

@@ -1,0 +1,38 @@
+/* v2.6.0 — sharply drawn 2.5D-inspired room views. No WebGL dependency. */
+.evo-interior{display:flex;flex-direction:column;align-items:center;
+  gap:13px;padding:15px 18px 21px;
+  background:radial-gradient(ellipse at 50% 5%,#34515a,#152631 73%);
+  color:#ead9b8;min-height:420px;border:1px solid #677e74}
+.evo-interior-header{display:flex;width:100%;justify-content:space-between;
+  align-items:center;gap:15px;flex-wrap:wrap}
+.evo-interior-header>div:first-child{display:flex;flex-direction:column;gap:5px}
+.evo-interior-header small{font:9px 'Space Mono',monospace;color:#90baab}
+.evo-interior-header strong{font:12px/1.6 var(--pixel,monospace);
+  color:#f0d9a4}
+.evo-interior-header span{font:11px 'Space Mono',monospace;color:#c3d0c1}
+.evo-interior-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.evo-interior button{border:1px solid #a4b69e;background:#35564f;
+  color:#f3e4c1;padding:9px 13px;cursor:pointer;
+  font:9px var(--pixel,monospace)}
+.evo-interior button:hover{background:#497467}
+.evo-interior-actions button:last-child{background:#59423f;border-color:#b18e7c}
+.evo-interior canvas{display:block;width:min(100%,1040px);
+  aspect-ratio:520 / 374;height:auto;image-rendering:pixelated;
+  border:3px solid #899b83;box-shadow:0 16px 36px #0b172ca6;
+  background:#111e27}
+.evo-interior-footer{display:flex;align-items:center;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;width:100%;max-width:1040px;
+  font:11px/1.6 'Space Mono',monospace;color:#d8dfc9}
+.evo-interior kbd{padding:2px 5px;background:#294a46;border:1px solid #85a99a;
+  color:#fff0ca;font:10px var(--pixel,monospace)}
+.evo-interior-message{color:#efc687}
+.evo-interior-household{width:100%;max-width:1040px;
+  padding:12px 15px;border:1px solid #678878;background:#213b3d}
+.evo-interior-household strong{font:9px var(--pixel,monospace);
+  color:#ebd6a6}
+.evo-interior-household p{font:11px/1.7 'Space Mono',monospace;
+  margin:8px 0;color:#f3e5d3}
+.evo-interior-household small{font:10px/1.6 'Space Mono',monospace;
+  color:#a4c2b5}
+@media(max-width:750px){.evo-interior{padding:10px 8px}
+  .evo-interior button{padding:8px 9px;font-size:8px}}
