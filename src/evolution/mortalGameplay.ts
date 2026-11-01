@@ -68,9 +68,16 @@ export function walkMortal(w:World,dx:number,dy:number):MortalStep{
   const bridged=w.transport?.bridges.some(b=>b.index===to&&b.condition>25);
   if(w.tiles[to].biome==='water'&&!bridged)
     return {world:w,moved:false,reason:'Deep water blocks your path.'};
-  const present=w.agents.reduce((count,a)=>count+(a.id!==id&&a.x===x&&a.y===y?1:0),0);
-  if(present>=mortalTileCapacity(w,x,y))
-    return {world:w,moved:false,reason:'Too crowded to move through.'};
+  const occupants=w.agents.filter(a=>a.id!==id&&a.x===x&&a.y===y);
+  // A populated street should not become an impassable wall. Let one nearby
+  // inhabitant trade places with the mortal instead of ignoring tile caps or
+  // pushing a crowd into another already-full square.
+  const needsYield=occupants.length>=mortalTileCapacity(w,x,y);
+  const carriers=new Set((w.shipments??[]).map(s=>s.carrierId));
+  const yielding=needsYield?occupants.find(a=>
+    !a.work?.tradeId&&!carriers.has(a.id)):undefined;
+  if(needsYield&&!yielding)
+    return {world:w,moved:false,reason:'The way is temporarily blocked.'};
   const effort=terrainStepEffort(w,from,to);
   const cognition=actor.cognition?cloneCognition(actor.cognition):undefined;
   if(cognition&&cognition.trail.at(-1)!==to){
@@ -79,7 +86,9 @@ export function walkMortal(w:World,dx:number,dy:number):MortalStep{
   }
   const next:Agent={...actor,x,y,cognition,
     energy:Math.round(clamp(actor.energy-.018*effort,0,100)*100)/100};
-  return {world:{...w,agents:w.agents.map(a=>a.id===id?next:a)},moved:true};
+  const displaced=yielding?{...yielding,x:actor.x,y:actor.y}:undefined;
+  return {world:{...w,agents:w.agents.map(a=>a.id===id?next:
+    a.id===yielding?.id?displaced!:a)},moved:true};
 }
 
 export function nearbyMortals(w:World,limit=5):Agent[]{

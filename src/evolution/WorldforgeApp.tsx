@@ -199,9 +199,10 @@ export function WorldforgeApp(){
   currentWorld.current=world;
   const tabRef=useRef(tab);
   tabRef.current=tab;
-  const centerCamera=useCallback((x:number,y:number)=>{
+  const cameraFollowRef=useRef<{target:{left:number;top:number};frame:number}|null>(null);
+  const cameraPosition=useCallback((x:number,y:number)=>{
     const viewport=mapScrollRef.current;
-    if(!viewport)return;
+    if(!viewport)return null;
     const w=currentWorld.current.width,h=currentWorld.current.height;
     if(mapView==='depth'){
       const current=currentWorld.current;
@@ -213,15 +214,53 @@ export function WorldforgeApp(){
       const point=projector.project(x,y,elevation);
       const scaleX=viewport.scrollWidth/projector.size.width;
       const scaleY=viewport.scrollHeight/projector.size.height;
-      viewport.scrollLeft=point.x*scaleX-viewport.clientWidth/2;
-      viewport.scrollTop=point.y*scaleY-viewport.clientHeight/2;
-    }else{
-      const target=cameraScrollTarget({x,y},{x:w,y:h},
-        {x:viewport.scrollWidth,y:viewport.scrollHeight},
-        {x:viewport.clientWidth,y:viewport.clientHeight});
-      viewport.scrollLeft=target.left;viewport.scrollTop=target.top;
+      return {left:Math.max(0,Math.min(point.x*scaleX-viewport.clientWidth/2,
+          viewport.scrollWidth-viewport.clientWidth)),
+        top:Math.max(0,Math.min(point.y*scaleY-viewport.clientHeight/2,
+          viewport.scrollHeight-viewport.clientHeight))};
     }
+    return cameraScrollTarget({x,y},{x:w,y:h},
+      {x:viewport.scrollWidth,y:viewport.scrollHeight},
+      {x:viewport.clientWidth,y:viewport.clientHeight});
   },[mapView,reliefLevel,orbitYaw,cameraPitch]);
+  const centerCamera=useCallback((x:number,y:number)=>{
+    const viewport=mapScrollRef.current,target=cameraPosition(x,y);
+    if(!viewport||!target)return;
+    viewport.scrollLeft=target.left;
+    viewport.scrollTop=target.top;
+  },[cameraPosition]);
+  const followMortalCamera=useCallback((x:number,y:number)=>{
+    const target=cameraPosition(x,y);
+    if(!target||!mapScrollRef.current)return;
+    const tracking=cameraFollowRef.current;
+    if(tracking){tracking.target=target;return;}
+    const state={target,frame:0};
+    cameraFollowRef.current=state;
+    const ease=()=>{
+      const viewport=mapScrollRef.current;
+      if(!viewport||tabRef.current!=='world'){
+        cameraFollowRef.current=null;return;
+      }
+      const dx=state.target.left-viewport.scrollLeft;
+      const dy=state.target.top-viewport.scrollTop;
+      if(Math.abs(dx)<.8&&Math.abs(dy)<.8){
+        viewport.scrollLeft=state.target.left;
+        viewport.scrollTop=state.target.top;
+        cameraFollowRef.current=null;
+        return;
+      }
+      viewport.scrollLeft+=dx*.22;
+      viewport.scrollTop+=dy*.22;
+      state.frame=requestAnimationFrame(ease);
+    };
+    state.frame=requestAnimationFrame(ease);
+  },[cameraPosition]);
+  useEffect(()=>()=>{
+    if(cameraFollowRef.current){
+      cancelAnimationFrame(cameraFollowRef.current.frame);
+      cameraFollowRef.current=null;
+    }
+  },[tab,mapView,world.descent?.mode]);
   // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
   // only the map scale; regular two-finger scrolling pans both axes natively.
   // Safari emits gesturechange, handled separately with the same anchor.
@@ -1239,14 +1278,16 @@ export function WorldforgeApp(){
           <div className="evo-map-scroll" ref={mapScrollRef}>
             {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
               overlay={overlay} zoom={zoom}
-              speed={speed} followId={followId} onFollowPosition={centerCamera}
+              speed={speed} followId={followId}
+              onFollowPosition={world.descent?.mode==='mortal'?followMortalCamera:centerCamera}
               selected={displayed} onSelect={chooseTile} onEdit={brushAt}
               onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
               <DepthCanvas world={world} brush={brush} overlay={overlay}
                 zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
                 onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
                 camera={{yaw:orbitYaw,pitch:CAMERA_PITCHES[cameraPitch]}}
-                followId={followId} onFollowPosition={centerCamera}/>} 
+                followId={followId}
+                onFollowPosition={world.descent?.mode==='mortal'?followMortalCamera:centerCamera}/>}
           </div>
           {[0,world.width-1,world.width*(world.height-1),
             world.tiles.length-1].some(i=>world.tiles[i]?.biome!=='water')&&
