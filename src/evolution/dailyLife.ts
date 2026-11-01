@@ -293,5 +293,71 @@ export function advanceWeeklyLife(world:World,day:number):World{
       }
     }
   }
-  return {...world,agents:people};
+  // Households are part of the simulation even with no interior on screen.
+  // Require an actual finished residence and members physically near it:
+  // visiting a room never teleports relatives home or manufactures a meal.
+  const homes=new Map<number,{x:number;y:number;settlementId:number;
+    buildingId:number}>();
+  for(const settlement of world.settlements){
+    for(const building of settlement.infrastructure?.buildings??[]){
+      if(building.householdId!==undefined&&
+        (building.type==='house'||building.type==='shelter')&&
+        building.stage==='complete'&&building.condition>0){
+        homes.set(building.householdId,{x:building.x,y:building.y,
+          settlementId:settlement.id,buildingId:building.id});
+      }
+    }
+  }
+  const settlementsById=new Map(world.settlements.map(s=>[s.id,s]));
+  const foodUsed=new Map<number,number>();
+  for(const household of world.households??[]){
+    const home=homes.get(household.id);
+    if(!home||household.residence?.settlementId!==home.settlementId||
+      household.residence.buildingId!==home.buildingId)continue;
+    const present=household.members.map(id=>byId.get(id)).filter((a):a is Agent=>
+      !!a&&distance(a,home)<=1);
+    if(!present.length)continue;
+    const caregiver=present.find(a=>a.development&&
+      ['adult','elder'].includes(lifeStage(a)));
+    const child=present.find(a=>a.development&&
+      ['infant','child','adolescent'].includes(lifeStage(a)));
+    if(caregiver&&child&&caregiver.id!==child.id&&
+      (caregiver.dailyLife!.activity==='care'||
+        caregiver.development!.empathy>=55)){
+      // Care is a concrete, bounded family interaction, visible in both
+      // people's encounter histories and their actual wellbeing.
+      child.energy=round(clamp(child.energy+.07));
+      child.dailyLife!.morale=round(clamp(child.dailyLife!.morale+.55));
+      child.dailyLife!.socialNeed=round(clamp(child.dailyLife!.socialNeed-1.8));
+      caregiver.dailyLife!.morale=round(clamp(caregiver.dailyLife!.morale+.25));
+      caregiver.development=cloneDevelopment(caregiver.development!);
+      caregiver.development.skills.care=round(clamp(
+        caregiver.development.skills.care+.035));
+      encounter(child,caregiver,year,day,'comfort','family',
+        'Received care and attention from family at home.');
+      encounter(caregiver,child,year,day,'comfort','family',
+        'Made time to care for a younger member of the household.');
+    }
+    for(const a of present){
+      if(a.dailyLife!.activity!=='rest')continue;
+      a.energy=round(clamp(a.energy+.18));
+      a.dailyLife!.fatigue=round(clamp(a.dailyLife!.fatigue-3.4));
+      a.dailyLife!.morale=round(clamp(a.dailyLife!.morale+.2));
+    }
+    const settlement=settlementsById.get(home.settlementId);
+    const cost=Math.round(present.length*.001*1000)/1000;
+    if(present.length<2||!settlement||
+      settlement.stores-(foodUsed.get(settlement.id)??0)<cost)continue;
+    foodUsed.set(settlement.id,(foodUsed.get(settlement.id)??0)+cost);
+    for(const a of present){
+      a.energy=round(clamp(a.energy+.12));
+      a.dailyLife!.morale=round(clamp(a.dailyLife!.morale+.35));
+      a.dailyLife!.socialNeed=round(clamp(a.dailyLife!.socialNeed-1.2));
+    }
+  }
+  const settlements=foodUsed.size?world.settlements.map(s=>{
+    const used=foodUsed.get(s.id);
+    return used?{...s,stores:Math.max(0,Math.round((s.stores-used)*1000)/1000)}:s;
+  }):world.settlements;
+  return {...world,agents:people,settlements};
 }

@@ -33,6 +33,16 @@
 .evo-interior-household p{font:11px/1.7 'Space Mono',monospace;
   margin:8px 0;color:#f3e5d3}
 .evo-interior-household small{font:10px/1.6 'Space Mono',monospace;
-  color:#a4c2b5}
+  color:#a4c2b5;display:block;margin-top:7px}
+.evo-interior-residents{list-style:none;margin:8px 0;padding:0;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  gap:5px 15px;max-width:100%}
+.evo-interior-residents li{display:flex;justify-content:space-between;
+  align-items:baseline;gap:9px;min-width:0;border-bottom:1px solid #59716555;
+  font:10px/1.6 'Space Mono',monospace}
+.evo-interior-residents li span{color:#f1d4ac;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.evo-interior-residents li em{color:#a9d1c0;white-space:nowrap;
+  font-style:normal;font-size:9px}
 @media(max-width:750px){.evo-interior{padding:10px 8px}
   .evo-interior button{padding:8px 9px;font-size:8px}}

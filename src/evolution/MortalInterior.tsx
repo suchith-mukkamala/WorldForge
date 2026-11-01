@@ -3,6 +3,7 @@ import type {World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS} from './construction';
 import {paintPerson} from './pixelArt';
 import {personName} from './identity';
+import {livingHousehold} from './livingHouseholds';
 import {atInteriorDoor,INTERIOR_DOOR,INTERIOR_TEMPLATES,
   ROOM_HEIGHT,ROOM_WIDTH,type InteriorPosition} from './mortalInteriors';
 import type {MortalBuilding} from './mortalGameplay';
@@ -128,6 +129,12 @@ export function MortalInterior({world,site,position,running,message,
   const canvas=useRef<HTMLCanvasElement>(null);
   const motion=useRef<Motion>({from:position,to:position,start:0});
   const person=world.agents.find(a=>a.id===world.descent?.agentId);
+  const household=site.building.householdId===undefined?undefined:
+    world.households?.find(h=>h.id===site.building.householdId);
+  const life=livingHousehold(world,site,position);
+  const nameOf=(id:number)=>personName(world,
+    world.lineage.find(p=>p.id===id)??{
+      id,species:world.agents.find(a=>a.id===id)?.species??'human'});
   useEffect(()=>{
     const element=canvas.current,ctx=element?.getContext('2d');
     if(!ctx||!person)return;
@@ -141,29 +148,40 @@ export function MortalInterior({world,site,position,running,message,
     staticArt.width=CW;staticArt.height=CH;
     const staticCtx=staticArt.getContext('2d');
     if(staticCtx)drawMortalRoom(staticCtx,site.building.type,site.building.culture);
-    let frame=0;
+    const occupants=livingHousehold(world,site,position).present;
+    let frame=0,lastPaint=-Infinity;
     const paint=(time:number)=>{
+      // Keep idle family scenes alive without repainting at 60 FPS.
+      frame=requestAnimationFrame(paint);
+      if(time-lastPaint<95)return;
+      lastPaint=time;
       const progress=Math.max(0,Math.min(1,(time-next.start)/150));
       const x=from.x+(position.x-from.x)*progress;
       const y=from.y+(position.y-from.y)*progress;
       ctx.clearRect(0,0,CW,CH);
       ctx.drawImage(staticArt,0,0);
-      // The exact same genetic appearance as outdoors, at a fixed scale.
-      const px=OX+x*CELL+CELL/2-8,py=OY+y*CELL+CELL/2-17;
-      const facing=y>from.y?'south':y<from.y?'north':
-        x>from.x?'east':x<from.x?'west':'south';
-      paintPerson(ctx,person,px,py,facing,progress<1?1:0,
-        progress<1?'walk':'idle');
-      if(progress<1)frame=requestAnimationFrame(paint);
+      // Render genuine nearby residents and the player in floor-depth order.
+      // All sprites use the same appearance code and fixed scale as outdoors.
+      const sprites=[...occupants.map(resident=>({
+        person:resident.agent,x:resident.position.x,y:resident.position.y,
+        facing:'south' as const,walking:false})),{
+        person,x,y,facing:(y>from.y?'south':y<from.y?'north':
+          x>from.x?'east':x<from.x?'west':'south') as
+          'north'|'south'|'east'|'west',walking:progress<1}];
+      sprites.sort((a,b)=>a.y-b.y||a.x-b.x);
+      for(const sprite of sprites){
+        const bob=!sprite.walking&&sprite.person.id!==person.id&&
+          Math.floor((time+sprite.person.id*131)/680)%2===0?1:0;
+        const px=OX+sprite.x*CELL+CELL/2-8,
+          py=OY+sprite.y*CELL+CELL/2-17+bob;
+        paintPerson(ctx,sprite.person,px,py,sprite.facing,
+          sprite.walking?1:0,sprite.walking?'walk':'idle');
+      }
     };
     frame=requestAnimationFrame(paint);
     return ()=>cancelAnimationFrame(frame);
   },[world,site.building.type,site.building.culture,person,
     position.x,position.y]);
-  const household=site.building.householdId===undefined?undefined:
-    world.households?.find(h=>h.id===site.building.householdId);
-  const living=household?.members.map(id=>world.agents.find(a=>a.id===id))
-    .filter((a):a is NonNullable<typeof a>=>!!a)??[];
   return <section className="evo-interior" aria-label="Enterable building interior">
     <header className="evo-interior-header">
       <div><small>INSIDE {site.settlementName.toUpperCase()}</small>
@@ -184,12 +202,20 @@ export function MortalInterior({world,site,position,running,message,
       {message&&<span role="status" className="evo-interior-message">{message}</span>}
     </div>
     {household&&<aside className="evo-interior-household">
-      <strong>HOUSEHOLD · {living.length} LIVING RESIDENT{living.length===1?'':'S'}</strong>
-      <p>{living.length?living.map(a=>personName(world,
-        world.lineage.find(p=>p.id===a.id)??{id:a.id,species:a.species}))
-        .slice(0,6).join(' · '):'The home is currently unoccupied.'}</p>
-      <small>Residents follow their own routines outside this room. Their
-        lives continue even when the building is not on screen.</small>
+      <strong>HOUSEHOLD · {life.members.length} LIVING RESIDENT{life.members.length===1?'':'S'}</strong>
+      <p>{life.present.length?`${life.present.length} at home`:
+        'The other residents are away right now.'}
+        {life.away.length?` · ${life.away.length} away`:''}
+        {life.members.some(a=>a.id===person?.id)?' · You are home':''}</p>
+      {life.present.length>0&&<ul className="evo-interior-residents">
+        {life.present.map(({agent,action})=><li key={agent.id}>
+          <span>{nameOf(agent.id)}</span><em>{action}</em>
+        </li>)}
+      </ul>}
+      {life.away.length>0&&<small>Away: {life.away.slice(0,5).map(a=>
+        nameOf(a.id)).join(' · ')}{life.away.length>5?' and others':''}</small>}
+      <small>Real family members rest, care for children, and share food when
+        they meet at home. Their routines continue while you are away.</small>
     </aside>}
   </section>;
 }
