@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {SPECIES,SPECIES_INFO,WORLD_SIZES,
   normalizeSettings,type WorldSettings} from './engine';
+import {freshWorldSeed} from './worldSeeds';
 
 const PRESETS=[
   {id:'balanced',name:'FOUR KINGDOMS',description:'Every people starts with a foothold',
@@ -19,7 +20,11 @@ export function WorldCreator({
   onCreate:(settings:WorldSettings)=>void;
   onReturn:()=>void;
 }){
-  const [draft,setDraft]=useState<WorldSettings>(()=>normalizeSettings(current));
+  // Entering New World starts with a different seed. Reusing the old one is
+  // still an explicit choice for players who want a reproducible landscape.
+  const [draft,setDraft]=useState<WorldSettings>(()=>normalizeSettings({
+    ...current,seed:freshWorldSeed(current.seed),
+  }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
@@ -28,10 +33,24 @@ export function WorldCreator({
       <div>
         <span className="evo-overline">WORLDFORGE / GENESIS</span>
         <h2>World Creator</h2>
-        <p>Set the opening conditions, then let the world write its own history.</p>
+        <p>Begin with a fresh island—or customize the opening conditions.</p>
       </div>
       <button className="evo-quiet-button" onClick={onReturn}>← RETURN TO WORLD</button>
     </header>
+    <section className="evo-genesis-quick" aria-label="Quick world creation">
+      <div><span className="evo-overline">READY TO BEGIN</span>
+        <h3>{draft.seed===current.seed?'Revisit a familiar landscape.':
+          'A world no one has seen before.'}</h3>
+        <p>{draft.seed===current.seed?
+          'This seed recreates the previous geography. Your other settings may differ.':
+          'A fresh seed is ready. Four peoples will discover, build and decide their own future.'}</p>
+        <small>Seed {draft.seed} · {draft.size} island · {total} founders</small>
+      </div>
+      <button className="evo-primary-button"
+        onClick={()=>onCreate(normalizeSettings(draft))}>✦ BEGIN NEW WORLD</button>
+    </section>
+    <details className="evo-creator-advanced">
+      <summary>⚙ CUSTOMIZE WORLD SETTINGS <span>POPULATION · MAP SIZE · SEED · RESOURCES</span></summary>
     <div className="evo-creator-columns">
       <section className="evo-section-card evo-creator-main">
         <div className="evo-card-heading"><strong>01 / STARTING SCENARIO</strong>
@@ -82,11 +101,15 @@ export function WorldCreator({
                 <input id="evo-seed" type="number" min="1" max="2147483647"
                   value={draft.seed} onChange={e=>update('seed',
                     Math.max(1,Math.min(2147483647,Math.trunc(Number(e.target.value)||1))))}/>
-                <button type="button" onClick={()=>update('seed',Math.floor(
-                  Math.random()*2147483646)+1)} title="Generate a new random seed">
+                <button type="button" onClick={()=>update('seed',
+                  freshWorldSeed(draft.seed))} title="Generate a different random seed">
                   <span aria-hidden="true">⚄</span> RANDOM
                 </button>
+                <button type="button" onClick={()=>update('seed',current.seed)}
+                  title="Reuse this world's exact seed">↺ REUSE</button>
               </div>
+              <small className="evo-seed-hint">A fresh seed is chosen for each new world.
+                Reuse or enter a seed to reproduce a familiar map.</small>
             </label>
             <label htmlFor="evo-food">RESOURCE ABUNDANCE <b>{draft.resourceLevel.toFixed(2)}×</b>
               <input id="evo-food" type="range" min=".5" max="1.8" step=".1"
@@ -112,7 +135,7 @@ export function WorldCreator({
         <section className="evo-section-card evo-genesis-summary">
           <div className="evo-card-heading"><strong>WORLD PREVIEW</strong></div>
           <div className="evo-genesis-count">{total}<span>founding individuals</span></div>
-          <p>Seed <strong>{draft.seed}</strong> · {draft.size} map ·
+          <p>New world seed <strong>{draft.seed}</strong> · {draft.size} map ·
             {WORLD_SIZES[draft.size].join(' × ')} tiles ·
             {draft.resourceLevel.toFixed(1)}× resources</p>
           <p>Mixed-species families: <strong>{draft.interbreeding?'ON':'OFF'}</strong></p>
@@ -126,6 +149,7 @@ export function WorldCreator({
         </section>
       </aside>
     </div>
+    </details>
     <div className="evo-future-note">
       <strong>COMING LATER</strong>
       <span>Partnerships, hybrids and family archives are here. Coming later:

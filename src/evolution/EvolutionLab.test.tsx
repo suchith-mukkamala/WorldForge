@@ -8,10 +8,15 @@ import {WorldFamily} from './WorldFamily';
 import {advanceWorld,createWorld,DEFAULT_SETTINGS} from './engine';
 
 describe('Worldforge integration and first-time user experience',()=>{
-  it('renders three separate tabs, controls, four species and a playable map',()=>{
+  it('shows a guided world, three clear destinations and the playable map',()=>{
     const markup=renderToStaticMarkup(<WorldforgeApp/>);
     expect(markup).toContain('WORLDFORGE');
-    expect(markup).toContain('WORLD CREATOR');
+    expect(markup).toContain('NEW WORLD');
+    expect(markup).toContain('CIVILIZATIONS');
+    expect(markup).toContain('GOD MODE');
+    expect(markup).toContain('☰ EXPLORE');
+    expect(markup).toContain('✧ START HERE');
+    expect(markup).toContain('Press Play.');
     expect(markup).toContain('HISTORY');
     expect(markup).toContain('PLAY');
     expect(markup).toContain('YEAR');
@@ -33,6 +38,9 @@ describe('Worldforge integration and first-time user experience',()=>{
     expect(markup).toContain('ASHEN FRONTIER');
     expect(markup).toContain('WORLD CONDITIONS');
     expect(markup).toContain('RANDOM SEED');
+    expect(markup).toContain('BEGIN NEW WORLD');
+    expect(markup).toContain('CUSTOMIZE WORLD SETTINGS');
+    expect(markup).toContain('↺ REUSE');
     expect(markup).toContain('WANDERING TENDENCY');
     expect(markup).toContain('GENERATE THIS WORLD');
   });
