@@ -17,6 +17,7 @@ import {mortalWorldPoint} from './spatialDetails';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
+import {buildingVisualScale} from './depthSprites';
 import {visibleCoastTile} from './worldOutline';
 
 export const WORLD_CELL_SIZE=6;
@@ -229,7 +230,13 @@ export function WorldCanvas({
     }
     if(zoom>=2.5){
       for(const s of world.settlements)for(const b of s.infrastructure?.buildings??[]){
+        // Roofs stay centered on their plots rather than covering neighbors.
+        const anchorX=(b.x+.5)*CELL,anchorY=(b.y+1)*CELL;
+        const scale=buildingVisualScale(b.type);
+        ctx.save();ctx.translate(anchorX,anchorY);ctx.scale(scale,scale);
+        ctx.translate(-anchorX,-anchorY);
         paintBuilding(ctx,b);
+        ctx.restore();
       }
     }
     backgroundStamp.current={tiles:world.tiles,
