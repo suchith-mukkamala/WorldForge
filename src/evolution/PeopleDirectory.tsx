@@ -15,6 +15,7 @@ import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
 import {ACTIVITY_LABELS} from './dailyLife';
+import {DISEASES} from './publicHealth';
 const LifeViewer=lazy(()=>import('./LifeViewer').then(m=>({default:m.LifeViewer})));
 
 type Props={world:World;selectedId:number|null;onOpen:(id:number)=>void;
@@ -41,6 +42,9 @@ function LifeChip({world,record,focused,living,onPick,onFavorite}:{
           {' · Potential '}<RankBadge rank={potentialRank(world.settings.seed,record)}/></small>
         <small className="evo-directory-gift-line">✦ {gift.name} ·{' '}
           {TRAIT_DOMAIN_INFO[gift.domain].name}</small>
+        {living.get(record.id)?.disease?.stage==='sick'&&
+          <small className="evo-directory-awakened">✚ ILL · {' '}
+            {DISEASES[living.get(record.id)!.disease!.kind].name}</small>}
         {record.awakening&&<small className="evo-directory-awakened">
           ✧ AWAKENED · Y{record.awakening.year} · age {record.awakening.age}</small>}
       </span>
@@ -228,6 +232,11 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 <p>Born Y{focused.born}{focused.died!==undefined?
                   ' · Died Y'+focused.died:alive?' · Age '+alive.age:''}</p>
                 {alive&&<p>Life stage: {lifeStage(alive)}</p>}
+                {alive?.disease&&<p>Health: <strong>{
+                  DISEASES[alive.disease.kind].name}</strong> · {' '}
+                  {alive.disease.stage==='immune'?
+                    'Recovered; protected until Y'+alive.disease.immuneUntil:
+                    alive.disease.stage==='incubating'?'Incubating':'Currently ill'}</p>}
               </div>
             </div>
             <RankProfile seed={world.settings.seed} person={alive??focused}/>

@@ -1,5 +1,14 @@
 /* Evolution Lab v0.2.1 — diagnostic readouts */
 .evo-pop-diagnostics{margin:0 0 15px;border-top:2px solid #76bfa6}
+.evo-health-details{border-top:1px solid #334558;background:#152636;color:#cce5d4}
+.evo-health-details summary{padding:12px 17px;cursor:pointer;font-size:12px;
+  color:#b5dfc2;font-weight:700;list-style-position:inside}
+.evo-health-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;padding:6px 17px 11px}
+.evo-health-numbers span{border:1px solid #2e4a4d;border-radius:4px;
+  padding:8px 10px;font-size:11px;color:#a8bbc2}
+.evo-health-numbers b{display:block;color:#f2ddaa;margin-top:3px;font-size:15px}
+@media(max-width:660px){.evo-health-numbers{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .evo-diagnostic-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
   background:#14223a;border-bottom:1px solid #334e61}
 .evo-diagnostic-overview>div{padding:15px 19px;border-right:1px solid #334558;

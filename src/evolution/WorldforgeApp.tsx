@@ -1260,7 +1260,7 @@ export function WorldforgeApp(){
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.4.2: WORLDS THAT SCALE</strong>
+        <strong>V2.4.3: PLAGUES &amp; PUBLIC HEALTH</strong>
         <span>Every new world begins with fresh geography unless you choose
           to reuse a seed. Explore a cleaner world view, follow a mortal,
           and open advanced controls only when you need them. All existing

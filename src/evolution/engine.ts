@@ -44,6 +44,8 @@ import {birthInnateTrait,innateTrait,isInnateTrait,type InnateTraitId} from './i
 import {naturalAwakeningPlan,isAwakeningRecord,type AwakeningRecord} from './awakening';
 import {isTraitHeritage,type TraitHeritage} from './traitHeritage';
 import {activeTraitBonus} from './traitEffects';
+import {advancePublicHealth,isDiseaseRecord,isPublicHealthState,
+  type DiseaseRecord,type PublicHealthState} from './publicHealth';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -63,7 +65,7 @@ export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number
   development?:Development;blessings?:DivineEffect[];whispers?:DivineWhisper[];
   work?:WorkAssignment;knowledge?:LearnedTopic[];mortalWound?:boolean;
   visitedSites?:number[];artifacts?:Artifact[];belief?:Belief;dailyLife?:DailyLife;
-  cognition?:Cognition};
+  cognition?:Cognition;disease?:DiseaseRecord};
 export type Bond={id:number;a:number;b:number;since:number;
   stage:'courting'|'partner'|'ended';strength:number;ended?:number;
   lastBirthYear?:number;children:number[]};
@@ -90,13 +92,14 @@ export type Settlement={id:number;species:Species;name:string;x:number;y:number;
   archives?:Topic[]};
 export type WorldEvent={id:number;year:number;
   type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|
-    'trade'|'guild'|'diplomacy'|'knowledge'|'culture';
+    'trade'|'guild'|'diplomacy'|'knowledge'|'culture'|'plague';
   message:string};
-export type DeathCause='old_age'|'starvation'|'exposure'|'ill_health';
-export const DEATH_CAUSES:DeathCause[]=['old_age','starvation','exposure','ill_health'];
+export type DeathCause='old_age'|'starvation'|'exposure'|'ill_health'|'plague';
+export const DEATH_CAUSES:DeathCause[]=['old_age','starvation','exposure','ill_health','plague'];
 export const DEATH_LABELS:Record<DeathCause,string>={
   old_age:'Old age',starvation:'Starvation',exposure:'Harsh terrain',
   ill_health:'Declining health',
+  plague:'Infectious disease',
 };
 export type SpeciesVital={births:number;deaths:number;juvenileDeaths:number;
   ageAtDeathSum:number;causes:Record<DeathCause,number>};
@@ -113,6 +116,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
   demography?:Demography;codex?:WorldCodex;
+  publicHealth?:PublicHealthState;
   households?:Household[];nextHouseholdId?:number;divine?:DivineState;
   ruins?:RuinSite[];trails?:Trail[];deposits?:ResourceDeposit[];
   shipments?:Shipment[];nextShipmentId?:number;
@@ -334,6 +338,7 @@ export function stepWorld(previous:World):World{
       cognition:a.cognition?cloneCognition(a.cognition):undefined,
       development:a.development?cloneDevelopment(a.development):undefined,
       work:a.work?{...a.work}:undefined,
+      disease:a.disease?{...a.disease}:undefined,
       blessings:activeEffects(a,previous.year+1).map(e=>({...e})),
       whispers:a.whispers?.filter(q=>q.until>=previous.year+1).map(q=>({...q})),
       mind:a.mind?{
@@ -366,7 +371,8 @@ export function stepWorld(previous:World):World{
       sinceYear:previous.demography.sinceYear,
       bySpecies:Object.fromEntries(SPECIES.map(s=>[s,
         {...previous.demography!.bySpecies[s],
-          causes:{...previous.demography!.bySpecies[s].causes}}])) as Record<Species,SpeciesVital>,
+          causes:{...previous.demography!.bySpecies[s].causes,
+            plague:previous.demography!.bySpecies[s].causes.plague??0}}])) as Record<Species,SpeciesVital>,
     }:emptyDemography(previous.year),
     households:previous.households?.map(h=>({...h,home:{...h.home},
       residence:h.residence?{...h.residence}:undefined,
@@ -385,6 +391,7 @@ export function stepWorld(previous:World):World{
     culture:previous.culture?cloneCulture(previous.culture):undefined,
     knowledge:previous.knowledge?{firsts:previous.knowledge.firsts.map(k=>({...k}))}:
       {firsts:[]},
+    publicHealth:previous.publicHealth?{...previous.publicHealth}:undefined,
     ancientSites:previous.ancientSites?.map(s=>({...s,visitors:[...s.visitors],
       lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
     expeditions:previous.expeditions?.map(e=>({...e}))??[]};
@@ -398,6 +405,10 @@ export function stepWorld(previous:World):World{
   }
   const state={n:prngState(previous.rngState)};
   const yearVitals=emptyVitalYear();
+  // Disease moves through the living population at bounded physical contacts.
+  // This never changes RNG consumption or depends on camera zoom/playback rate.
+  const outbreakStories=advancePublicHealth(world);
+  for(const story of outbreakStories)log(world,'plague',story);
   const residents=residentIndex(world.agents,world.width);
   const capacity=tileCapacity(world);
   const movementSteps:number[]=[];
@@ -556,7 +567,8 @@ export function stepWorld(previous:World):World{
     if(a.mortalWound){
       cause='ill_health';
     }else if(a.energy<=0||a.health<=0){
-      cause=a.energy<30?'starvation':suitability<.45?'exposure':'ill_health';
+      cause=a.energy<30?'starvation':a.health<=0&&a.disease?.stage==='sick'?
+        'plague':suitability<.45?'exposure':'ill_health';
     }else if(ageRatio>1.22||random(state)<senescence){
       cause='old_age';
     }
@@ -568,6 +580,10 @@ export function stepWorld(previous:World):World{
       if(juvenile)yearVitals.juvenileDeaths[a.species]++;
       const record=world.demography!.bySpecies[a.species];
       record.deaths++;record.causes[cause]++;
+      if(cause==='plague'&&world.publicHealth){
+        world.publicHealth.deaths++;
+        world.publicHealth.cumulativeDeaths++;
+      }
       record.ageAtDeathSum+=a.age;
       appendLifeMoment(world,a.id,{year:world.year,kind:'death',
         text:a.mortalWound?'Died from wounds sustained in an ancient ruin.':
@@ -579,6 +595,8 @@ export function stepWorld(previous:World):World{
     }
   }
   world.agents=survivors;
+  if(world.publicHealth)world.publicHealth.active=survivors.filter(a=>
+    a.disease?.stage==='incubating'||a.disease?.stage==='sick').length;
   finalizeDeaths(world,survivors,world.year);
   // A real lifetime event, assessed only for survivors after aging/death.
   // No world RNG calls, no implicit stat bonuses, and no assumed awakening for
@@ -861,6 +879,7 @@ export function isWorld(value:unknown):value is World{
       (a.innateTrait!==undefined&&!isInnateTrait(a.innateTrait))||
       (a.traitHeritage!==undefined&&!isTraitHeritage(a.traitHeritage))||
       (a.awakening!==undefined&&!isAwakeningRecord(a.awakening,a.born,w.year))||
+      (a.disease!==undefined&&!isDiseaseRecord(a.disease,w.year))||
       !Number.isFinite(a.energy)||a.energy<0||a.energy>100||
       !Number.isFinite(a.health)||a.health<=0||a.health>100||
       (a.partnerId!==undefined&&(!Number.isSafeInteger(a.partnerId)||a.partnerId<=0))||
@@ -970,10 +989,13 @@ export function isWorld(value:unknown):value is World{
           Number.isInteger(r.juvenileDeaths)&&r.juvenileDeaths>=0&&
           r.juvenileDeaths<=r.deaths&&Number.isFinite(r.ageAtDeathSum)&&
           r.ageAtDeathSum>=0&&r.causes&&
-          DEATH_CAUSES.every(c=>Number.isInteger(r.causes[c])&&r.causes[c]>=0)&&
-          DEATH_CAUSES.reduce((n,c)=>n+r.causes[c],0)===r.deaths;
+          DEATH_CAUSES.every(c=>Number.isInteger(r.causes[c]??0)&&
+            (r.causes[c]??0)>=0)&&
+          DEATH_CAUSES.reduce((n,c)=>n+(r.causes[c]??0),0)===r.deaths;
       }))return false;
   }
+  if(w.publicHealth!==undefined&&!isPublicHealthState(w.publicHealth,w.year,
+    w.agents.length))return false;
   if(w.codex!==undefined){
     const c=w.codex;
     if(!c||!Array.isArray(c.favoritePeople)||c.favoritePeople.length>100||
@@ -1029,11 +1051,11 @@ export function isWorld(value:unknown):value is World{
       p.vitals!.births[s]>=0&&Number.isInteger(p.vitals!.deaths[s])&&
       p.vitals!.deaths[s]>=0&&Number.isInteger(p.vitals!.juvenileDeaths[s])&&
       p.vitals!.juvenileDeaths[s]>=0)&&
-      DEATH_CAUSES.every(c=>Number.isInteger(p.vitals!.causes[c])&&
-        p.vitals!.causes[c]>=0)&&
+      DEATH_CAUSES.every(c=>Number.isInteger(p.vitals!.causes[c]??0)&&
+        (p.vitals!.causes[c]??0)>=0)&&
       SPECIES.reduce((n,s)=>n+p.vitals!.births[s],0)===p.births&&
       SPECIES.reduce((n,s)=>n+p.vitals!.deaths[s],0)===p.deaths&&
-      DEATH_CAUSES.reduce((n,c)=>n+p.vitals!.causes[c],0)===p.deaths;
+      DEATH_CAUSES.reduce((n,c)=>n+(p.vitals!.causes[c]??0),0)===p.deaths;
   }))return false;
   if(w.history.at(-1)!.year!==w.year||
     w.history.at(-1)!.total!==w.agents.length)return false;
@@ -1041,7 +1063,7 @@ export function isWorld(value:unknown):value is World{
   if(!w.events.every(e=>Number.isSafeInteger(e.id)&&
     Number.isInteger(e.year)&&e.year>=0&&
     ['world','birth','death','settlement','collapse','milestone','bond','hybrid',
-      'trade','guild','diplomacy','knowledge','culture']
+      'trade','guild','diplomacy','knowledge','culture','plague']
       .includes(e.type)&&typeof e.message==='string'&&e.message.length<500))
     return false;
   return true;
