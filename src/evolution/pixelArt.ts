@@ -48,7 +48,8 @@ export function paintAncientSite(ctx:CanvasRenderingContext2D,
   else{p('#728f9d',2,3,2,2);}
 }
 export type PixelPerson=Pick<Agent,'id'|'species'|'ancestry'|'genes'> &
-  Partial<Pick<Agent,'age'|'work'|'development'|'innateTrait'|'awakening'>>;
+  Partial<Pick<Agent,'age'|'work'|'development'|'innateTrait'|'awakening'|
+    'appearance'>>;
 export type AgeLook='young'|'adult'|'elder';
 export type PixelAppearance={skin:string;hair:string;eyes:string;outfit:string;
   trim:string;boots:string;accent:string;ageLook:AgeLook;secondary?:Species};
@@ -64,6 +65,7 @@ const shades={
   demon:{skin:['#98718e','#b57778','#755b86','#d09a97'],
     hair:['#292434','#5b3652','#b4869a','#413b51']},
 } satisfies Record<Species,{skin:string[];hair:string[]}>;
+export const mortalColorOptions=(species:Species)=>shades[species];
 const garment:Record<string,string>={
   farmer:'#799d62',woodcutter:'#8b7159',miner:'#708baa',
   builder:'#b39165',artisan:'#8f6fa3',trader:'#b37679',
@@ -87,10 +89,12 @@ export function appearanceFor(person:PixelPerson):PixelAppearance{
   const preferred=(Object.keys(person.ancestry) as Species[])
     .filter(s=>s!==person.species&&person.ancestry[s]>=.18)
     .sort((a,b)=>person.ancestry[b]-person.ancestry[a])[0];
-  const role=person.work?.job??person.development?.career??'wanderer';
+  const role=person.appearance?.outfit??person.work?.job??
+    person.development?.career??'wanderer';
   const elder=ageLookFor(person)==='elder';
-  return {skin:base.skin[v%base.skin.length],
-    hair:elder?'#d1d0d2':base.hair[(v>>>3)%base.hair.length],
+  return {skin:base.skin[person.appearance?.skin??v%base.skin.length],
+    hair:elder?'#d1d0d2':base.hair[person.appearance?.hair??
+      (v>>>3)%base.hair.length],
     eyes:person.species==='demon'?'#ffe1a4':'#243448',
     outfit:garment[role]??garment.wanderer,
     trim:speciesAccent[person.species],boots:'#423b43',
@@ -101,6 +105,7 @@ export function appearanceFor(person:PixelPerson):PixelAppearance{
 export function spriteKey(person:PixelPerson):string{
   return [person.id,person.species,ageLookFor(person),
     person.work?.job??person.development?.career??'-',
+    person.appearance?Object.values(person.appearance).join('-'):'seeded',
     Math.round(person.genes.vigor*100),
     Object.entries(person.ancestry).map(([k,v])=>k+Math.round(v*100)).join('')]
     .join(':');
@@ -152,6 +157,14 @@ export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
     p(ink,3,top-2,3,4);p(ink,10,top-2,3,4);
     p('#d4a4a7',4,top-2,1,3);p('#d4a4a7',11,top-2,1,3);
     p('#faac84',6,top+5,1,1);p('#faac84',9,top+5,1,1);
+  }
+  if(person.appearance?.hairStyle===1){
+    // Cropped sides and a high crown, retained across every facing.
+    p(c.hair,5,top-1,6,2);p(c.hair,4,top+1,2,1);
+  }else if(person.appearance?.hairStyle===2){
+    // Longer hair forms a separate outline behind the neck and shoulders.
+    p(c.hair,3,top+2,2,9);p(c.hair,11,top+2,2,9);
+    p('#282e3e',3,top+10,1,2);p('#282e3e',12,top+10,1,2);
   }
   if(c.ageLook==='young'){
     p(skin,5,top+7,6,2);p(c.outfit,4,16,8,2);
