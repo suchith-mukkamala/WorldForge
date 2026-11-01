@@ -43,7 +43,9 @@ describe('v2.1.6 — default depth perspective and world artwork',()=>{
     expect(html).toContain('aria-label="Map layers"');
     expect(html).toContain('aria-label="Playback pace"');
     expect(html).toContain('✧ WORLD TOOLS');
-    expect(html).toContain('✧ ARCHIVES');
+    expect(html).toContain('☰ EXPLORE');
+    expect(html).toContain('▤ LAYERS');
+    expect(html).toContain('MAP CONTROLS &amp; HELP');
     expect(html).not.toContain('id="evo-map-view"');
     expect(html).not.toContain('id="evo-play-speed"');
     expect(html).not.toContain('id="evo-brush"');

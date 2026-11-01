@@ -25,6 +25,7 @@ import {cameraScrollTarget} from './motion';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
+import {freshWorldSeed} from './worldSeeds';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
@@ -60,7 +61,10 @@ function initialWorld():World{
       if(restored)return restored;
     }catch{/* Restricted storage: continue with an in-memory world. */}
   }
-  return createWorld(DEFAULT_SETTINGS);
+  // First-time visitors get their own world; existing local saves always win.
+  return createWorld(typeof window==='undefined'?DEFAULT_SETTINGS:{
+    ...DEFAULT_SETTINGS,seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
+  });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture';
@@ -743,29 +747,24 @@ export function WorldforgeApp(){
         <span>✦</span>
         <div><strong>WORLDFORGE</strong><small>AN AUTONOMOUS LIVING WORLD</small></div>
       </div>
-      <nav role="tablist" aria-label="Worldforge pages" className="evo-lab-tabs">
-        <button role="tab" aria-selected={tab==='world'}
+      <nav aria-label="WorldForge main navigation" className="evo-lab-tabs">
+        <button aria-current={tab==='world'?'page':undefined}
           className={tab==='world'?'active':''} onClick={()=>navigate('world')}>
           ◈ WORLD</button>
-        <button role="tab" aria-selected={tab==='settlements'}
-          className={tab==='settlements'?'active':''}
-          onClick={()=>navigate('settlements')}>⌂ SETTLEMENTS</button>
-        <button role="tab" aria-selected={tab==='people'}
-          className={tab==='people'?'active':''} onClick={()=>navigate('people')}>
-          ◉ PEOPLE</button>
-        <button role="tab" aria-selected={tab==='knowledge'}
-          className={tab==='knowledge'?'active':''} onClick={()=>navigate('knowledge')}>
-          ✧ EXPEDITIONS & KNOWLEDGE</button>
-        <button role="tab" aria-selected={tab==='culture'}
-          className={tab==='culture'?'active':''} onClick={()=>navigate('culture')}>
-          ⚖ BELIEFS & GOVERNMENT</button>
-        <button role="tab" aria-selected={tab==='powers'}
+        <button aria-current={tab==='settlements'?'page':undefined}
+          className={['settlements','people','family','culture','knowledge']
+            .includes(tab)?'active':''}
+          onClick={()=>navigate('settlements')}>⌂ CIVILIZATIONS</button>
+        <button aria-current={tab==='powers'?'page':undefined}
           className={tab==='powers'?'active':''} onClick={()=>navigate('powers')}>
-          ⚡ POWERS</button>
-        <details className="evo-nav-more">
-          <summary>✧ ARCHIVES</summary>
+          ⚡ GOD MODE</button>
+        <details key={tab} className="evo-nav-more">
+          <summary>☰ EXPLORE</summary>
           <div className="evo-nav-more-panel">
-            {([['creator','✧ WORLD CREATOR'],['family','♡ FAMILIES'],
+            {([['creator','✧ NEW WORLD'],['settlements','⌂ SETTLEMENTS'],
+              ['people','◉ PEOPLE'],['family','♡ FAMILIES'],
+              ['knowledge','✧ EXPEDITIONS & KNOWLEDGE'],
+              ['culture','⚖ BELIEFS & GOVERNMENT'],
               ['codex','✦ DIVINE CODEX'],['history','≋ HISTORY']] as const)
               .map(([page,title])=><button key={page}
                 className={tab===page?'active':''}
@@ -810,38 +809,50 @@ export function WorldforgeApp(){
     <main className="evo-playground">
       <header className="evo-playground-heading">
         <div>
-          <span className="evo-overline">THE WORLD IS YOUR EXPERIMENT</span>
-          <h1>Let the world <em>write itself.</em></h1>
-          <p>Watch four fantasy peoples survive, spread and form settlements
-            in a living pixel world.</p>
+          <span className="evo-overline">YOUR LIVING WORLD</span>
+          <h1>Watch history <em>unfold.</em></h1>
+          <p>People make their own decisions. Press Play, choose someone on the
+            map, and see where their story goes.</p>
         </div>
         <div className="evo-sim-controls">
+          <button className="evo-new-world-button" onClick={()=>navigate('creator')}>
+            ✧ NEW WORLD</button>
           <button className={playing?'playing evo-play-main':'evo-play-main'}
             disabled={!world.agents.length||world.year>=9999}
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
           <div className="evo-step-actions" role="group"
             aria-label="Advance the world clock">
-            <button onClick={()=>step(1)} title="Advance one simulated day">+DAY</button>
-            <button onClick={()=>step(30)} title="Advance thirty simulated days">+MONTH</button>
             <button onClick={()=>step(365)} title="Advance one simulated year">+YEAR</button>
             <details className="evo-more-steps">
-              <summary aria-label="More time advances">MORE +</summary>
+              <summary aria-label="More time advances">OTHER STEPS</summary>
               <div className="evo-extra-steps">
+                <button onClick={()=>step(1)}>+DAY</button>
                 <button onClick={()=>step(7)}>+WEEK</button>
+                <button onClick={()=>step(30)}>+MONTH</button>
                 <button onClick={()=>step(3650)} title="Advance ten years">+10Y</button>
               </div>
             </details>
           </div>
           <div className="evo-pace-panel" role="group" aria-label="Playback pace">
             <small>PACE</small>
-            {TIME_RATES.map(rate=><button key={rate.id}
+            {TIME_RATES.filter(rate=>['month','year','four'].includes(rate.id))
+              .map(rate=><button key={rate.id}
               className={timeRate===rate.id?'is-on':''}
               aria-pressed={timeRate===rate.id}
               title={rate.label}
               onClick={()=>setTimeRate(rate.id)}>
-                {rate.id==='sixteen'?'16×':rate.id==='four'?'4×':
-                  rate.id==='season'?'SEASON':rate.id.toUpperCase()}
+                {rate.id==='four'?'4Y/S':rate.id==='year'?'1Y/S':'MONTH'}
               </button>)}
+            <details className="evo-more-steps evo-more-pace">
+              <summary aria-label="More playback speeds">MORE</summary>
+              <div className="evo-extra-steps">
+                {TIME_RATES.filter(rate=>!['month','year','four'].includes(rate.id))
+                  .map(rate=><button key={rate.id}
+                    className={timeRate===rate.id?'is-on':''}
+                    aria-pressed={timeRate===rate.id}
+                    onClick={()=>setTimeRate(rate.id)}>{rate.label}</button>)}
+              </div>
+            </details>
           </div>
         </div>
       </header>
@@ -913,18 +924,21 @@ export function WorldforgeApp(){
                 onClick={()=>{setMapView('overhead');setZoom(1);}}>
                 ▦ OVERHEAD</button>
             </div>
-            <div className="evo-layer-chips" role="group" aria-label="Map layers">
-              {([['terrain','WORLD'],['resources','FOOD'],
-                ['deposits','RESOURCES'],['elevation','HEIGHT'],
-                ['watersheds','RIVERS']] as const).map(([key,label])=>
-                <button key={key} className={overlay===key?'is-on':''}
-                  aria-pressed={overlay===key} onClick={()=>setOverlay(key)}
-                  title={key==='watersheds'?'Watersheds & rivers':
-                    key==='terrain'?'Biomes':key==='elevation'?
-                    'Elevation & contours':key==='deposits'?
-                    'Trees & ore deposits':'Food levels'}>
-                  {label}</button>)}
-            </div>
+            <details className="evo-layer-menu">
+              <summary>▤ LAYERS{overlay==='terrain'?'':' · '+overlay.toUpperCase()}</summary>
+              <div className="evo-layer-chips" role="group" aria-label="Map layers">
+                {([['terrain','WORLD'],['resources','FOOD'],
+                  ['deposits','RESOURCES'],['elevation','HEIGHT'],
+                  ['watersheds','RIVERS']] as const).map(([key,label])=>
+                  <button key={key} className={overlay===key?'is-on':''}
+                    aria-pressed={overlay===key} onClick={()=>setOverlay(key)}
+                    title={key==='watersheds'?'Watersheds & rivers':
+                      key==='terrain'?'Biomes':key==='elevation'?
+                      'Elevation & contours':key==='deposits'?
+                      'Trees & ore deposits':'Food levels'}>
+                    {label}</button>)}
+              </div>
+            </details>
             <div className="evo-toolbar-drawers">
               {mapView==='depth'&&<button className={advancedView?'is-on':''}
                 aria-expanded={advancedView} aria-controls="evo-camera-panel"
@@ -1002,7 +1016,7 @@ export function WorldforgeApp(){
             <p>Choose a tool, then click a world tile. Inspect is the default;
               terrain edits and spawning remain entirely optional.</p>
           </div>}
-          <MapLayerLegend overlay={overlay}/>
+          {overlay!=='terrain'&&<MapLayerLegend overlay={overlay}/>}
           {overlay==='terrain'&&<div className="evo-season-visual" role="note"
             aria-label="Visual world season">
             <span className="evo-season-icon" aria-hidden="true">✦</span>
@@ -1049,10 +1063,13 @@ export function WorldforgeApp(){
                 <b>{counts[s]}</b>
               </span>)}
             </div>
-            <span>⌂ SETTLEMENTS · CLICK TO INSPECT · {brush.kind==='inspect'?
-              'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
-              {mapView==='overhead'?'LEFT-DRAG TO PAN · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
-                'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON'}</span>
+            <details className="evo-map-help">
+              <summary>⌖ MAP CONTROLS & HELP</summary>
+              <p>CLICK TO INSPECT · {brush.kind==='inspect'?
+                'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
+                {mapView==='overhead'?'LEFT-DRAG TO PAN · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
+                  'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON'}</p>
+            </details>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
             aria-label="WorldForge performance diagnostics">
@@ -1075,14 +1092,17 @@ export function WorldforgeApp(){
         <aside className="evo-world-sidebar">
           <section className="evo-section-card evo-inspector-card">
             <div className="evo-card-heading">
-              <strong>◉ WORLD INSPECTOR</strong>
+              <strong>{displayed?'◉ SELECTED LOCATION':'✧ START HERE'}</strong>
               <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:'NO SELECTION'}</span>
             </div>
-            {!displayed||!tile?<div className="evo-inspector-empty">
-              <div>⌖</div>
-              <strong>CLICK SOMEWHERE IN THE WORLD</strong>
-              <p>Choose a person, settlement, or terrain tile to inspect it.
-                World Tools opens optional editing actions.</p>
+            {!displayed||!tile?<div className="evo-welcome-guide">
+              <strong>It's their world. You're watching it grow.</strong>
+              <ol>
+                <li><b>Press Play.</b><span>Time passes; people choose how to live.</span></li>
+                <li><b>Click a person or town.</b><span>Follow their story.</span></li>
+                <li><b>Explore when you're ready.</b><span>Try Civilizations or God Mode.</span></li>
+              </ol>
+              <p>Everything else is optional. People make their own decisions.</p>
             </div>:<>
               <div className="evo-biome-info">
                 <span className="evo-biome-swatch"
@@ -1166,12 +1186,14 @@ export function WorldforgeApp(){
                   <label>HEALTH <b>{Math.round(agent.health)}%</b>
                     <progress max="100" value={agent.health}/></label>
                 </div>
-                <RankProfile seed={world.settings.seed} person={agent} compact/>
                 <div className="evo-mind-status" aria-label="Autonomous mind">
                   <small>◈ CURRENT INTENTION</small>
                   <strong>{agent.mind?GOAL_LABELS[agent.mind.goal]:'Awakening'}</strong>
                   <p>{agent.mind?.reason??'This person will choose a goal next year.'}</p>
                 </div>
+                <details className="evo-person-details">
+                  <summary>✧ TRAITS, FAMILY & KNOWLEDGE</summary>
+                  <RankProfile seed={world.settings.seed} person={agent} compact/>
                 <div className="evo-individual-facts">
                   <span>Maturity <b>{Math.round(traitProfile(agent.ancestry).maturity)} years</b></span>
                   <span>Typical lifespan <b>{Math.round(traitProfile(agent.ancestry).lifespan)} years</b></span>
@@ -1193,6 +1215,7 @@ export function WorldforgeApp(){
                 {!!agent.knowledge?.length&&<p className="evo-family-help">
                   Knowledge: {agent.knowledge.map(k=>TOPIC_INFO[k.topic].name).join(', ')}.
                 </p>}
+                </details>
               </div>:<div className="evo-inspector-empty small">
                 No individual currently occupies this tile.
               </div>}
@@ -1212,8 +1235,8 @@ export function WorldforgeApp(){
               </div>}
             </>}
           </section>
-          <section className="evo-section-card evo-world-actions">
-            <div className="evo-card-heading"><strong>WORLD FILE</strong></div>
+          <details className="evo-section-card evo-world-actions evo-disclosure">
+            <summary>⇩ SAVE, IMPORT & REPLAY</summary>
             <div className="evo-actions-buttons">
               <button onClick={()=>{setPlaying(false);downloadJson(world);}}>
                 ⇩ EXPORT WORLD JSON
@@ -1225,23 +1248,23 @@ export function WorldforgeApp(){
             </div>
             <p>Changes autosave in this browser. Export JSON for portable backups.
               Replay resets the simulation to its original conditions.</p>
-          </section>
-          <section className="evo-section-card evo-latest-events">
-            <div className="evo-card-heading"><strong>RECENT CHRONICLE</strong>
+          </details>
+          <details className="evo-section-card evo-latest-events evo-disclosure">
+            <summary>≋ RECENT WORLD EVENTS</summary>
+            <div className="evo-card-heading"><strong>CHRONICLE</strong>
               <button onClick={()=>navigate('history')}>VIEW ALL ↗</button></div>
             {world.events.slice(-4).reverse().map(e=><div key={e.id} className="evo-event-small">
               <span>Y{e.year}</span><p>{e.message}</p>
             </div>)}
-          </section>
+          </details>
         </aside>
       </div>
       <div className="evo-future-note">
-        <strong>V2.4: LIVING SETTLEMENTS</strong>
-        <span>Watch small camps turn into towns and cities with distinct halls,
-          storehouses, workshops, docks and growing paved streets. Crowded
-          districts simplify at distant zoom so individual buildings become
-          readable again up close. Real builders can now gradually cut steep
-          ground and fill neighboring low areas as settlements expand.</span>
+        <strong>V2.4.1: A FRESH START</strong>
+        <span>Every new world begins with fresh geography unless you choose
+          to reuse a seed. Explore a cleaner world view, follow a mortal,
+          and open advanced controls only when you need them. All existing
+          worlds, timelines and divine tools remain available.</span>
       </div>
     </main>}
   </div>;
