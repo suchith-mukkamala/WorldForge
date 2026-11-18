@@ -453,3 +453,94 @@
   .world-preview-controls { padding: 9px; }
   .world-preview-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.adventure-errand-board {
+  position: absolute;
+  z-index: 2;
+  left: 3%;
+  right: 3%;
+  bottom: 3%;
+  width: min(94%, 530px);
+  max-height: 94%;
+  margin: auto;
+  overflow: auto;
+  padding: 13px;
+  border: 1px solid #d9b981;
+  border-radius: 7px;
+  background: #192b29f7;
+  box-shadow: 0 9px 32px #0d191ab0, inset 0 0 0 2px #d9b98119;
+}
+.adventure-errand-board header, .adventure-errand-board footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 11px;
+}
+.adventure-errand-board header { justify-content: space-between; margin-bottom: 9px; }
+.adventure-errand-board h2 {
+  margin: 0;
+  font: 700 clamp(17px, 2.5vw, 24px)/1.15 var(--heading-font);
+  color: #f1dcae;
+}
+.adventure-errand-board footer { margin-top: 9px; font-size: 12px; }
+.adventure-errand-board footer span, .adventure-purse { color: var(--accent-ui); font-weight: 700; }
+.adventure-purse { display: block; margin-top: 6px; font-size: 12px; }
+.adventure-errand-offers { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.adventure-errand-slip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 10px;
+  padding: 8px;
+  border: 1px solid #6b634c;
+  border-radius: 4px;
+  background: #e3c78c0d;
+}
+.adventure-errand-board > .adventure-errand-slip { display: block; }
+.adventure-errand-board > .adventure-errand-slip button { margin-top: 7px; }
+.adventure-errand-slip strong { font-family: var(--heading-font); color: #fff0cb; }
+.adventure-errand-slip p { margin: 3px 0; font-size: 12px; }
+.adventure-errand-slip small, .adventure-errand-board footer small { color: #c8c5ab; }
+.adventure-errand-icon {
+  display: block;
+  width: 25px;
+  height: 25px;
+  position: relative;
+  border-radius: 4px;
+  background: #bc9b572f;
+}
+.adventure-errand-icon::before, .adventure-errand-icon::after { content: ''; position: absolute; }
+.adventure-errand-icon::before {
+  inset: 8px 4px 4px;
+  border: 2px solid #684b32;
+  background: repeating-linear-gradient(#c99b59 0 4px, #987044 4px 6px);
+}
+.adventure-errand-icon[data-kind="forage"]::after { top: 5px; left: 6px; width: 7px; height: 5px; background: #aad178; box-shadow: 6px 2px #dca970; }
+.adventure-errand-icon[data-kind="delivery"]::after { top: 9px; left: 11px; width: 3px; height: 10px; background: #f0cc79; }
+.adventure-errand-empty { color: var(--muted-ui); margin: 6px 0; }
+.adventure-errand-tracker {
+  border: 1px solid #5a6652;
+  border-radius: 8px;
+  background: #1c2e29;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.adventure-errand-tracker h2 { font: 700 16px/1.2 var(--heading-font); margin: 0 0 7px; }
+.adventure-errand-tracker > strong { font-size: 13px; color: #f1dcae; }
+.adventure-errand-tracker p { margin: 4px 0; font-size: 12px; color: #c7d4c6; }
+.adventure-errand-tracker > small { display: block; margin-top: 4px; color: var(--muted-ui); }
+.adventure-errand-direction { color: #eccb92; font-size: 12px; font-weight: 700; }
+.adventure-errand-feedback { color: #f3d69d; margin: 7px 0 0; font-size: 12px; }
+.adventure-errand-history { margin-top: 8px; border-top: 1px solid #536052; padding-top: 7px; }
+.adventure-errand-history summary { cursor: pointer; font-size: 12px; color: #d4e0ce; }
+.adventure-errand-history ul { list-style: none; margin: 5px 0 0; padding: 0; font-size: 12px; }
+.adventure-errand-history li { display: flex; justify-content: space-between; gap: 5px; padding: 4px 0; }
+.adventure-errand-history small { color: var(--muted-ui); flex-shrink: 0; }
+.adventure-shell .adventure-abandon { font-size: 11px; margin-top: 7px; }
+.adventure-shell .adventure-board-link { font-size: 12px; width: 100%; text-align: left; }
+@media (max-width: 560px) {
+  .adventure-errand-board { padding: 8px; }
+  .adventure-errand-slip { gap: 5px; padding: 6px; }
+  .adventure-errand-board button { padding: 6px; font-size: 12px; }
+  .adventure-errand-board footer small { flex-basis: 100%; }
+}

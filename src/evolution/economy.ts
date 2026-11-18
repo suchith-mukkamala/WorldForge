@@ -437,6 +437,30 @@ function updatePrices(s:Settlement):void{
   }
 }
 
+export function settlementStockRoom(s:Settlement,good:Good):number{
+  return Math.max(0,capacity(s,good)-stockOf(s,good));
+}
+
+/** Apply one exchange using the same capacity and prices as communal trade. */
+export function exchangeSettlementStock(s:Settlement,good:Good,
+  quantity:number,coins:number):Settlement|null{
+  const treasury=s.economy&&s.economy.coins+coins;
+  const amount=stockOf(s,good)+quantity;
+  if(!s.economy||treasury===undefined||!Number.isFinite(treasury)||
+    treasury<0||treasury>10000||!Number.isFinite(amount)||
+    amount<0||amount>capacity(s,good))return null;
+  const next={...s,economy:{...cloneEconomy(s.economy),coins:rounded(treasury)}};
+  if(good!=='food'&&good!=='tools'){
+    const infrastructure=s.infrastructure;
+    if(!infrastructure)return null;
+    next.infrastructure={...infrastructure,stock:{...infrastructure.stock},
+      oreStock:{coal:0,copper:0,iron:0,gold:0,...infrastructure.oreStock}};
+  }
+  setStock(next,good,amount);
+  updatePrices(next);
+  return next;
+}
+
 /** A shipment subtracts source inventory now and adds it only on arrival. */
 function dispatchTrade(w:World):void{
   if(w.year%3!==0||w.shipments!.length>=16)return;

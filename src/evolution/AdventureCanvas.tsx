@@ -3,7 +3,8 @@ import type {Agent,World} from './engine';
 import {adventurePlaceKey} from './adventurePlaces';
 import type {AdventureGate,AdventureMap,AdventureRegion} from './adventureMap';
 import {ADVENTURE_TILE as TILE,adventureProp,paintAdventureBuilding,
-  paintAdventureGround,paintAdventureProp,paintAdventureSign} from './adventureArt';
+  paintAdventureGround,paintAdventureProp,paintAdventureSign,
+  paintErrandMarker} from './adventureArt';
 import {actionPose,canAnimate,directionBetween,motionFrame,type Motion,
   type Point,type SpritePose} from './motion';
 import {paintPerson} from './pixelArt';
@@ -12,7 +13,7 @@ import {pixelTerrainHash} from './depthWorldArt';
 import {mortalWorldPoint} from './spatialDetails';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;
-  marked:Point|null;onSelect:(point:Point)=>void};
+  marked:Point|null;board?:Point;gather?:Point;onSelect:(point:Point)=>void};
 
 type Scenery={x:number;y:number;depth:number;opacity:number;
   draw:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void};
@@ -77,7 +78,7 @@ export function AdventureCanvas(props:Props){
     resize();
     const paint=(now:number)=>{
       frame=requestAnimationFrame(paint);
-      const view=latest.current,{world,map,region,actor,marked}=view;
+      const view=latest.current,{world,map,region,actor,marked,board,gather}=view;
       const scene=adventurePlaceKey(region.place);
       const changed=previous!==view;
       const active=now-actorMotion.start<actorMotion.duration;
@@ -118,6 +119,10 @@ export function AdventureCanvas(props:Props){
           region.area.has(a.y*world.width+a.x));
       }
       const sprites:Scenery[]=foreground.slice();
+      const marker=(point:Point,kind:'board'|'gather')=>sprites.push({...point,
+        depth:point.y*TILE+14,opacity:1,draw:(ctx,px,py)=>paintErrandMarker(ctx,px,py,kind)});
+      if(board)marker(board,'board');
+      if(gather)marker(gather,'gather');
       const drawCharacter=(agent:Agent,at:Point,facing:Motion['facing'],
         stride:0|1|2|3,pose:SpritePose,isPlayer:boolean)=>{
         sprites.push({x:at.x,y:at.y,depth:at.y*TILE+19,opacity:1,

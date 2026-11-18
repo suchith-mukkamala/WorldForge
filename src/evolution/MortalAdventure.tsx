@@ -5,6 +5,7 @@ import {BUILDING_LABELS,settlementStage} from './construction';
 import {AdventureCanvas} from './AdventureCanvas';
 import {MortalHUD,mortalName} from './MortalHUD';
 import {MortalInterior} from './MortalInterior';
+import {ErrandTracker,TownNoticeBoard} from './TownErrands';
 import {PixelPortrait} from './PixelPortrait';
 import {adventureDistance,adventureMapFor,adventureRegion,LANDSCAPE_NAME,
   useAdventureGate,walkAdventure,type AdventureGate} from './adventureMap';
@@ -15,6 +16,10 @@ import {atInteriorDoor,canEnterMortalBuilding,findInteriorBuilding,
 import {interactWithMortal,mortalMovementDelay,nearbyMortalBuildings,nearbyMortals,
   type MortalAction,type MortalBuilding} from './mortalGameplay';
 import {useAdventureControls,WALK_DIRECTIONS} from './useAdventureControls';
+import {abandonErrand,abandonErrandLabel,acceptErrand,availableErrands,buyMeal,
+  deliverErrand,errandObjective,gatherErrand,journalFor,noticeBoard,
+  type ErrandResult} from './mortalErrands';
+import {coinLabel} from './errandRecords';
 import type {Point} from './motion';
 
 const buildingKey=(site:MortalBuilding)=>site.settlementId+':'+site.building.id;
@@ -39,8 +44,15 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const [interior,setInterior]=useState<Interior|null>(null);
   const [message,setMessage]=useState('');
   const [waypoint,setWaypoint]=useState<string|null>(null);
+  const [boardOpen,setBoardOpen]=useState(false);
+  const [boardPinned,setBoardPinned]=useState(false);
+  const [errandMessage,setErrandMessage]=useState('');
   const map=adventureMapFor(world),region=adventureRegion(world,map,actor);
   const scene=adventurePlaceKey(region.place);
+  const board=noticeBoard(world,region),boardNear=!!board&&adventureDistance(actor,board)<=1;
+  const journal=journalFor(world),activeErrand=journal.active;
+  const objective=activeErrand&&errandObjective(world,map,region,activeErrand);
+  const showBoard=boardOpen&&boardNear&&!interior;
   const date=calendarDate(world);
   const interiorSite=interior&&findInteriorBuilding(world,interior);
   const nearby=nearbyMortals(world,12).filter(a=>region.area.has(a.y*world.width+a.x));
@@ -78,13 +90,49 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   useEffect(()=>{
     if(focus&&!focusedPerson&&!focusedBuilding)setFocus(null);
   },[focus,focusedPerson,focusedBuilding]);
+  useEffect(()=>{
+    if(boardOpen&&!showBoard)setBoardOpen(false);
+  },[boardOpen,showBoard]);
+  useEffect(()=>{
+    if(!errandMessage||showBoard)return;
+    const timer=window.setTimeout(()=>setErrandMessage(''),6000);
+    return ()=>window.clearTimeout(timer);
+  },[errandMessage,showBoard]);
 
-  const clear=()=>{setFocus(null);setMessage('');};
+  const clear=()=>{setFocus(null);setBoardOpen(false);setMessage('');};
   const exitInterior=()=>{setInterior(null);clear();};
   const toggleTime=()=>setRunning(value=>!value);
   const selectPerson=(person:Agent)=>{
     setFocus({personId:person.id});setMessage('');
   };
+  const performErrand=(action:(before:World)=>ErrandResult,close=false)=>{
+    const before=current.current,result=action(before);
+    if(result.world!==before){
+      commit(result.world);
+      setWaypoint(null);setBoardPinned(false);
+      if(close)setBoardOpen(false);
+    }
+    setErrandMessage(result.message);
+  };
+  const openBoard=()=>{
+    if(!boardNear||interior)return;
+    clear();setBoardOpen(true);setErrandMessage('');
+  };
+  const selectBoard=()=>{
+    if(boardNear)openBoard();
+    else{setWaypoint(null);setBoardPinned(value=>!value);}
+  };
+  const pinGate=(key:string)=>{
+    setBoardPinned(false);
+    setWaypoint(current=>current===key?null:key);
+  };
+  const goalPoint=objective?.point;
+  const goalNear=!!goalPoint&&adventureDistance(actor,goalPoint)<=1;
+  const workAction:Interaction|undefined=goalNear&&objective?.action?
+    objective.action==='gather'?
+      {label:'Gather food',point:goalPoint,run:()=>performErrand(gatherErrand)}:
+      {label:'Deliver supplies',point:goalPoint,run:()=>performErrand(deliverErrand,true)}:
+    undefined;
   const enterBuilding=(site:MortalBuilding)=>{
     const actual=nearbyMortalBuildings(current.current,12).find(b=>
       buildingKey(b)===buildingKey(site));
@@ -106,6 +154,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     const result=useAdventureGate(before,actual,player,exit);
     if(!result.moved){setMessage(result.reason??'The exit is blocked.');return;}
     commit(result.world);
+    setBoardPinned(false);
     const destination=exit.destination;
     const ahead=destination.kind==='route'?
       (adventurePlaceKey(destination.to)===scene?destination.from:destination.to):null;
@@ -144,14 +193,17 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
         run:()=>{setInterior({...interior,target:resident.agent.id});setMessage('');}}]:[];
   }else{
     actions=[
+      ...(workAction?[workAction]:[]),
       ...gates.filter(g=>g.distance<=1).map(g=>gateAction(g.gate)),
       ...buildings.filter(site=>site.distance===0).map(buildingAction),
+      ...(boardNear?[{label:'Read town board',run:openBoard,point:board}]:[]),
       ...nearby.map(personAction),
       ...buildings.filter(site=>site.distance===1).map(buildingAction),
     ];
   }
   const primary=actions[0];
   const interact=()=>{
+    if(showBoard){setBoardOpen(false);return;}
     if(interior&&interior.target!==null){
       setInterior({...interior,target:null});setMessage('');return;
     }
@@ -187,10 +239,15 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   };
   const controls=useAdventureControls({move,interact,escape,pause:toggleTime});
   const selectTile=(point:Point)=>{
+    if(showBoard)return;
+    if(workAction?.point&&equal(workAction.point,point)){
+      workAction.run();return;
+    }
+    if(board&&equal(board,point)){selectBoard();return;}
     const exit=gates.find(g=>equal(g.gate.point,point));
     if(exit){
       if(exit.distance<=1)travel(exit.gate);
-      else setWaypoint(exit.key);
+      else pinGate(exit.key);
       return;
     }
     const person=nearby.find(a=>equal(a,point));
@@ -206,7 +263,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     gates.some(({gate})=>gate.ferry)?'Follow the path to a trail or ferry landing.':
       gates.length?'Follow a signed trail to the next town.':region.settlement?
         'No routes reach this settlement yet.':'No settlements are reachable from here yet.';
-  const showAction=!focusedPerson&&!focusedBuilding&&
+  const showAction=!showBoard&&!focusedPerson&&!focusedBuilding&&
     (!interior||interior.target===null&&!atInteriorDoor(interior.position));
   const movementControls=(
     <div className="adventure-controls" role="group" aria-label="Adventure controls">
@@ -234,8 +291,9 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
               }}>{action.label}</button>)}</div>
           </details>}
         </div>
-        {!interior&&showAction&&<p className="adventure-feedback" role="status">
-          {message||(!primary&&gates.length?routeMessage:'')}</p>}
+        {!showBoard&&errandMessage?<p className="adventure-errand-feedback" role="status">
+          {errandMessage}</p>:!interior&&showAction&&<p className="adventure-feedback"
+          role="status">{message||(!primary&&gates.length?routeMessage:'')}</p>}
       </div>
     </div>);
   return <div className="evo-app adventure-shell" data-landscape={region.landscape}>
@@ -266,12 +324,20 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
             onExit={exitInterior}>{movementControls}</MortalInterior>:<>
             <div className="adventure-picture">
               <AdventureCanvas world={world} map={map} region={region} actor={actor}
-                marked={focusedBuilding?.entrance??focusedPerson??pinned?.gate.point??
-                  primary?.point??null} onSelect={selectTile}/>
-              <MortalHUD world={world} person={focusedPerson} site={focusedBuilding}
-                message={message} onClose={clear}
-                onEnter={()=>{if(focusedBuilding)enterBuilding(focusedBuilding);}}
-                onTalk={action=>{if(focusedPerson)speak(focusedPerson.id,action);}}/>
+                board={board} gather={objective?.action==='gather'?goalPoint:undefined}
+                marked={focusedBuilding?.entrance??focusedPerson??
+                  (boardPinned?board:undefined)??pinned?.gate.point??goalPoint??primary?.point??null}
+                onSelect={selectTile}/>
+              {showBoard?<TownNoticeBoard world={world} journal={journal}
+                offers={availableErrands(world,region)} objective={objective}
+                canDeliver={goalNear&&objective?.action==='deliver'} message={errandMessage}
+                onAccept={order=>performErrand(before=>acceptErrand(before,order),true)}
+                onDeliver={()=>performErrand(deliverErrand,true)}
+                onMeal={()=>performErrand(buyMeal)} onClose={()=>setBoardOpen(false)}/>:
+                <MortalHUD world={world} person={focusedPerson} site={focusedBuilding}
+                  message={message} onClose={clear}
+                  onEnter={()=>{if(focusedBuilding)enterBuilding(focusedBuilding);}}
+                  onTalk={action=>{if(focusedPerson)speak(focusedPerson.id,action);}}/>}
             </div>
             {movementControls}
           </>}
@@ -282,14 +348,26 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
             <div>
               <strong>{name}</strong>
               <label>Energy <meter min={0} max={100} value={actor.energy}/></label>
+              {(journal.coins>0||journal.history.length>0)&&
+                <span className="adventure-purse">{coinLabel(journal.coins)}</span>}
             </div>
           </section>
+          {(!interior||activeErrand)&&<ErrandTracker world={world} journal={journal}
+            objective={objective}
+            directions={goalPoint?(goalNear?'In reach':adventureDistance(actor,goalPoint)+
+              ' tiles '+directionTo(actor,goalPoint)):undefined}
+            boardLabel={!interior&&!showBoard&&board&&primary?.label!=='Read town board'?
+              (boardNear?'Read town board':
+              (boardPinned?'Board marked · ':'Mark town board · ')+adventureDistance(actor,board)+
+              ' tiles '+directionTo(actor,board)):undefined}
+            abandonLabel={activeErrand&&abandonErrandLabel(world,region,actor,activeErrand)}
+            onBoard={selectBoard} onAbandon={()=>performErrand(abandonErrand,true)}/>}
           {!interior&&<section className="adventure-exits">
             <h2>{region.place.kind==='route'?'Trail ends':
               gates.some(({gate})=>gate.ferry)?'Trails & ferries':'Trails'}</h2>
             {gates.length?<ul>{gates.map(({gate,distance,key})=><li key={key}>
               <button onClick={()=>distance<=1?travel(gate):
-                setWaypoint(prev=>prev===key?null:key)}
+                pinGate(key)}
                 aria-pressed={distance>1?waypoint===key:undefined}
                 title={gate.ferry?(distance<=1?'Board ferry':'Mark ferry landing'):
                   distance<=1?'Use this signpost':'Mark this signpost'}>

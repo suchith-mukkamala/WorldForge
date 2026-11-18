@@ -397,3 +397,29 @@ export function paintAdventureSign(ctx:CanvasRenderingContext2D,x:number,y:numbe
   poly(ctx,'#443432',[cx+dx*4,cy+dy*4,cx-dx*2+dy*3,cy-dy*2-dx*3,
     cx-dx*2-dy*3,cy-dy*2+dx*3]);
 }
+
+export function paintErrandMarker(ctx:CanvasRenderingContext2D,x:number,y:number,
+  kind:'board'|'gather'){
+  if(kind==='board'){
+    shadow(ctx,x+13,y+20,10,3);
+    rect(ctx,'#493b37',x+5,y+4,3,15);
+    rect(ctx,'#493b37',x+17,y+4,3,15);
+    rect(ctx,'#754b34',x+3,y,19,13);
+    rect(ctx,'#b47b50',x+3,y,19,3);
+    rect(ctx,'#f2daa0',x+6,y+4,7,6);
+    rect(ctx,'#ecd39f',x+14,y+3,5,6);
+    rect(ctx,'#9e6740',x+7,y+6,4,1);
+    rect(ctx,'#9e6740',x+15,y+5,3,1);
+    rect(ctx,'#ce725e',x+16,y+3,1,2);
+  }else{
+    shadow(ctx,x+12,y+19,9,3);
+    rect(ctx,'#5a483a',x+5,y+13,14,7);
+    rect(ctx,'#c08e56',x+6,y+13,12,5);
+    rect(ctx,'#94ba69',x+6,y+10,5,4);
+    rect(ctx,'#d49660',x+12,y+9,6,5);
+    rect(ctx,'#a9634e',x+12,y+11,3,3);
+    rect(ctx,'#f1c27d',x+8,y+15,8,2);
+    rect(ctx,'#f7e1a0',x+11,y+3,2,4);
+    rect(ctx,'#f7e1a0',x+10,y+4,4,2);
+  }
+}
