@@ -6,6 +6,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.10.0 — Atlas zoom** starts with a settlement overview. Select a town pin or use **Places** to jump to a town or an ancient site. Buildings appear at town scale and residents appear when you zoom closer. Select a building on the map or in the town's building list to see its condition or construction progress. **World** fits the entire map in either perspective.
 - **v2.9.0 — Town Errands** gives your mortal local jobs. Read a settlement's notice board to gather food for its pantry or deliver supplies to a town that needs them. Follow map markers to the goods and their destination. Town treasuries pay your reward, which you can spend on meals to recover energy. Your current errand, cargo, and recent jobs are saved with the world.
 - **v2.8.0 — New Shores** adds twin continents and archipelagos. Choose the geography in **New World**, preview the map, and randomize the seed to see another layout. **Varied worlds** picks a multi-landmass layout from the seed, and **Classic island** uses the earlier generator. New maps have their own bays, inland lakes, mountain ridges, and starting habitats. In Descend, follow trails to coastal landings and sail to reachable settlements on other shores. Existing worlds keep their saved terrain and replay rules.
 

@@ -8,7 +8,7 @@ import type {BuildingType} from './construction';
 export type RenderBounds={minX:number;minY:number;maxX:number;maxY:number};
 export type PopulationView={bounds:RenderBounds;zoom:number;
   focusId?:number|null;selected?:{x:number;y:number}|null;
-  maxVisible?:number};
+  maxVisible?:number;focusOnly?:boolean};
 export type PopulationScene={width:number;indoor:Map<number,Set<string>>};
 
 const indoorActions:Partial<Record<BuildingType,readonly string[]>>={
@@ -58,6 +58,7 @@ export function renderedPopulation(agents:readonly Agent[],scene:PopulationScene
   const perTile=zoom>=3?2:1;
   const focus=agents.find(a=>a.id===view.focusId)??agents.find(a=>
     !!view.selected&&a.x===view.selected.x&&a.y===view.selected.y);
+  if(view.focusOnly)return focus?[focus]:[];
   const compare=(a:Agent,b:Agent)=>priority(a.id)-priority(b.id)||a.id-b.id;
   // Select top residents per location before sorting. Crowded cities can
   // contain thousands of agents but only 1-2 sprites appear per world tile.

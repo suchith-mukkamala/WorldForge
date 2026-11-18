@@ -23,6 +23,9 @@ import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
 import {coastalDepth,OCEAN_TONES} from './oceanDepth';
 import {wornPathTiles} from './trailNetwork';
+import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
+  type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -31,16 +34,16 @@ const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
   '#465766','#50545f','#3d605f','#505e54'];
 /** Only these zoom boundaries add scenic objects; fractional steps within a
  * tier change CSS magnification but do not need a new terrain raster. */
-export const sceneryZoomTier=(zoom:number)=>zoom>=2.5?2:zoom>=2?1:0;
+export const sceneryZoomTier=(zoom:number)=>zoom>=ATLAS_TOWN_ZOOM?2:zoom>=2?1:0;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
-  followId=null,onFollowPosition,onDiagnostics,
+  followId=null,personId=null,onFollowPosition,onDiagnostics,
 }:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
-  zoom?:number;speed?:number;followId?:number|null;
+  zoom?:number;speed?:number;followId?:number|null;personId?:number|null;
   onFollowPosition?:(x:number,y:number)=>void;
   onDiagnostics?:(stats:{drawn:number;frameMs:number})=>void;
 }){
@@ -48,6 +51,8 @@ export function WorldCanvas({
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
+  const buildingArtRef=useRef<Map<string,BuildingArt>>(new Map());
+  const buildingPlotsRef=useRef<AtlasBuilding[]>([]);
   const backgroundStamp=useRef<{
     tiles:World['tiles'];topography:World['topography'];settlementKey:string;
     ruins:World['ruins'];deposits:World['deposits'];
@@ -89,6 +94,8 @@ export function WorldCanvas({
       (overlay==='resources'||!stamp||stamp.tiles.length!==world.tiles.length||
         stamp.tiles.some((tile,i)=>tile.biome!==world.tiles[i].biome));
     const sceneryTier=sceneryZoomTier(zoom);
+    const showBuildings=sceneryTier===2;
+    const showResidents=atlasLevel(zoom)==='street';
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
@@ -162,20 +169,18 @@ export function WorldCanvas({
       paintHydrologyStream(ctx,i%W,Math.floor(i/W),next%W,
         Math.floor(next/W),tier,overlay==='watersheds');
     }
-    if(overlay==='deposits'||zoom>=2){
+    if(overlay==='deposits'){
       for(const d of world.deposits??[]){
         const x=d.index%W,y=Math.floor(d.index/W),px=x*CELL,py=y*CELL;
         if(d.amount<.1)continue;
         paintDeposit(ctx,d.kind,x,y,d.amount,d.capacity);
-        if(overlay==='deposits'){
-          ctx.fillStyle='rgba(8,14,27,.8)';
-          ctx.fillRect(px,py+5,6,1);
-          ctx.fillStyle=RESOURCE_COLORS[d.kind];
-          ctx.fillRect(px,py+5,6*d.amount/d.capacity,1);
-        }
+        ctx.fillStyle='rgba(8,14,27,.8)';
+        ctx.fillRect(px,py+5,6,1);
+        ctx.fillStyle=RESOURCE_COLORS[d.kind];
+        ctx.fillRect(px,py+5,6*d.amount/d.capacity,1);
       }
     }
-    if(zoom>=2){
+    if(showBuildings&&overlay==='terrain'){
       const worn=wornPathTiles(world.trails??[],world.width,world.height);
       for(const s of world.settlements){
         for(const id of s.infrastructure?.roads??[]){
@@ -186,25 +191,23 @@ export function WorldCanvas({
         }
       }
     }
-    // Engine-owned transport infrastructure is visible at both world and
-    // neighborhood scales. Display decisions never enter its simulation.
-    for(const road of world.transport?.roads??[]){
+    if(sceneryTier>0&&overlay==='terrain')for(const road of world.transport?.roads??[]){
       if(road.condition<=25)continue;
       const x=road.index%W,y=Math.floor(road.index/W);
       ctx.fillStyle='rgba(229,185,111,.85)';
       ctx.fillRect(x*CELL,y*CELL+2,CELL,3);
-      if(zoom>=2){
+      if(showBuildings){
         ctx.fillStyle='#725f53';ctx.fillRect(x*CELL+2,y*CELL+3,2,1);
       }
     }
-    for(const bridge of world.transport?.bridges??[]){
+    if(sceneryTier>0&&overlay==='terrain')for(const bridge of world.transport?.bridges??[]){
       if(bridge.condition<=25)continue;
       const x=bridge.index%W,y=Math.floor(bridge.index/W);
       ctx.fillStyle='#f2d1a0';ctx.fillRect(x*CELL,y*CELL+1,CELL,4);
       ctx.fillStyle='#876b58';ctx.fillRect(x*CELL+1,y*CELL+2,1,3);
       ctx.fillRect(x*CELL+4,y*CELL+2,1,3);
     }
-    for(const ruin of world.ruins??[]){
+    if(showBuildings)for(const ruin of world.ruins??[]){
       const x=ruin.x*CELL,y=ruin.y*CELL;
       const culture=ARCHITECTURE[ruin.species];
       ctx.fillStyle='#222537';ctx.fillRect(x-4,y+4,16,3);
@@ -216,11 +219,12 @@ export function WorldCanvas({
       ctx.fillStyle='#8fa18b';ctx.fillRect(x-3,y+4,2,2);
       ctx.fillRect(x+9,y+3,2,2);
     }
-    for(const site of world.ancientSites??[]){
+    if(showBuildings)for(const site of world.ancientSites??[]){
       paintAncientSite(ctx,site.kind,site.x*CELL,site.y*CELL,
         (site.visits??site.visitors.length)>0);
     }
-    for(const s of world.settlements){
+    if(showBuildings)for(const s of world.settlements){
+      if(s.infrastructure?.buildings.length)continue;
       const px=s.x*CELL,py=s.y*CELL;
       const stage=settlementStage(s),size={encampment:8,hamlet:10,
         village:12,town:14,city:16}[stage];
@@ -245,17 +249,21 @@ export function WorldCanvas({
         }
       }
     }
-    if(zoom>=2.5){
+    const plots:AtlasBuilding[]=[];
+    if(showBuildings){
       for(const s of world.settlements)for(const b of s.infrastructure?.buildings??[]){
-        // Roofs stay centered on their plots rather than covering neighbors.
-        const anchorX=(b.x+.5)*CELL,anchorY=(b.y+1)*CELL;
+        const key=[b.type,b.culture,b.stage,b.tier??0,Math.round(b.progress/10)].join(':');
+        const art=cacheBuildingArt(buildingArtRef.current,key,36,
+          painter=>paintBuilding(painter,{...b,x:3,y:4}));
+        if(!art)continue;
         const scale=buildingVisualScale(b.type);
-        ctx.save();ctx.translate(anchorX,anchorY);ctx.scale(scale,scale);
-        ctx.translate(-anchorX,-anchorY);
-        paintBuilding(ctx,b);
-        ctx.restore();
+        const plot={building:b,art,scale,x:(b.x+.5)*CELL-3.5*CELL*scale,
+          y:(b.y+1)*CELL-5*CELL*scale};
+        plots.push(plot);
+        paintAtlasBuilding(ctx,plot);
       }
     }
+    buildingPlotsRef.current=plots;
     backgroundStamp.current={tiles:world.tiles,
       topography:world.topography,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
@@ -310,12 +318,14 @@ export function WorldCanvas({
     if(atmosphere.height!==canvas.height)atmosphere.height=canvas.height;
     if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
       world.settings.seed,world.year,day,'overhead');
-    const scrollParent=canvas.parentElement;
+    const scrollParent=canvas.closest<HTMLElement>('.evo-map-scroll');
     const bounds=()=>{
       const screen=canvas.getBoundingClientRect();
       const width=screen.width||canvas.width,height=screen.height||canvas.height;
-      const x=(scrollParent?.scrollLeft??0)/width*W;
-      const y=(scrollParent?.scrollTop??0)/height*H;
+      const scroll=scrollParent&&canvas.parentElement?
+        atlasScrollGeometry(scrollParent,canvas.parentElement):null;
+      const x=(scroll?.scrollLeft??0)/width*W;
+      const y=(scroll?.scrollTop??0)/height*H;
       const w=(scrollParent?.clientWidth??width)/width*W;
       const h=(scrollParent?.clientHeight??height)/height*H;
       return {minX:Math.max(0,Math.floor(x)-3),minY:Math.max(0,Math.floor(y)-3),
@@ -342,11 +352,10 @@ export function WorldCanvas({
       // never a guessed line between two distant yearly snapshots.
       // Cull sprites outside the camera; preserve tracked character and tile.
       const ordered=cachedVisible??(cachedVisible=renderedPopulation(
-        world.agents,scene,{bounds:bounds(),zoom,focusId:followId,selected}));
-      const tracked=followId!==null?world.agents.find(a=>a.id===followId):
-        selected?world.agents.find(a=>a.x===selected.x&&a.y===selected.y):
-        undefined;
-      if(zoom>=3&&tracked?.cognition?.trail.length){
+        world.agents,scene,{bounds:bounds(),zoom,focusId:followId??personId,
+          focusOnly:!showResidents}));
+      const tracked=ordered.find(a=>a.id===(followId??personId));
+      if(showResidents&&tracked?.cognition?.trail.length){
         const points=tracked.cognition.trail.map(id=>
           ({x:id%W,y:Math.floor(id/W)}));
         visible.save();visible.strokeStyle='rgba(248,220,145,.75)';
@@ -432,7 +441,7 @@ export function WorldCanvas({
           visible.fillStyle='#ffe1b3';visible.fillRect(px+6,py-8,2,2);
         }
       }
-      if(zoom>=1.5)for(const shipment of world.shipments??[]){
+      if(showResidents)for(const shipment of world.shipments??[]){
         const p=positions.get(shipment.carrierId);if(!p)continue;
         const px=p.x*CELL,py=p.y*CELL;
         if(shipment.mode==='sea'){
@@ -488,12 +497,17 @@ export function WorldCanvas({
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,
-    overlay,selected,zoom,speed,followId,onFollowPosition,onDiagnostics,
-    world.topography,world.dayOfYear]);
+    overlay,selected,zoom,speed,followId,personId,onFollowPosition,onDiagnostics,
+    world.topography,world.dayOfYear,world.ancientSites,world.trails]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
-    const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);
-    const y=Math.floor((event.clientY-rect.top)/rect.height*world.height);
+    const px=(event.clientX-rect.left)/rect.width*world.width*CELL;
+    const py=(event.clientY-rect.top)/rect.height*world.height*CELL;
+    if(brush.kind==='inspect'&&atlasLevel(zoom)!=='world'){
+      const building=atlasBuildingAt(buildingPlotsRef.current,px,py);
+      if(building){onSelect(building.x,building.y);return;}
+    }
+    const x=Math.floor(px/CELL),y=Math.floor(py/CELL);
     if(x<0||x>=world.width||y<0||y>=world.height)return;
     if(brush.kind==='inspect')onSelect(x,y);
     else onEdit(x,y);
@@ -513,7 +527,6 @@ export function WorldCanvas({
   };
   return <canvas ref={canvasRef} className="evo-world-canvas"
     width={world.width*CELL} height={world.height*CELL}
-    style={{width:(zoom*100)+'%'}}
     role="grid" tabIndex={0}
     aria-label={'Interactive fantasy map: '+world.width+' by '+world.height+
       ' cells. Click to '+(brush.kind==='inspect'?'inspect a location':

@@ -21,7 +21,10 @@ import {elevationAt} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
-import {cameraScrollTarget} from './motion';
+import type {Point} from './motion';
+import {ATLAS_PLACE_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {AtlasPlacePicker,AtlasSettlementMarkers,atlasSiteName} from './AtlasPlaces';
+import {AtlasTownCard} from './AtlasTownCard';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
@@ -36,8 +39,7 @@ import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
 import {TOPIC_INFO} from './knowledge';
 import {DivinePowers} from './DivinePowers';
-import {settlementStage} from './construction';
-import {SPECIALTY_LABELS} from './economy';
+import {BUILDING_LABELS} from './construction';
 import {RESOURCE_LABELS,RESOURCE_COLORS} from './resources';
 import {intervene,type DivineAction} from './divine';
 import {personName,isPersonFavorite,renamePerson,togglePersonFavorite,
@@ -197,7 +199,7 @@ export function WorldforgeApp(){
   const orbitYawRef=useRef(orbitYaw);
   orbitYawRef.current=orbitYaw;
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
-  const [zoom,setZoom]=useState(mapView==='depth'&&!isMultiIslandLayout(world.settings.layout)?1.5:1);
+  const [zoom,setZoom]=useState(1);
   const [advancedView,setAdvancedView]=useState(false);
   const [toolPanel,setToolPanel]=useState(false);
   useEffect(()=>{
@@ -211,8 +213,9 @@ export function WorldforgeApp(){
   const activeCameraPitch=CAMERA_PITCHES[cameraPitch];
   const [startingDescent,setStartingDescent]=useState(false);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
-  const [mapFocus,setMapFocus]=useState<number|null>(null);
+  const [mapFocus,setMapFocus]=useState<number|Point|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
+  const mapSheetRef=useRef<HTMLDivElement>(null);
   const orbitFocusRef=useRef<{x:number;y:number}|null>(null);
   const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
@@ -222,34 +225,39 @@ export function WorldforgeApp(){
   currentWorld.current=world;
   const tabRef=useRef(tab);
   tabRef.current=tab;
+  const projection=useMemo(()=>createDepthProjector({width:world.width,height:world.height},
+    RELIEF_LEVELS[reliefLevel],{yaw:orbitYaw,pitch:activeCameraPitch}),
+  [world.width,world.height,reliefLevel,orbitYaw,activeCameraPitch]);
   const cameraPosition=useCallback((x:number,y:number)=>{
-    const viewport=mapScrollRef.current;
-    if(!viewport)return null;
-    const w=currentWorld.current.width,h=currentWorld.current.height;
+    const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
+    if(!viewport||!sheet)return null;
+    const current=currentWorld.current;
+    const w=current.width,h=current.height;
+    let fx=(x+.5)/w,fy=(y+.5)/h;
     if(mapView==='depth'){
-      const current=currentWorld.current;
-      const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
-        {yaw:orbitYaw,pitch:activeCameraPitch});
       const elevation=interpolatedGroundHeight(
         topographyForWorld(current).heights,w,h,x,y);
-      const point=projector.projectSmooth(x,y,elevation);
-      const scaleX=viewport.scrollWidth/projector.size.width;
-      const scaleY=viewport.scrollHeight/projector.size.height;
-      return {left:Math.max(0,Math.min(point.x*scaleX-viewport.clientWidth/2,
-          viewport.scrollWidth-viewport.clientWidth)),
-        top:Math.max(0,Math.min(point.y*scaleY-viewport.clientHeight/2,
-          viewport.scrollHeight-viewport.clientHeight))};
+      const point=projection.projectSmooth(x,y,elevation);
+      fx=point.x/projection.size.width;fy=point.y/projection.size.height;
     }
-    return cameraScrollTarget({x,y},{x:w,y:h},
-      {x:viewport.scrollWidth,y:viewport.scrollHeight},
-      {x:viewport.clientWidth,y:viewport.clientHeight});
-  },[mapView,reliefLevel,orbitYaw,activeCameraPitch]);
+    return {left:Math.max(0,Math.min(sheet.offsetLeft+fx*sheet.offsetWidth-
+        viewport.clientWidth/2,viewport.scrollWidth-viewport.clientWidth)),
+      top:Math.max(0,Math.min(sheet.offsetTop+fy*sheet.offsetHeight-
+        viewport.clientHeight/2,viewport.scrollHeight-viewport.clientHeight))};
+  },[mapView,projection]);
   const centerCamera=useCallback((x:number,y:number)=>{
     const viewport=mapScrollRef.current,target=cameraPosition(x,y);
     if(!viewport||!target)return;
     viewport.scrollLeft=target.left;
     viewport.scrollTop=target.top;
   },[cameraPosition]);
+  const zoomAtlas=useCallback((change:(zoom:number)=>number,pointer?:Point)=>{
+    const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
+    if(!viewport||!sheet)return;
+    pendingZoomAnchor.current=captureWorldZoomAnchor(atlasScrollGeometry(viewport,sheet),
+      pointer??{x:viewport.clientWidth/2,y:viewport.clientHeight/2});
+    setZoom(value=>boundedMapZoom(change(value)));
+  },[]);
   // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
   // only the map scale; regular two-finger scrolling pans both axes natively.
   // Safari emits gesturechange, handled separately with the same anchor.
@@ -261,12 +269,11 @@ export function WorldforgeApp(){
       const rect=viewport.getBoundingClientRect();
       const x=Number.isFinite(clientX)?clientX-rect.left:rect.width/2;
       const y=Number.isFinite(clientY)?clientY-rect.top:rect.height/2;
-      pendingZoomAnchor.current=captureWorldZoomAnchor(viewport,{
+      setFollowId(null);
+      zoomAtlas(value=>value*factor,{
         x:Math.max(0,Math.min(rect.width,x)),
         y:Math.max(0,Math.min(rect.height,y)),
       });
-      setFollowId(null);
-      setZoom(value=>boundedMapZoom(value*factor));
     };
     const wheel=(event:WheelEvent)=>{
       if(!event.ctrlKey){
@@ -280,6 +287,18 @@ export function WorldforgeApp(){
         event.clientX,event.clientY);
     };
     let lastSafariScale=1;
+    let touchDistance=0;
+    const touchPinch=(event:TouchEvent)=>{
+      if(event.touches.length!==2){touchDistance=0;return;}
+      const [a,b]=Array.from(event.touches);
+      const distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      if(!distance)return;
+      if(event.cancelable)event.preventDefault();
+      if(touchDistance)requestZoom(distance/touchDistance,
+        (a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);
+      touchDistance=distance;
+    };
+    const endTouch=()=>{touchDistance=0;};
     const startGesture=(event:Event)=>{
       event.preventDefault();
       lastSafariScale=1;
@@ -288,19 +307,28 @@ export function WorldforgeApp(){
       const pinch=event as Event&{scale?:number;clientX?:number;clientY?:number};
       if(!pinch.scale||pinch.scale<=0)return;
       event.preventDefault();
+      if(touchDistance)return;
       requestZoom(pinch.scale/lastSafariScale,
         pinch.clientX??NaN,pinch.clientY??NaN);
       lastSafariScale=pinch.scale;
     };
     viewport.addEventListener('wheel',wheel,{passive:false});
+    viewport.addEventListener('touchstart',touchPinch,{passive:false});
+    viewport.addEventListener('touchmove',touchPinch,{passive:false});
+    viewport.addEventListener('touchend',endTouch);
+    viewport.addEventListener('touchcancel',endTouch);
     viewport.addEventListener('gesturestart',startGesture,{passive:false});
     viewport.addEventListener('gesturechange',safariGesture,{passive:false});
     return ()=>{
       viewport.removeEventListener('wheel',wheel);
+      viewport.removeEventListener('touchstart',touchPinch);
+      viewport.removeEventListener('touchmove',touchPinch);
+      viewport.removeEventListener('touchend',endTouch);
+      viewport.removeEventListener('touchcancel',endTouch);
       viewport.removeEventListener('gesturestart',startGesture);
       viewport.removeEventListener('gesturechange',safariGesture);
     };
-  },[tab,storageReady,isMortal]);
+  },[tab,storageReady,isMortal,zoomAtlas]);
   // Left-button navigation uses mouse events on the window so a quick drag
   // remains reliable even when it crosses the viewport edge. A small wobble
   // remains a real click for the canvas inspector.
@@ -354,7 +382,7 @@ export function WorldforgeApp(){
       viewport.removeEventListener('mousedown',down);
       viewport.removeEventListener('click',clickCapture,true);
     };
-  },[tab]);
+  },[tab,storageReady,isMortal]);
   // Right-drag orbits the raised view in 15° steps, without interfering with
   // native two-finger scrolling or left-button panning.
   useEffect(()=>{
@@ -383,10 +411,13 @@ export function WorldforgeApp(){
       const w=currentWorld.current;
       const projector=createDepthProjector(w,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYawRef.current,pitch:activeCameraPitch});
-      const scaleX=viewport.scrollWidth/projector.size.width;
-      const scaleY=viewport.scrollHeight/projector.size.height;
-      const cx=(viewport.scrollLeft+viewport.clientWidth/2)/Math.max(.001,scaleX);
-      const cy=(viewport.scrollTop+viewport.clientHeight/2)/Math.max(.001,scaleY);
+      const sheet=mapSheetRef.current;
+      if(!sheet)return;
+      const geometry=atlasScrollGeometry(viewport,sheet);
+      const cx=(geometry.scrollLeft+viewport.clientWidth/2)*
+        projector.size.width/Math.max(1,geometry.scrollWidth);
+      const cy=(geometry.scrollTop+viewport.clientHeight/2)*
+        projector.size.height/Math.max(1,geometry.scrollHeight);
       const heights=topographyForWorld(w).heights;
       let nearest={x:Math.floor(w.width/2),y:Math.floor(w.height/2)};
       let best=Infinity;
@@ -424,17 +455,17 @@ export function WorldforgeApp(){
       viewport.removeEventListener('pointercancel',finish);
       viewport.removeEventListener('contextmenu',contextMenu);
     };
-  },[tab,mapView,reliefLevel,activeCameraPitch,isMortal]);
+  },[tab,mapView,reliefLevel,activeCameraPitch,storageReady,isMortal]);
   // After the canvas changes size, restore the exact world point below the
   // fingers instead of jumping to the top-left of the projected panorama.
   useLayoutEffect(()=>{
     const anchor=pendingZoomAnchor.current;
-    const viewport=mapScrollRef.current;
-    if(!anchor||!viewport)return;
+    const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
+    if(!anchor||!viewport||!sheet)return;
     pendingZoomAnchor.current=null;
-    const scroll=restoreWorldZoomAnchor(anchor,viewport);
-    viewport.scrollLeft=scroll.x;
-    viewport.scrollTop=scroll.y;
+    const scroll=restoreWorldZoomAnchor(anchor,atlasScrollGeometry(viewport,sheet));
+    viewport.scrollLeft=scroll.x+sheet.offsetLeft;
+    viewport.scrollTop=scroll.y+sheet.offsetTop;
   },[zoom]);
   useEffect(()=>{
     let active=true;
@@ -645,11 +676,18 @@ export function WorldforgeApp(){
   const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
   const resource=displayed?world.deposits?.find(d=>d.index===
     displayed.y*world.width+displayed.x):undefined;
+  const detail=atlasLevel(zoom),closeup=detail!=='world';
   const settlement=displayed?world.settlements.find(s=>(s.x===displayed.x&&
-    s.y===displayed.y)||s.infrastructure?.buildings.some(b=>b.x===displayed.x&&
+    s.y===displayed.y)||closeup&&s.infrastructure?.buildings.some(b=>b.x===displayed.x&&
     b.y===displayed.y))??null:null;
+  const building=closeup&&displayed&&!agent?settlement?.infrastructure?.buildings.find(
+    b=>b.x===displayed.x&&b.y===displayed.y):undefined;
   const ancientSite=displayed?world.ancientSites?.find(s=>
     s.x===displayed.x&&s.y===displayed.y):undefined;
+  const mapAspect=mapView==='depth'?projection.size.width/projection.size.height:
+    world.width/world.height;
+  const mapHeights=!closeup&&mapView==='depth'&&world.settlements.length?
+    topographyForWorld(world).heights:null;
   const latest=world.history.at(-1);
   const hybrids=useMemo(()=>world.agents.filter(a=>hybridFraction(a.ancestry)>.01).length,
     [world.agents]);
@@ -667,13 +705,19 @@ export function WorldforgeApp(){
   const favoriteSettlement=(id:number)=>setWorld(w=>toggleSettlementFavorite(w,id));
   const giveName=(id:number,name:string)=>setWorld(w=>renamePerson(w,id,name));
   const renamePlace=(id:number,name:string)=>setWorld(w=>renameSettlement(w,id,name));
+  const locateAtlasPoint=(point:Point,minimumZoom:number)=>{
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setFollowId(null);setSelectedAgentId(null);setSelected(point);
+    setBrush({kind:'inspect'});setZoom(value=>Math.max(minimumZoom,value));
+    setTab('world');setMapFocus(point);
+  };
+  const focusMap=()=>mapSheetRef.current?.querySelector('canvas')?.focus({preventScroll:true});
   const findSettlement=(id:number)=>{
-    const place=knownSettlements(world).find(s=>s.id===id);
+    const place=world.settlements.find(s=>s.id===id)??knownSettlements(world).find(s=>s.id===id);
     if(!place)return;
-    setPlaying(false);
-    setFollowId(null);
-    setSelected({x:place.x,y:place.y});setSelectedAgentId(null);
-    setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
+    if(tab!=='world')setPlaying(false);
+    locateAtlasPoint({x:place.x,y:place.y},ATLAS_PLACE_ZOOM);
+    focusMap();
   };
   const openSettlement=(id:number)=>{
     setSelectedSettlementId(id);setTab('settlements');
@@ -681,18 +725,30 @@ export function WorldforgeApp(){
   const findOnMap=(id:number)=>{
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
+    pendingZoomAnchor.current=null;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
     setZoom(v=>Math.max(2,v));setFollowId(id);
     setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
-    setPlaying(false);setSelected({x,y});setSelectedAgentId(null);
-    setFollowId(null);setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
+    if(tab!=='world')setPlaying(false);
+    locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
+    focusMap();
   };
-  useEffect(()=>{
+  const fitAtlas=()=>{
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setFollowId(null);setSelectedAgentId(null);setZoom(1);
+    setMapFocus({x:world.width/2-.5,y:world.height/2-.5});
+  };
+  const changePerspective=(next:'overhead'|'depth')=>{
+    if(mapView===next)return;
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setFollowId(null);setMapView(next);
+    setMapFocus(displayed??{x:world.width/2-.5,y:world.height/2-.5});
+  };
+  useLayoutEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
-    const target=mapFocus===-1?selected:
-      world.agents.find(a=>a.id===mapFocus);
+    const target=typeof mapFocus==='number'?world.agents.find(a=>a.id===mapFocus):mapFocus;
     if(target)centerCamera(target.x,target.y);
     setMapFocus(null);
   },[tab,mapFocus,zoom,centerCamera]);
@@ -716,7 +772,10 @@ export function WorldforgeApp(){
   const chooseTile=(x:number,y:number)=>{
     orbitFocusRef.current=null;
     setSelected({x,y});
-    const individual=world.agents.find(a=>a.x===x&&a.y===y);
+    const onBuilding=closeup&&world.settlements.some(town=>
+      town.infrastructure?.buildings.some(b=>b.x===x&&b.y===y));
+    const individual=(detail==='street'||followId!==null)&&!onBuilding?
+      world.agents.find(a=>a.x===x&&a.y===y):undefined;
     setSelectedAgentId(individual?.id??null);
     if(followId!==null)setFollowId(individual?.id??null);
   };
@@ -741,7 +800,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
-    setZoom(mapView==='depth'&&!isMultiIslandLayout(settings.layout)?1.5:1);
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setZoom(1);
     setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
@@ -757,6 +817,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setZoom(1);
     setNotice('World replayed from the same starting seed.');
   };
   const importWorld=async(event:ChangeEvent<HTMLInputElement>)=>{
@@ -774,7 +836,8 @@ export function WorldforgeApp(){
       setSavedDate(null);
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
-      setZoom(mapView==='depth'&&!isMultiIslandLayout(obj.settings.layout)?1.5:1);
+      pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+      setZoom(1);
       setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
@@ -953,7 +1016,7 @@ export function WorldforgeApp(){
           <span>{latest?.births??0} births · {latest?.deaths??0} deaths this year</span>
         </div>
         <div className="evo-stat"><small>SETTLEMENTS</small>
-          <strong>{world.settlements.length}</strong><span>Founded by local groups</span></div>
+          <strong>{world.settlements.length}</strong></div>
         <details className="evo-extra-stats">
 <summary>More statistics</summary>
           <div className="evo-extra-stat-grid">
@@ -971,19 +1034,24 @@ export function WorldforgeApp(){
         </details>
       </section>
       <div className="evo-playground-layout">
-        <section className="evo-map-card">
+        <section className="evo-map-card" aria-label="World map" data-map-detail={detail}>
           <div className="evo-card-heading evo-map-heading">
-            <div><strong>World map</strong>
-              {isMultiIslandLayout(world.settings.layout)&&<small>
-                {WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]}
-              </small>}
+            <div className="atlas-map-title" aria-live="polite">
+              <strong>{closeup?(settlement?.name??(ancientSite&&atlasSiteName(ancientSite))??
+                (detail==='street'?'Street map':'Local map')):'World map'}</strong>
+              <small>{building?BUILDING_LABELS[building.type]:
+                detail==='street'?'Buildings & people':detail==='town'?'Buildings':
+                  isMultiIslandLayout(world.settings.layout)?
+                    WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]:
+                    'Settlement overview'}</small>
             </div>
             <div className="evo-map-actions">
-              <button onClick={()=>setZoom(v=>boundedMapZoom(v-.5))}
-                disabled={zoom<=1} title="Zoom out">−</button>
-              <button onClick={()=>setZoom(1)} title="Reset map zoom to 1×">⌖ FIT</button>
-              <button onClick={()=>setZoom(v=>boundedMapZoom(v+.5))}
-                disabled={zoom>=8} title="Zoom in">+</button>
+              <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}/>
+              <button type="button" onClick={fitAtlas} aria-label="Fit world view">World</button>
+              <button type="button" onClick={()=>zoomAtlas(v=>v-.5)}
+                disabled={zoom<=1} aria-label="Zoom out">−</button>
+              <button type="button" onClick={()=>zoomAtlas(v=>v+.5)}
+                disabled={zoom>=8} aria-label="Zoom in">+</button>
             </div>
           </div>
           <details className="evo-map-settings">
@@ -992,12 +1060,11 @@ export function WorldforgeApp(){
             <div className="evo-view-switch" role="group" aria-label="Map perspective">
               <button className={mapView==='depth'?'is-on':''}
                 aria-pressed={mapView==='depth'}
-                onClick={()=>{setMapView('depth');
-                  setFollowId(null);setZoom(1.5);}}>
+                onClick={()=>changePerspective('depth')}>
                 ◈ 2.5D WORLD</button>
               <button className={mapView==='overhead'?'is-on':''}
                 aria-pressed={mapView==='overhead'}
-                onClick={()=>{setMapView('overhead');setZoom(1);}}>
+                onClick={()=>changePerspective('overhead')}>
                 ▦ OVERHEAD</button>
             </div>
             <details className="evo-layer-menu">
@@ -1023,6 +1090,7 @@ export function WorldforgeApp(){
                 onClick={()=>{
                   if(followId!==null){setFollowId(null);return;}
                   if(!agent)return;
+                  pendingZoomAnchor.current=null;
                   setFollowId(agent.id);setZoom(v=>Math.max(mapView==='depth'?2:3,v));
                   setMapFocus(agent.id);
                 }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
@@ -1129,19 +1197,29 @@ export function WorldforgeApp(){
           </div>}
           </details>
           {overlay!=='terrain'&&<MapLayerLegend overlay={overlay}/>}
-          <div className="evo-map-scroll" ref={mapScrollRef}>
-            {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
-              overlay={overlay} zoom={zoom}
-              speed={speed} followId={followId}
-              onFollowPosition={centerCamera}
-              selected={displayed} onSelect={chooseTile} onEdit={brushAt}
-              onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
-              <DepthCanvas world={world} brush={brush} overlay={overlay}
-                zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
-                onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
-                camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
-                followId={followId}
-                onFollowPosition={centerCamera}/>}
+          <div className="evo-map-scroll atlas-viewport" ref={mapScrollRef}>
+            <div className="atlas-sheet" ref={mapSheetRef}
+              style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*mapAspect+'))'}}>
+              {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
+                overlay={overlay} zoom={zoom} speed={speed}
+                followId={followId} personId={selectedAgentId} onFollowPosition={centerCamera}
+                selected={displayed} onSelect={chooseTile} onEdit={brushAt}
+                onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
+                <DepthCanvas world={world} brush={brush} overlay={overlay}
+                  zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
+                  onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
+                  camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
+                  followId={followId} personId={selectedAgentId}
+                  onFollowPosition={centerCamera}/>}
+              {!closeup&&world.settlements.length>0&&
+                <AtlasSettlementMarkers towns={world.settlements}
+                  position={town=>{
+                    if(!mapHeights)return {x:(town.x+.5)/world.width,y:(town.y+.5)/world.height};
+                    const point=projection.project(town.x,town.y,mapHeights[town.y*world.width+town.x]);
+                    return {x:point.x/projection.size.width,y:point.y/projection.size.height};
+                  }}
+                  selected={settlement?.id} onChoose={findSettlement} interactive={brush.kind==='inspect'}/>}
+            </div>
           </div>
           {[0,world.width-1,world.width*(world.height-1),
             world.tiles.length-1].some(i=>world.tiles[i]?.biome!=='water')&&
@@ -1152,18 +1230,20 @@ export function WorldforgeApp(){
               <button onClick={()=>navigate('creator')}>NEW WORLD</button>
             </div>}
           <div className="evo-map-footer">
-            <div className="evo-species-legend">
-              {SPECIES.map(s=><span key={s}>
-                <i style={{background:SPECIES_INFO[s].color}}/>{SPECIES_INFO[s].name}
-                <b>{counts[s]}</b>
-              </span>)}
-            </div>
+            <span className="atlas-map-tip">{brush.kind!=='inspect'?'Click a tile to apply the active tool.':
+              detail==='world'?(world.settlements.length?'Select a town to see its buildings.':
+                'Advance time to see the first settlements.'):'Select a building to inspect it.'}</span>
             <details className="evo-map-help">
               <summary>⌖ MAP CONTROLS & HELP</summary>
-              <p>CLICK TO INSPECT · {brush.kind==='inspect'?
-                'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
+              <p>ARROW KEYS TO MOVE SELECTION ·
                 {mapView==='overhead'?'LEFT-DRAG TO PAN · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
                   'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON'}</p>
+              <div className="evo-species-legend">
+                {SPECIES.map(s=><span key={s}>
+                  <i style={{background:SPECIES_INFO[s].color}}/>{SPECIES_INFO[s].name}
+                  <b>{counts[s]}</b>
+                </span>)}
+              </div>
             </details>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
@@ -1187,8 +1267,8 @@ export function WorldforgeApp(){
         <aside className="evo-world-sidebar">
           <section className="evo-section-card evo-inspector-card">
             <div className="evo-card-heading">
-              <strong>{displayed?'◉ SELECTED LOCATION':'✧ START HERE'}</strong>
-              <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:'NO SELECTION'}</span>
+              <strong>{displayed?'Place details':'✧ START HERE'}</strong>
+              <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:''}</span>
             </div>
             {!displayed||!tile?<div className="evo-welcome-guide">
               <p><b>Press Play.</b> People make their own decisions as time passes.
@@ -1196,45 +1276,11 @@ export function WorldforgeApp(){
               <button className="evo-guide-descend" onClick={()=>navigate('descent')}>
                 {world.descent?'Resume adventure':'Start an adventure'} ↗</button>
             </div>:<>
-              <div className="evo-biome-info">
-                <span className="evo-biome-swatch"
-                  style={{background:BIOME_INFO[tile.biome].color}}/>
-                <div><strong>{BIOME_INFO[tile.biome].name}</strong>
-                  <small>Food available: {tile.food.toFixed(1)} units
-                    {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
-              </div>
-              {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
-                <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
-                <div><strong>PHYSICAL TERRAIN</strong>
-                  <small>Steepest adjacent rise/drop: {Math.round(terrainRuggedness(
-                    world,displayed.y*world.width+displayed.x))} height units</small>
-                  <small>Farm suitability: {Math.round(terrainFarmFactor(
-                    world,displayed.y*world.width+displayed.x)*100)}% · slopes
-                    affect travel, farming and building.</small>
-                </div>
-              </div>}
-              {drainage&&<div className="evo-biome-info">
-                <span className="evo-biome-swatch" style={{background:'#4aadd0'}}/>
-                <div><strong>{tile.biome==='water'?'Existing water body':
-                  streamTier===3?'River':streamTier===2?'Stream':
-                    streamTier===1?'Creek':'Drainage slope'}</strong>
-                  <small>Contributing area: {drainage.catchment[drainageIndex]}
-                    {' tiles · drains to '+(receiverIsWater?'existing water':'world edge')}
-                    {drainage.pondDepth[drainageIndex]>=6?
-                      ' · Potential depression':''}</small>
-                  <small>Creek runoff can improve farm yields in v2.0 worlds.
-                    Ships still require real water tiles.</small>
-                </div>
-              </div>}
-              {resource&&<div className="evo-biome-info">
-                <span className="evo-biome-swatch" style={{background:
-                  RESOURCE_COLORS[resource.kind]}}/>
-                <div><strong>{RESOURCE_LABELS[resource.kind]}</strong>
-                  <small>{resource.amount.toFixed(1)} / {resource.capacity.toFixed(1)}
-                    {' units · renewable deposit'}</small></div>
-              </div>}
+              {settlement&&<AtlasTownCard town={settlement} building={building}
+                onOpen={()=>openSettlement(settlement.id)}
+                onBuilding={plot=>locateAtlasPoint({x:plot.x,y:plot.y},ATLAS_TOWN_ZOOM)}/>}
               {ancientSite&&<div className="evo-selected-settlement">
-                <strong>✧ {ancientSite.name??'ANCIENT '+ancientSite.kind.toUpperCase()+' #'+ancientSite.id}</strong>
+                <strong>{atlasSiteName(ancientSite)}</strong>
                 <span>Risk {ancientSite.danger}/100 ·
                   {' '}{ancientSite.visits??ancientSite.visitors.length} previous expeditions</span>
                 {ancientSite.origin==='collapsed'&&<span>
@@ -1308,23 +1354,47 @@ export function WorldforgeApp(){
                   Knowledge: {agent.knowledge.map(k=>TOPIC_INFO[k.topic].name).join(', ')}.
                 </p>}
                 </details>
-              </div>:<div className="evo-inspector-empty small">
-                No individual currently occupies this tile.
-              </div>}
-              {settlement&&<div className="evo-selected-settlement">
-                <strong>⌂ {settlement.name}</strong>
-                <span>{SPECIES_INFO[settlement.species].name} ·
-                  {settlementStage(settlement)} · Founded Y{settlement.founded}</span>
-                <span>{settlement.population} nearby people · {settlement.stores.toFixed(0)} stores</span>
-                <span>{settlement.infrastructure?.buildings.filter(b=>b.stage==='complete').length??0}
-                  {' completed buildings · '+(settlement.infrastructure?.roads.length??0)+' road tiles'}</span>
-                <span>{settlement.economy?.specialty?
-                  SPECIALTY_LABELS[settlement.economy.specialty]:'Emerging economy'}
-                  {' · '+(world.tradeRelations??[]).filter(r=>
-                    (r.a===settlement.id||r.b===settlement.id)&&
-                    r.completed>=3&&r.trust>=47).length+' trusted trade links'}</span>
-                <button onClick={()=>openSettlement(settlement.id)}>⌂ VIEW LOCAL ECONOMY & CONSTRUCTION ↗</button>
-              </div>}
+              </div>:null}
+              <details className="atlas-terrain-details" open={(!settlement&&!ancientSite&&!agent)||undefined}>
+                <summary>Terrain & resources</summary>
+                <div className="evo-biome-info">
+                  <span className="evo-biome-swatch"
+                    style={{background:BIOME_INFO[tile.biome].color}}/>
+                  <div><strong>{BIOME_INFO[tile.biome].name}</strong>
+                    <small>Food available: {tile.food.toFixed(1)} units
+                      {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
+                </div>
+                {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
+                  <div><strong>PHYSICAL TERRAIN</strong>
+                    <small>Steepest adjacent rise/drop: {Math.round(terrainRuggedness(
+                      world,displayed.y*world.width+displayed.x))} height units</small>
+                    <small>Farm suitability: {Math.round(terrainFarmFactor(
+                      world,displayed.y*world.width+displayed.x)*100)}% · slopes
+                      affect travel, farming and building.</small>
+                  </div>
+                </div>}
+                {drainage&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:'#4aadd0'}}/>
+                  <div><strong>{tile.biome==='water'?'Existing water body':
+                    streamTier===3?'River':streamTier===2?'Stream':
+                      streamTier===1?'Creek':'Drainage slope'}</strong>
+                    <small>Contributing area: {drainage.catchment[drainageIndex]}
+                      {' tiles · drains to '+(receiverIsWater?'existing water':'world edge')}
+                      {drainage.pondDepth[drainageIndex]>=6?
+                        ' · Potential depression':''}</small>
+                    <small>Creek runoff can improve farm yields in v2.0 worlds.
+                      Ships still require real water tiles.</small>
+                  </div>
+                </div>}
+                {resource&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:
+                    RESOURCE_COLORS[resource.kind]}}/>
+                  <div><strong>{RESOURCE_LABELS[resource.kind]}</strong>
+                    <small>{resource.amount.toFixed(1)} / {resource.capacity.toFixed(1)}
+                      {' units · renewable deposit'}</small></div>
+                </div>}
+              </details>
             </>}
           </section>
           <details className="evo-section-card evo-world-actions evo-disclosure">

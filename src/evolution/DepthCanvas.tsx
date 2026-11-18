@@ -27,6 +27,10 @@ import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
   interpolatedGroundHeight,
   tileFromHit,tileHitColor,type DepthCamera} from './depthProjection';
+import {atlasLevel} from './atlasMap';
+import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
+  type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
+import {paintAncientSite} from './pixelArt';
 
 const BASINS=['#385e60','#4a6758','#536072','#637056',
   '#42637c','#6c695e','#456f68','#606d77'];
@@ -104,7 +108,7 @@ function paintCachedTree(ctx:CanvasRenderingContext2D,p:Pt,pine:boolean,
 function renderTerrain(w:World,overlay:MapOverlay,
   ctx:CanvasRenderingContext2D,hit:CanvasRenderingContext2D,
   projector:Projector,detailTier:DepthArtDetail,trees:TreeSpriteCache,
-  sceneryDensity:number){
+  sceneryDensity:number,showBuildings:boolean){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
@@ -248,7 +252,13 @@ function renderTerrain(w:World,overlay:MapOverlay,
     ctx.beginPath();ctx.moveTo(from.x,from.y);
     ctx.lineTo(to.x,to.y);ctx.stroke();
   }
-  if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
+  if(showBuildings){
+    if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
+    for(const site of w.ancientSites??[]){
+      const p=projector.project(site.x,site.y,heights[site.y*W+site.x]);
+      paintAncientSite(ctx,site.kind,p.x-3,p.y-5,(site.visits??site.visitors.length)>0);
+    }
+  }
   if(overlay==='deposits')for(const d of w.deposits??[]){
     if(d.amount<=.1)continue;
     const p=projector.project(d.index%W,Math.floor(d.index/W),heights[d.index]);
@@ -258,53 +268,40 @@ function renderTerrain(w:World,overlay:MapOverlay,
 }
 
 type DepthActor={order:number;paint:()=>void};
-type BuildingSpriteCache=Map<string,HTMLCanvasElement>;
-/** A fixed 64px atlas slot holds every current building silhouette, including
- * tier-3 roofs. Rendering the expensive pixel geometry once per appearance
- * replaces dozens of fillRects per building on each walk-animation frame. */
-function paintCachedBuilding(ctx:CanvasRenderingContext2D,b:Building,
-  p:Pt,cache:BuildingSpriteCache,detail:DepthArtDetail):void{
-  const key=[b.type,b.stage,b.culture,buildingTier(b),detail].join(':');
-  let sprite=cache.get(key);
-  if(!sprite){
-    sprite=document.createElement('canvas');
-    sprite.width=64;sprite.height=64;
-    const painter=sprite.getContext('2d');
-    if(painter){painter.imageSmoothingEnabled=false;
-      paintDepthBuilding(painter,b,{x:32,y:54},detail);}
-    if(cache.size>160)cache.clear();
-    cache.set(key,sprite);
-  }
-  const scale=buildingVisualScale(b.type);
-  ctx.imageSmoothingEnabled=false;
-  ctx.drawImage(sprite,Math.round(p.x-32*scale),
-    Math.round(p.y-54*scale),64*scale,64*scale);
-}
 /** Geometry and structures are immutable throughout an animation. Build
  * projected actors only when the world or camera changes. */
 function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
-  projector:Projector,cache:BuildingSpriteCache,
-  detail:DepthArtDetail):DepthActor[]{
+  projector:Projector,cache:Map<string,BuildingArt>,detail:DepthArtDetail){
   const heights=topographyForWorld(w).heights,actors:DepthActor[]=[];
+  const plots:AtlasBuilding[]=[];
   const projected:{building:Building;x:number;y:number;p:Pt}[]=[];
   for(const s of w.settlements){
-    const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
-    actors.push({order:p.y+.2,paint:()=>{
-      paintDepthSettlementHub(ctx,p,settlementStage(s),s.species);
-    }});
-    const buildings=(s.infrastructure?.buildings??[]).map(building=>{
+    const buildings=s.infrastructure?.buildings??[];
+    if(!buildings.length){
+      const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
+      actors.push({order:p.y+.2,paint:()=>paintDepthSettlementHub(
+        ctx,p,settlementStage(s),s.species)});
+    }
+    for(const building of buildings){
       const p=projector.project(building.x,building.y,
         heights[building.y*w.width+building.x]);
-      return {building,x:p.x,y:p.y,p};
-    });
-    projected.push(...buildings);
+      projected.push({building,x:p.x,y:p.y,p});
+    }
   }
-  for(const {building,p} of uncrowdedDistrictBuildings(
-    visibleDistrictBuildings(projected,detail))){
-    actors.push({order:p.y+.4,
-      paint:()=>paintCachedBuilding(ctx,building,p,cache,detail)});
+  const district=uncrowdedDistrictBuildings(visibleDistrictBuildings(projected,detail));
+  district.sort((a,b)=>a.y-b.y);
+  for(const {building:b,p} of district){
+    const key=[b.type,b.stage,b.culture,buildingTier(b),detail].join(':');
+    const art=cacheBuildingArt(cache,key,64,painter=>paintDepthBuilding(
+      painter,b,{x:32,y:54},detail));
+    if(!art)continue;
+    const scale=buildingVisualScale(b.type);
+    const plot={building:b,art,scale,
+      x:Math.round(p.x-32*scale),y:Math.round(p.y-54*scale)};
+    plots.push(plot);
+    actors.push({order:p.y+.4,paint:()=>paintAtlasBuilding(ctx,plot)});
   }
-  return actors;
+  return {actors,plots};
 }
 function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   selected:{x:number;y:number}|null,zoom:number,
@@ -344,29 +341,31 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,
-  followId=null,onFollowPosition}:{
+  followId=null,personId=null,onFollowPosition}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
-  relief?:number;camera?:DepthCamera;followId?:number|null;
+  relief?:number;camera?:DepthCamera;followId?:number|null;personId?:number|null;
   onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<HTMLCanvasElement|null>(null);
-  const buildingSpritesRef=useRef<BuildingSpriteCache>(new Map());
+  const buildingSpritesRef=useRef<Map<string,BuildingArt>>(new Map());
   const treeSpritesRef=useRef<TreeSpriteCache>(new Map());
   const personSpritesRef=useRef<PersonSpriteCache>(new Map());
   const populationSceneRef=useRef<{signature:string;seed:number;
     width:number;height:number;scene:PopulationScene}|null>(null);
   const structureCacheRef=useRef<{signature:string;
     topography:World['topography'];seed:number;relief:number;
-    yaw:number;pitch:number;detail:DepthArtDetail;actors:DepthActor[]}|null>(null);
+    yaw:number;pitch:number;detail:DepthArtDetail;
+    structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
-    detail:DepthArtDetail;sceneryDensity:number}|null>(null);
+    detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;
+    siteKey:string}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
@@ -377,6 +376,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   // and NPC layers on every fractional zoom would cause trackpad stutter.
   // Only population visibility/detail thresholds require an actual repaint.
   const zoomDetailTier=depthArtDetail(zoom);
+  const level=atlasLevel(zoom);
+  const showBuildings=level!=='world',showResidents=level==='street';
   const density=depthRenderDensity(zoom,size);
   const sceneryDensity=depthSceneryDensity(zoom,size);
   useEffect(()=>{
@@ -398,26 +399,29 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       {willReadFrequently:true});
     if(!backdrop||!hit)return;
     const stamp=stampRef.current;
-    const roadKey=overlay==='terrain'?depthRoadSignature(world):0;
+    const roadKey=showBuildings&&overlay==='terrain'?depthRoadSignature(world):0;
+    const siteKey=showBuildings?(world.ancientSites??[]).map(site=>
+      [site.id,site.x,site.y,site.kind,!!(site.visits??site.visitors.length)].join(':')).join('|'):'';
     const landChanged=stamp?.tiles!==world.tiles&&(!stamp||
       overlay==='resources'||stamp.tiles.length!==world.tiles.length||
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||landChanged||stamp.topography!==world.topography||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
-      stamp.detail!==zoomDetailTier||
+      stamp.detail!==zoomDetailTier||stamp.showBuildings!==showBuildings||
+      stamp.siteKey!==siteKey||
       stamp.sceneryDensity!==sceneryDensity||
       stamp.yaw!==camera.yaw||
       stamp.pitch!==camera.pitch||
       overlay==='deposits'&&stamp.deposits!==world.deposits){
       backdrop.setTransform(sceneryDensity,0,0,sceneryDensity,0,0);
       renderTerrain(world,overlay,backdrop,hit,projector,
-        zoomDetailTier,treeSpritesRef.current,sceneryDensity);
+        zoomDetailTier,treeSpritesRef.current,sceneryDensity,showBuildings);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
       yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,
-      sceneryDensity};
+      sceneryDensity,showBuildings,siteKey};
     // Only painted residents need animation coordinates. Tracking every agent
     // previously allocated thousands of points on every simulation commit,
     // even though the depth view paints at most 350 residents.
@@ -431,7 +435,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       width:world.width,height:world.height,scene:popScene};
     const visibleAgents=renderedPopulation(world.agents,popScene,{
       bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
-      selected,focusId:followId,zoom:Math.max(1,zoom),maxVisible:350});
+      focusId:followId??personId,focusOnly:!showResidents,
+      zoom:Math.max(1,zoom),maxVisible:350});
     const positions=new Map(visibleAgents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
@@ -456,19 +461,19 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     }
     priorRef.current={seed:world.settings.seed,year:world.year,day,positions};
     const structureCache=structureCacheRef.current;
-    const structures=structureCache&&
+    const structures=!showBuildings?{actors:[],plots:[]}:structureCache&&
       structureCache.signature===structureKey&&
       structureCache.topography===world.topography&&
       structureCache.seed===world.settings.seed&&
       structureCache.relief===relief&&structureCache.yaw===camera.yaw&&
       structureCache.pitch===camera.pitch&&
-      structureCache.detail===zoomDetailTier?structureCache.actors:
+      structureCache.detail===zoomDetailTier?structureCache.structures:
       prepareDepthStructures(ctx,world,projector,buildingSpritesRef.current,
         zoomDetailTier);
-    structureCacheRef.current={signature:structureKey,
+    structureCacheRef.current=showBuildings?{signature:structureKey,
       topography:world.topography,seed:world.settings.seed,
       relief,yaw:camera.yaw,pitch:camera.pitch,detail:zoomDetailTier,
-      actors:structures};
+      structures}:null;
     let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
       // Maintain identical world-space positions and hit-testing at every
@@ -490,7 +495,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
         }
       }
       paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
-        projector,structures,visibleAgents,personSpritesRef.current,
+        projector,structures.actors,visibleAgents,personSpritesRef.current,
         facingRef.current,strides);
       const tracked=followId!==null?interpolated.get(followId):undefined;
       if(tracked&&onFollowPosition&&(!lastFollow||
@@ -506,15 +511,20 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
   },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
-    camera.yaw,camera.pitch,followId,onFollowPosition]);
+    camera.yaw,camera.pitch,followId,personId,showBuildings,showResidents,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };
   const click=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
-    const x=Math.floor((event.clientX-rect.left)/rect.width*size.width);
-    const y=Math.floor((event.clientY-rect.top)/rect.height*size.height);
+    const px=(event.clientX-rect.left)/rect.width*size.width;
+    const py=(event.clientY-rect.top)/rect.height*size.height;
+    const x=Math.floor(px),y=Math.floor(py);
     if(x<0||y<0||x>=size.width||y>=size.height)return;
+    if(brush.kind==='inspect'&&showBuildings){
+      const building=atlasBuildingAt(structureCacheRef.current?.structures.plots??[],px,py);
+      if(building){onSelect(building.x,building.y);return;}
+    }
     const hit=pickingRef.current?.getContext('2d',{willReadFrequently:true});
     if(!hit)return;
     const color=hit.getImageData(x,y,1,1).data;
@@ -538,7 +548,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   };
   return <canvas ref={canvasRef} className="evo-world-canvas evo-depth-canvas"
     width={size.width*density} height={size.height*density}
-    style={{width:(zoom*100)+'%'}} role="grid" tabIndex={0}
+    role="grid" tabIndex={0}
     aria-label={'Isometric terrain depth view with exaggerated cliffs and orbit camera: '+world.width+' by '+
       world.height+' world cells. Click a raised tile to '+
       (brush.kind==='inspect'?'inspect it':'apply the selected map tool')+
