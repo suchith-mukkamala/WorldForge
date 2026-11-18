@@ -6,6 +6,8 @@ import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
 import {visibleCoastTile} from './worldOutline';
+import {isMultiIslandLayout} from './worldGeography';
+import {coastalDepth,OCEAN_TONES} from './oceanDepth';
 import {surfaceColor,paintDepthSurfaceDetail,paintDepthRoads,
   depthRoadSignature} from './depthWorldArt';
 import {populationScene,renderedPopulation,
@@ -106,6 +108,9 @@ function renderTerrain(w:World,overlay:MapOverlay,
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
+  const multiShore=isMultiIslandLayout(w.settings.layout);
+  const ocean=multiShore&&overlay==='terrain'?
+    coastalDepth(W,H,i=>w.tiles[i].biome==='water'):null;
   const skyline=ctx.createLinearGradient(0,0,0,ctx.canvas.height/sceneryDensity);
   skyline.addColorStop(0,'#10233b');
   skyline.addColorStop(.5,'#142a3b');
@@ -119,11 +124,18 @@ function renderTerrain(w:World,overlay:MapOverlay,
     projector.order(b%W,Math.floor(b/W))||a%W-b%W);
   for(const index of ordered){
       const x=index%W,y=Math.floor(index/W),height=heights[index];
-      if(!visibleCoastTile(x,y,W,H,w.tiles[index].biome,
+      if(!multiShore&&!visibleCoastTile(x,y,W,H,w.tiles[index].biome,
         w.settings.seed))continue;
       const p=projector.project(x,y,height);
       const corners=projector.tileCorners(x,y,height);
       const biome=w.tiles[index].biome,palette=PALETTE[biome];
+      if(ocean&&biome==='water'){
+        polygon(ctx,corners,OCEAN_TONES[ocean[index]]);
+        if(ocean[index]<=3&&(x*13+y*37)%5===0)
+          paintDepthSurfaceDetail(ctx,biome,p,x,y,w.settings.seed);
+        polygon(hit,corners,tileHitColor(index));
+        continue;
+      }
       const east=x<W-1?heights[index+1]:height;
       const south=y<H-1?heights[index+W]:height;
       const west=x>0?heights[index-1]:height;

@@ -28,6 +28,8 @@ import {WorldCreator} from './WorldCreator';
 import {DivineDescentCreator} from './DivineDescentCreator';
 import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
 import {freshWorldSeed} from './worldSeeds';
+import {DEFAULT_WORLD_LAYOUT,geographyForSeed,isMultiIslandLayout,
+  WORLD_LAYOUT_NAMES} from './worldGeography';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
@@ -65,8 +67,8 @@ function initialWorld():World{
     }catch{/* Restricted storage: continue with an in-memory world. */}
   }
   // First-time visitors get their own world; existing local saves always win.
-  return createWorld(typeof window==='undefined'?DEFAULT_SETTINGS:{
-    ...DEFAULT_SETTINGS,seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
+  return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
+    seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
@@ -195,7 +197,7 @@ export function WorldforgeApp(){
   const orbitYawRef=useRef(orbitYaw);
   orbitYawRef.current=orbitYaw;
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
-  const [zoom,setZoom]=useState(mapView==='depth'?1.5:1);
+  const [zoom,setZoom]=useState(mapView==='depth'&&!isMultiIslandLayout(world.settings.layout)?1.5:1);
   const [advancedView,setAdvancedView]=useState(false);
   const [toolPanel,setToolPanel]=useState(false);
   useEffect(()=>{
@@ -739,7 +741,7 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
-    setZoom(mapView==='depth'?1.5:1);
+    setZoom(mapView==='depth'&&!isMultiIslandLayout(settings.layout)?1.5:1);
     setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
@@ -772,7 +774,8 @@ export function WorldforgeApp(){
       setSavedDate(null);
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
-      setZoom(mapView==='depth'?1.5:1);setBrush({kind:'inspect'});
+      setZoom(mapView==='depth'&&!isMultiIslandLayout(obj.settings.layout)?1.5:1);
+      setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
@@ -970,7 +973,11 @@ export function WorldforgeApp(){
       <div className="evo-playground-layout">
         <section className="evo-map-card">
           <div className="evo-card-heading evo-map-heading">
-            <strong>World map</strong>
+            <div><strong>World map</strong>
+              {isMultiIslandLayout(world.settings.layout)&&<small>
+                {WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]}
+              </small>}
+            </div>
             <div className="evo-map-actions">
               <button onClick={()=>setZoom(v=>boundedMapZoom(v-.5))}
                 disabled={zoom<=1} title="Zoom out">−</button>
@@ -1140,9 +1147,9 @@ export function WorldforgeApp(){
             world.tiles.length-1].some(i=>world.tiles[i]?.biome!=='water')&&
             <div className="evo-terrain-upgrade" role="note">
               <strong>LEGACY RECTANGULAR WORLD</strong>
-              <span>This saved world's original geography is preserved.
-                Irregular coastlines appear in newly generated worlds.</span>
-              <button onClick={()=>navigate('creator')}>CREATE AN ISLAND WORLD</button>
+              <span>This saved world uses its original geography.
+                New worlds can have multiple landmasses and navigable seas.</span>
+              <button onClick={()=>navigate('creator')}>NEW WORLD</button>
             </div>}
           <div className="evo-map-footer">
             <div className="evo-species-legend">

@@ -31,7 +31,7 @@ function sceneScenery({world,map,region}:Props,origin:Point,cols:number,rows:num
       if(site)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
         paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant)});
       if(sign)scenery.push({x,y,depth:depth-7,opacity:1,draw:(ctx,px,py)=>
-        paintAdventureSign(ctx,px+6,py-4,sign.direction,region.landscape)});
+        paintAdventureSign(ctx,px+6,py-4,sign.direction,region.landscape,!!sign.ferry)});
       const prop=adventureProp(world,map,region,x,y);
       if(prop)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
         paintAdventureProp(ctx,prop,px,py,variant)});

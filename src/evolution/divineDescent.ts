@@ -8,6 +8,7 @@ import {cleanIdentityName,renamePerson} from './identity';
 import type {Career} from './development';
 import {adventureArrival} from './adventureMap';
 import type {TownStop} from './adventurePlaces';
+import {isMultiIslandLayout} from './worldGeography';
 
 export const DESCENT_BACKGROUNDS=[
   {id:'scout',name:'Wayfinder',description:'A curious traveler seeking unknown lands.'},
@@ -26,7 +27,9 @@ function arrival(world:World,species:Species):{
   point:{x:number;y:number};place?:TownStop}|null{
   const settlement=world.settlements.find(s=>s.species===species);
   const home=biomeHome(world.settings.seed,species);
-  const anchor=settlement??{x:Math.round(home[0]*(world.width-1)),
+  const resident=isMultiIslandLayout(world.settings.layout)?
+    world.agents.find(a=>a.species===species):undefined;
+  const anchor=settlement??resident??{x:Math.round(home[0]*(world.width-1)),
     y:Math.round(home[1]*(world.height-1))};
   const capacity=tileCapacity(world);
   const occupancy=new Map<number,number>();

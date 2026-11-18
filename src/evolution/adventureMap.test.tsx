@@ -93,6 +93,27 @@ describe('towns and trails',()=>{
     expect(map.open[index]).toBe(1);
   });
 
+  it('ferries the mortal between reachable shores and restores the new settlement',()=>{
+    const settled=advanceWorldDays(createWorld({seed:108,size:'small',
+      layout:'archipelago'}),365*6);
+    const {world,agent}=createMortal(settled,options);
+    const map=adventureMapFor(world),town=adventureRegion(world,map,agent);
+    const ferry=town.gates.find(g=>g.ferry)!;
+    expect(ferry).toBeDefined();
+    expect(ferry.ferry!.seaTiles).toBeGreaterThan(2);
+    const atDock={...world,agents:world.agents.map(a=>a.id===agent.id?{...a,...ferry.point}:a)};
+    const crossed=useAdventureGate(atDock,town,player(atDock),ferry);
+    expect(crossed.moved).toBe(true);
+    expect(crossed.world.rngState).toBe(world.rngState);
+    const restored=readSavedWorld(compactWorld(crossed.world))!;
+    const pilgrim=player(restored);
+    expect(restored.tiles[pilgrim.y*world.width+pilgrim.x].biome).not.toBe('water');
+    expect(adventureDistance(pilgrim,ferry.ferry!.landing)).toBeLessThanOrEqual(1);
+    const destination=adventureRegion(restored,adventureMapFor(restored),pilgrim);
+    expect(destination.name).toBe(ferry.label);
+    expect(destination.gates.some(g=>g.ferry&&g.label===town.name)).toBe(true);
+  });
+
   it('shows an exploration-led HUD for older worlds with no towns',()=>{
     const {world,agent}=createMortal(createWorld({seed:5174,size:'small'}),options);
     const markup=renderToStaticMarkup(<MortalAdventure world={world} actor={agent}

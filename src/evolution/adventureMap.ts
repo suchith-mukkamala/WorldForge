@@ -1,8 +1,11 @@
 import type {Agent,Biome,Settlement,World} from './engine';
 import {adventurePlaceKey,type AdventurePlace,type AdventureRoute,type TownStop,
   type WildStop} from './adventurePlaces';
-import {isMortalSolidBuilding,walkMortal,walkMortalWithAssist} from './mortalGameplay';
+import {isMortalSolidBuilding,mortalTileCapacity,walkMortal,
+  walkMortalWithAssist} from './mortalGameplay';
 import {RouteFrontier} from './routeFrontier';
+import {ferryPassages} from './adventureFerries';
+import {isMultiIslandLayout} from './worldGeography';
 import {bridgeTiles,roadTiles} from './transport';
 import type {Building} from './construction';
 import type {Point} from './motion';
@@ -13,7 +16,8 @@ type Town={place:TownStop;settlement:Settlement;anchor:number;area:Set<number>};
 type Route={place:AdventureRoute;path:number[];fromName:string;toName:string};
 type Boundary={a:number;b:number;distance:number;left:number;right:number};
 
-export type AdventureGate={point:Point;destination:AdventurePlace;label:string;direction:Point};
+export type AdventureGate={point:Point;destination:AdventurePlace;label:string;direction:Point;
+  ferry?:{landing:Point;seaTiles:number}};
 export type AdventureRegion={
   place:AdventurePlace;
   name:string;
@@ -36,6 +40,7 @@ export type AdventureMap={
   buildings:ReadonlyMap<number,{building:Building;settlementId:number}>;
   towns:Town[];
   routes:Map<string,Route>;
+  ferries:Map<number,AdventureGate[]>;
   regions:Map<string,AdventureRegion>;
 };
 
@@ -109,7 +114,7 @@ function buildAdventureMap(world:World):AdventureMap{
   }
   const owners=new Int32Array(open.length),parents=new Int32Array(open.length).fill(-1);
   const map:AdventureMap={width,height,open,owners,parents,roads,bridges,buildings,
-    towns:[],routes:new Map(),regions:new Map()};
+    towns:[],routes:new Map(),ferries:new Map(),regions:new Map()};
   if(!world.settlements.length)return map;
 
   const costs=new Float64Array(open.length).fill(Infinity);
@@ -182,19 +187,38 @@ function buildAdventureMap(world:World):AdventureMap{
     map.routes.set(adventurePlaceKey(place),{place,path:trimRoute(full,from.area,to.area,5),
       fromName:from.settlement.name,toName:to.settlement.name});
   }
+  if(isMultiIslandLayout(world.settings.layout)){
+    for(const passage of ferryPassages(world,owners,costs,groups.map((_,i)=>group(i)))){
+      const a=group(passage.from.town-1),b=group(passage.to.town-1);
+      if(a===b)continue;
+      groups[a]=b;
+      for(const [from,to] of [[passage.from,passage.to],[passage.to,passage.from]]){
+        const town=map.towns[from.town-1],other=map.towns[to.town-1];
+        // A road from the town to its landing uses the real walking grid.
+        for(const i of trace(parents,from.land))town.area.add(i);
+        const exits=map.ferries.get(town.place.id)??[];
+        exits.push({...gate(width,from.land,from.water,other.place,other.settlement.name),
+          ferry:{landing:point(width,to.land),seaTiles:passage.seaTiles}});
+        map.ferries.set(town.place.id,exits);
+      }
+    }
+  }
   return map;
 }
 
 // Mortal steps retain these references. Rebuild after terrain, construction,
 // or transport changes, never for each sprite frame or player step.
 const maps=new WeakMap<World['tiles'],{
-  settlements:World['settlements'];transport:World['transport'];map:AdventureMap}>();
+  settlements:World['settlements'];transport:World['transport'];
+  layout:World['settings']['layout'];map:AdventureMap}>();
 export function adventureMapFor(world:World):AdventureMap{
   const cached=maps.get(world.tiles);
-  if(cached?.settlements===world.settlements&&cached?.transport===world.transport)
+  if(cached?.settlements===world.settlements&&cached?.transport===world.transport&&
+    cached?.layout===world.settings.layout)
     return cached.map;
   const map=buildAdventureMap(world);
-  maps.set(world.tiles,{settlements:world.settlements,transport:world.transport,map});
+  maps.set(world.tiles,{settlements:world.settlements,transport:world.transport,
+    layout:world.settings.layout,map});
   return map;
 }
 
@@ -285,7 +309,7 @@ function regionFor(world:World,map:AdventureMap,place:AdventurePlace):AdventureR
     const town=map.towns.find(t=>t.place.id===place.id);
     if(!town)return undefined;
     const {settlement,area}=town;
-    const gates:AdventureGate[]=[];
+    const gates=[...(map.ferries.get(place.id)??[])];
     for(const route of map.routes.values()){
       if(route.place.from.kind==='town'&&route.place.from.id===place.id)
         gates.push(stopGate(width,route,true));
@@ -355,13 +379,29 @@ export function walkAdventure(world:World,region:AdventureRegion,dx:number,dy:nu
 
 export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
   exit:AdventureGate){
+  const before=world;
+  if(world.descent?.mode!=='mortal'||world.descent.agentId!==actor.id)
+    return {world,moved:false,reason:'Resume your mortal to travel.'};
   if(!region.gates.includes(exit)||adventureDistance(actor,exit.point)>1)
-    return {world,moved:false,reason:'Walk to the signpost to travel.'};
+    return {world,moved:false,reason:exit.ferry?'Walk to the ferry landing to sail.':
+      'Walk to the signpost to travel.'};
   const dx=exit.point.x-actor.x,dy=exit.point.y-actor.y;
   if(dx||dy){
     const walk=walkMortal(world,dx,dy,within(world,region));
     if(!walk.moved)return walk;
     world=walk.world;
+  }
+  if(exit.ferry){
+    const arrival=regionFor(world,adventureMapFor(world),exit.destination);
+    const landing=exit.ferry.landing;
+    const spots=[landing,...directions.map(d=>({x:landing.x+d.x,y:landing.y+d.y}))];
+    const dock=arrival&&spots.find(p=>inBounds(p,worldBounds(world.width,world.height))&&
+      arrival.area.has(tile(world.width,p))&&world.tiles[tile(world.width,p)].biome!=='water'&&
+      world.agents.filter(a=>a.x===p.x&&a.y===p.y).length<mortalTileCapacity(world,p.x,p.y));
+    if(!dock)return {world:before,moved:false,reason:'The landing is crowded. Try again shortly.'};
+    world={...world,agents:world.agents.map(a=>a.id===actor.id?
+      {...a,...dock,cognition:a.cognition&&{...a.cognition,
+        trail:[tile(world.width,dock)],route:undefined}}:a)};
   }
   return {world:setPlace(world,exit.destination),moved:true};
 }

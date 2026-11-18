@@ -377,11 +377,19 @@ export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
 }
 
 export function paintAdventureSign(ctx:CanvasRenderingContext2D,x:number,y:number,
-  direction:Point,landscape:AdventureLandscape){
+  direction:Point,landscape:AdventureLandscape,ferry=false){
+  if(ferry){
+    const px=x+5+direction.x*20,py=y+18+direction.y*21;
+    shadow(ctx,px,py+4,10,3);
+    poly(ctx,'#63493d',[px-10,py,px+10,py,px+6,py+5,px-6,py+5]);
+    rect(ctx,'#cf9865',px-7,py,14,2);
+    rect(ctx,'#725643',px-1,py-9,1,11);
+    poly(ctx,'#f0dcb1',[px,py-9,px+7,py-2,px,py-2]);
+  }
   shadow(ctx,x+12,y+18,9,3);
   rect(ctx,'#473e38',x+10,y+4,4,15);
   rect(ctx,'#a68056',x+10,y+7,2,11);
-  const flag=accents[landscape];
+  const flag=ferry?accents.coast:accents[landscape];
   rect(ctx,'#483c3d',x+4,y-1,16,10);
   rect(ctx,flag,x+5,y,14,8);
   const cx=x+12,cy=y+4;

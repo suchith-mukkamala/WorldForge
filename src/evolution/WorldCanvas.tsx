@@ -20,6 +20,8 @@ import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
 import {visibleCoastTile} from './worldOutline';
+import {isMultiIslandLayout} from './worldGeography';
+import {coastalDepth,OCEAN_TONES} from './oceanDepth';
 import {wornPathTiles} from './trailNetwork';
 
 export const WORLD_CELL_SIZE=6;
@@ -106,11 +108,22 @@ export function WorldCanvas({
     const heights=topographyForWorld(world).heights;
     const drainage=overlay==='terrain'||overlay==='watersheds'?
       hydrologyForWorld(world):null;
+    const multiShore=isMultiIslandLayout(world.settings.layout);
+    const ocean=multiShore&&overlay==='terrain'?
+      coastalDepth(W,H,i=>world.tiles[i].biome==='water'):null;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
-      if(!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
+      if(!multiShore&&!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
       const px=x*CELL,py=y*CELL;
       const index=y*W+x,h=heights[index];
+      if(ocean&&tile.biome==='water'){
+        ctx.fillStyle=OCEAN_TONES[ocean[index]];
+        ctx.fillRect(px,py,CELL,CELL);
+        if(ocean[index]<=3&&(x*7+y*5)%6===0){
+          ctx.fillStyle='#a2d0cb60';ctx.fillRect(px+1,py+2,3,1);
+        }
+        continue;
+      }
       if(overlay==='watersheds'&&drainage){
         ctx.fillStyle=tile.biome==='water'?'#285d7a':
           BASIN_COLORS[(drainage.basin[index]>>>0)%BASIN_COLORS.length];

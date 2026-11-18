@@ -125,7 +125,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     setMessage(result.message);
   };
   const gateAction=(g:AdventureGate):Interaction=>({
-    label:(g.destination.kind==='route'?'Take trail to ':'Enter ')+g.label,
+    label:(g.ferry?'Sail to ':g.destination.kind==='route'?'Take trail to ':'Enter ')+g.label,
     run:()=>travel(g),point:g.point,
   });
   const buildingAction=(site:MortalBuilding):Interaction=>({
@@ -203,8 +203,9 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     LANDSCAPE_NAME[region.landscape]+' · '+settlementStage(region.settlement):
     LANDSCAPE_NAME[region.landscape];
   const routeMessage=region.place.kind==='route'?'Follow the path to a town sign.':
-    gates.length?'Follow a signed trail to the next town.':region.settlement?
-      'No trail connects this settlement yet.':'No settlements are reachable from here yet.';
+    gates.some(({gate})=>gate.ferry)?'Follow the path to a trail or ferry landing.':
+      gates.length?'Follow a signed trail to the next town.':region.settlement?
+        'No routes reach this settlement yet.':'No settlements are reachable from here yet.';
   const showAction=!focusedPerson&&!focusedBuilding&&
     (!interior||interior.target===null&&!atInteriorDoor(interior.position));
   const movementControls=(
@@ -284,17 +285,21 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
             </div>
           </section>
           {!interior&&<section className="adventure-exits">
-            <h2>{region.place.kind==='route'?'Trail ends':'Trails'}</h2>
+            <h2>{region.place.kind==='route'?'Trail ends':
+              gates.some(({gate})=>gate.ferry)?'Trails & ferries':'Trails'}</h2>
             {gates.length?<ul>{gates.map(({gate,distance,key})=><li key={key}>
               <button onClick={()=>distance<=1?travel(gate):
                 setWaypoint(prev=>prev===key?null:key)}
                 aria-pressed={distance>1?waypoint===key:undefined}
-                title={distance<=1?'Use this signpost':'Mark this signpost'}>
+                title={gate.ferry?(distance<=1?'Board ferry':'Mark ferry landing'):
+                  distance<=1?'Use this signpost':'Mark this signpost'}>
                 <span className="adventure-direction" aria-hidden="true">
-                  {distance<=1?'•':directionTo(actor,gate.point)}
+                  {distance<=1?(gate.ferry?'≈':'•'):directionTo(actor,gate.point)}
                 </span>
                 <span><strong>{gate.label}</strong>
-                  <small>{distance<=1?'At the signpost':distance+' tiles '+directionTo(actor,gate.point)}</small></span>
+                  <small>{distance<=1?(gate.ferry?'Ferry · '+gate.ferry.seaTiles+' sea tiles':
+                    'At the signpost'):(gate.ferry?'Ferry · ':'')+
+                    distance+' tiles '+directionTo(actor,gate.point)}</small></span>
                 <span aria-hidden="true">›</span>
               </button>
             </li>)}</ul>:<p>{routeMessage}</p>}

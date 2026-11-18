@@ -33,8 +33,7 @@ import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
 import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
-import {visibleCoastTile} from './worldOutline';
-import {seededBiome,biomeHome} from './biomeGeneration';
+import {generateSeedTerrain,WORLD_LAYOUTS,type WorldLayout} from './worldGeography';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,validTopography,type Topography} from './topography';
 import {advanceEarthworks,validEarthworks,type Earthwork} from './earthworks';
@@ -53,6 +52,7 @@ export type WorldSize='small'|'medium'|'large'|'vast';
 export type WorldSettings={
   seed:number;size:WorldSize;starting:Record<Species,number>;
   resourceLevel:number;wandering:number;interbreeding:boolean;
+  layout?:WorldLayout;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
@@ -199,7 +199,8 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     ),0,75)])) as Record<Species,number>,
     resourceLevel:clamp(Number.isFinite(input.resourceLevel)?input.resourceLevel!:1,.5,1.8),
     wandering:clamp(Number.isFinite(input.wandering)?input.wandering!:1,.5,1.8),
-    interbreeding:input.interbreeding!==false};
+    interbreeding:input.interbreeding!==false,
+    ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
 export function population(world:Pick<World,'agents'>):Record<Species,number>{
   const counts={human:0,elf:0,dwarf:0,demon:0};
@@ -250,13 +251,8 @@ function freeNearby(world:World,origin:{x:number;y:number},radius:number,
 export function createWorld(input:Partial<WorldSettings>={}):World{
   const settings=normalizeSettings(input),[width,height]=WORLD_SIZES[settings.size];
   const state={n:prngState(settings.seed)};
-  const tiles:Tile[]=Array.from({length:width*height},(_,index)=>{
-    const x=index%width,y=Math.floor(index/width);
-    // v2.3: new worlds are islands with seeded, irregular coasts. The same
-    // rectangular index space remains authoritative for simulation and saves.
-    // Existing worlds are not rewritten when loading older save data.
-    const biome=visibleCoastTile(x,y,width,height,'water',settings.seed)?
-      seededBiome(x,y,width,height,settings.seed):'water';
+  const geography=generateSeedTerrain(width,height,settings.seed,settings.layout);
+  const tiles:Tile[]=geography.biomes.map(biome=>{
     const info=BIOME_INFO[biome];
     return {biome,food:round(info.food*settings.resourceLevel*(.75+.25*random(state)))};
   });
@@ -276,9 +272,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   const occupied=new Set<number>();
   for(const s of SPECIES){
     const info=SPECIES_INFO[s];
-    const home=biomeHome(settings.seed,s);
-    const target={x:Math.round(home[0]*(width-1)),
-      y:Math.round(home[1]*(height-1))};
+    const target=geography.homes[s];
     // Nearest favored starting biome in O(tiles) rather than sorting huge worlds.
     let closest=target,closestD=Infinity;
     for(let index=0;index<tiles.length;index++){
@@ -801,6 +795,7 @@ export function isWorld(value:unknown):value is World{
   const w=value as Partial<World>,settings=w.settings;
   if(w.version!==2||!settings||!Object.hasOwn(WORLD_SIZES,settings.size)||
     !Number.isSafeInteger(settings.seed)||settings.seed<1||settings.seed>2147483647||
+    settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||
     settings.wandering<.5||settings.wandering>1.8||
