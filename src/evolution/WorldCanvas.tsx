@@ -38,12 +38,12 @@ export const sceneryZoomTier=(zoom:number)=>zoom>=ATLAS_TOWN_ZOOM?2:zoom>=2?1:0;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
-  followId=null,personId=null,onFollowPosition,onDiagnostics,
+  followId=null,personId=null,fillWidth=false,onFollowPosition,onDiagnostics,
 }:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
-  zoom?:number;speed?:number;followId?:number|null;personId?:number|null;
+  zoom?:number;speed?:number;followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
   onDiagnostics?:(stats:{drawn:number;frameMs:number})=>void;
 }){
@@ -318,12 +318,12 @@ export function WorldCanvas({
     if(atmosphere.height!==canvas.height)atmosphere.height=canvas.height;
     if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
       world.settings.seed,world.year,day,'overhead');
-    const scrollParent=canvas.closest<HTMLElement>('.evo-map-scroll');
+    const scrollParent=canvas.closest<HTMLElement>('.evo-map-scroll')??canvas.parentElement;
     const bounds=()=>{
       const screen=canvas.getBoundingClientRect();
       const width=screen.width||canvas.width,height=screen.height||canvas.height;
-      const scroll=scrollParent&&canvas.parentElement?
-        atlasScrollGeometry(scrollParent,canvas.parentElement):null;
+      const scroll=fillWidth&&scrollParent&&canvas.parentElement?
+        atlasScrollGeometry(scrollParent,canvas.parentElement):scrollParent;
       const x=(scroll?.scrollLeft??0)/width*W;
       const y=(scroll?.scrollTop??0)/height*H;
       const w=(scrollParent?.clientWidth??width)/width*W;
@@ -497,7 +497,7 @@ export function WorldCanvas({
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,
-    overlay,selected,zoom,speed,followId,personId,onFollowPosition,onDiagnostics,
+    overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
     world.topography,world.dayOfYear,world.ancientSites,world.trails]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
@@ -527,6 +527,7 @@ export function WorldCanvas({
   };
   return <canvas ref={canvasRef} className="evo-world-canvas"
     width={world.width*CELL} height={world.height*CELL}
+    style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
     aria-label={'Interactive fantasy map: '+world.width+' by '+world.height+
       ' cells. Click to '+(brush.kind==='inspect'?'inspect a location':

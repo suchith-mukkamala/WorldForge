@@ -1201,12 +1201,12 @@ export function WorldforgeApp(){
             <div className="atlas-sheet" ref={mapSheetRef}
               style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*mapAspect+'))'}}>
               {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
-                overlay={overlay} zoom={zoom} speed={speed}
+                overlay={overlay} zoom={zoom} speed={speed} fillWidth
                 followId={followId} personId={selectedAgentId} onFollowPosition={centerCamera}
                 selected={displayed} onSelect={chooseTile} onEdit={brushAt}
                 onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
                 <DepthCanvas world={world} brush={brush} overlay={overlay}
-                  zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
+                  zoom={zoom} speed={speed} fillWidth selected={displayed} onSelect={chooseTile}
                   onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
                   camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
                   followId={followId} personId={selectedAgentId}

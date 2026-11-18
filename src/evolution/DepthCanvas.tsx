@@ -341,11 +341,11 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,
-  followId=null,personId=null,onFollowPosition}:{
+  followId=null,personId=null,fillWidth=false,onFollowPosition}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
-  relief?:number;camera?:DepthCamera;followId?:number|null;personId?:number|null;
+  relief?:number;camera?:DepthCamera;followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
@@ -548,6 +548,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   };
   return <canvas ref={canvasRef} className="evo-world-canvas evo-depth-canvas"
     width={size.width*density} height={size.height*density}
+    style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
     aria-label={'Isometric terrain depth view with exaggerated cliffs and orbit camera: '+world.width+' by '+
       world.height+' world cells. Click a raised tile to '+

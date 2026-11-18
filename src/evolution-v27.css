@@ -471,7 +471,6 @@
   min-height: 0; max-height: var(--atlas-height); background: #102531;
 }
 .atlas-sheet { position: relative; margin-inline: auto; overflow: hidden; }
-.atlas-sheet > canvas { width: 100%; }
 .atlas-settlement-markers { position: absolute; inset: 0; pointer-events: none; }
 .atlas-town-pin {
   position: absolute; display: grid; place-items: center; transform: translate(-50%, -50%);
