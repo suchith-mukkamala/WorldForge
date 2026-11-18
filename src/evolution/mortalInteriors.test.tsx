@@ -90,13 +90,12 @@ describe('v2.6.0 — reusable interior spaces',()=>{
   it('renders a real named interior and its same living mortal without editing world',()=>{
     const {world,site}=place(create(),'workshop');
     const markup=renderToStaticMarkup(createElement(MortalInterior,{
-      world,site,position:INTERIOR_DOOR,running:true,message:'',
-      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+      world,site,position:INTERIOR_DOOR,message:'',
+      onExit:()=>{},
     }));
     expect(markup).toContain('Enterable building interior');
-    expect(markup).toContain('WESTRIDGE');
     expect(markup).toContain('Workshop');
-    expect(markup).toContain('EXIT BUILDING');
+    expect(markup).toContain('Exit building');
     expect(world.agents.find(a=>a.id===world.descent?.agentId)).toBeDefined();
   });
 });

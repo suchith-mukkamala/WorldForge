@@ -89,7 +89,7 @@ describe('v2.5.0 — divine descent foundations',()=>{
       world,onCreate:()=>{},onResume:()=>{},onReturn:()=>{},
     }));
     expect(screen).toContain('Mortal name');
-    expect(screen).toContain('BEGIN MORTAL LIFE');
+    expect(screen).toContain('Begin mortal life');
     expect(screen).toContain('Skin tone');
     const existing=createMortal(world,options).world;
     const returnView=renderToStaticMarkup(createElement(DivineDescentCreator,{

@@ -17,14 +17,16 @@ const OUTFITS:readonly {id:MortalOutfit;label:string}[]=[
 ];
 const DEFAULT_LOOK:MortalAppearance={skin:0,hair:0,hairStyle:0,outfit:'wanderer'};
 
-export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
-  world:World;onCreate:(options:MortalCreation)=>void;
-  onResume:()=>void;onReturn:()=>void;error?:string;
+export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,starting=false}:{
+  world:World;onCreate:(options:MortalCreation,settledStart:boolean)=>void;
+  onResume:()=>void;onReturn:()=>void;error?:string;starting?:boolean;
 }){
   const [name,setName]=useState('');
   const [species,setSpecies]=useState<Species>('human');
   const [background,setBackground]=useState<DescentBackground>('scout');
   const [look,setLook]=useState<MortalAppearance>(DEFAULT_LOOK);
+  const [settledStart,setSettledStart]=useState(world.year===0);
+  const canGrow=!world.settlements.length&&world.agents.length>0&&world.year<9999;
   const mortalId=world.descent?.agentId;
   const current=mortalId===undefined?undefined:
     world.agents.find(a=>a.id===mortalId);
@@ -41,15 +43,14 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
   const update=<K extends keyof MortalAppearance>(key:K,value:MortalAppearance[K])=>
     setLook(old=>({...old,[key]:value}));
   const submit=(event:FormEvent<HTMLFormElement>)=>{
-    event.preventDefault();onCreate({name,species,background,appearance:look});
+    event.preventDefault();
+    if(!starting)onCreate({name,species,background,appearance:look},canGrow&&settledStart);
   };
 
   return <main className="evo-descent-page">
     <header className="evo-descent-heading">
-      <span className="evo-overline">v2.5.1 · DIVINE DESCENT</span>
-      <h1>A world to <em>live in.</em></h1>
-      <p>Leave the heavens and begin a mortal story in the world you shaped.
-        Your character joins the same living simulation as everyone else.</p>
+      <h1>{current?'Your adventure':'Begin an adventure'}</h1>
+      <p>Explore settlements, follow trails, and meet the people who live there.</p>
     </header>
     <div className="evo-descent-layout">
       <section className="evo-descent-portrait" aria-label="Mortal appearance preview">
@@ -57,27 +58,18 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
           name={displayName}/></div>
         <h2>{displayName}</h2>
         <p>{SPECIES_INFO[preview.species].name}</p>
-        <span className="evo-descent-eyebrow">A LIFE, NOT A DIVINE PUPPET</span>
-        <p className="evo-descent-detail">You will have genuine abilities,
-          needs, and a place in the world's history. Legendary talents are
-          earned or rolled with the same rarity as everyone else's.</p>
-        <p className="evo-descent-detail">Walk with WASD, speak with nearby
-          inhabitants using E, and press P to pause the living world's clock.
-          Right-drag rotates the 2.5D camera around your journey.</p>
       </section>
       {current?<section className="evo-descent-form">
-        <span className="evo-descent-eyebrow">YOUR LIVING MORTAL</span>
-        <h2>Your journey has begun.</h2>
-        <p>Your character already exists in year {world.year} and is part of
-          this world's families, professions, and history.</p>
+        <h2>Continue as {displayName}</h2>
+        <p>Year {world.year}</p>
         <button className="evo-descent-primary" onClick={onResume}>
           ◈ {world.descent?.mode==='mortal'?'VIEW YOUR MORTAL':'RESUME DESCENT'}</button>
         <button className="evo-descent-secondary" onClick={onReturn}>
           ← RETURN TO GOD MODE</button>
-      </section>:<form className="evo-descent-form" onSubmit={submit}>
+      </section>:<form className="evo-descent-form" onSubmit={submit} aria-busy={starting}>
         <label className="evo-descent-label" htmlFor="mortal-name">Mortal name</label>
         <input id="mortal-name" value={name} onChange={event=>setName(event.target.value)}
-          maxLength={64} placeholder="What shall they call you?" required/>
+          maxLength={64} autoComplete="off" required/>
 
         <span className="evo-descent-label">Choose your people</span>
         <div className="evo-descent-species" role="group" aria-label="Mortal species">
@@ -88,7 +80,9 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
           </button>)}
         </div>
 
-        <span className="evo-descent-label">Background</span>
+        <details className="evo-descent-customize">
+          <summary>Customize appearance and background</summary>
+          <span className="evo-descent-label">Background</span>
         <div className="evo-descent-backgrounds" role="group"
           aria-label="Mortal background">
           {DESCENT_BACKGROUNDS.map(choice=><button type="button" key={choice.id}
@@ -132,9 +126,17 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error}:{
             className={look.outfit===outfit.id?'is-picked':''}
             onClick={()=>update('outfit',outfit.id)}>{outfit.label}</button>)}
         </div>
+        </details>
+        {canGrow&&<label className="evo-descent-arrival">
+          <input type="checkbox" checked={settledStart}
+            onChange={event=>setSettledStart(event.target.checked)}/>
+          <span>Let settlements grow before I arrive
+            <small>Advance the world by six simulated years.</small></span>
+        </label>}
         {error&&<p className="evo-descent-error" role="alert">{error}</p>}
         <div className="evo-descent-actions">
-          <button className="evo-descent-primary" type="submit">✦ BEGIN MORTAL LIFE</button>
+          <button className="evo-descent-primary" type="submit" disabled={starting}>
+            {starting?'Growing the world…':'Begin mortal life'}</button>
           <button className="evo-descent-secondary" type="button"
             onClick={onReturn}>← BACK TO WORLD</button>
         </div>

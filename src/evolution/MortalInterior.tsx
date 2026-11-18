@@ -1,4 +1,4 @@
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,type ReactNode} from 'react';
 import type {World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS} from './construction';
 import {paintPerson} from './pixelArt';
@@ -95,18 +95,32 @@ export function drawMortalRoom(ctx:CanvasRenderingContext2D,
   }
   for(const x of [2,9]){
     rect(ctx,'#384a51',OX+x*CELL-2,OY-30,39,23);
-    rect(ctx,'#b3d5c5',OX+x*CELL+2,OY-27,30,15);
-    rect(ctx,'#6b9a9b',OX+x*CELL+17,OY-27,2,15);
+    rect(ctx,'#b8d8c8',OX+x*CELL+2,OY-27,30,15);
+    rect(ctx,'#93b9a6',OX+x*CELL+2,OY-18,30,6);
+    rect(ctx,'#615850',OX+x*CELL+16,OY-27,2,15);
+    rect(ctx,'#615850',OX+x*CELL+2,OY-21,30,2);
     rect(ctx,'#9b8c6b',OX+x*CELL,OY-9,36,3);
+    rect(ctx,style.roof,OX+x*CELL-4,OY-34,7,25);
+    rect(ctx,style.roof,OX+x*CELL+31,OY-34,7,25);
+    rect(ctx,style.trim,OX+x*CELL-4,OY-18,7,2);
+    rect(ctx,style.trim,OX+x*CELL+31,OY-18,7,2);
   }
   rect(ctx,style.wall,OX-13,OY,13,ROOM_HEIGHT*CELL);
   rect(ctx,style.wall,OX+ROOM_WIDTH*CELL,OY,13,ROOM_HEIGHT*CELL);
   rect(ctx,template.floor,OX,OY,ROOM_WIDTH*CELL,ROOM_HEIGHT*CELL);
   for(let y=0;y<ROOM_HEIGHT;y++)for(let x=0;x<ROOM_WIDTH;x++){
     const px=OX+x*CELL,py=OY+y*CELL;
-    rect(ctx,(x+y)%2?'#ffffff09':'#0000000b',px,py,CELL,CELL);
-    rect(ctx,'#2b303420',px,py+CELL-1,CELL,1);
-    rect(ctx,'#e9d9b022',px+2,py+2,9,1);
+    const light=(x*13+y*19)%5;
+    rect(ctx,light<2?'#00000010':light===4?'#fff6bc14':'#ffffff07',px,py,CELL,CELL);
+    for(let row=0;row<3;row++){
+      const seam=px+5+(x*3+y*5+row*9)%17;
+      rect(ctx,'#2b303429',px,py+8+row*9,CELL,1);
+      rect(ctx,'#2b30341b',seam,py+row*9,1,8);
+      rect(ctx,'#e9d9b021',px+2,py+1+row*9,9,1);
+    }
+  }
+  for(const x of [2,9])for(let ray=0;ray<5;ray++){
+    rect(ctx,'#f8d9a217',OX+x*CELL+ray*3,OY+ray*6,35,6);
   }
   // The exit is a consistent visible feature of every template.
   rect(ctx,'#443e42',OX+INTERIOR_DOOR.x*CELL-7,
@@ -123,13 +137,13 @@ export function drawMortalRoom(ctx:CanvasRenderingContext2D,
 
 type Motion={from:InteriorPosition;to:InteriorPosition;start:number};
 
-export function MortalInterior({world,site,position,running,message,
+export function MortalInterior({world,site,position,message,
   targetId=null,onSelectResident,onTalk,onCloseConversation,
-  onExit,onToggleTime,onAscend}:{world:World;site:MortalBuilding;
-  position:InteriorPosition;running:boolean;message:string;
+  onExit,children}:{world:World;site:MortalBuilding;
+  position:InteriorPosition;message:string;
   targetId?:number|null;onSelectResident?:(id:number)=>void;
   onTalk?:(action:MortalAction)=>void;onCloseConversation?:()=>void;
-  onExit:()=>void;onToggleTime:()=>void;onAscend:()=>void}){
+  onExit:()=>void;children?:ReactNode}){
   const canvas=useRef<HTMLCanvasElement>(null);
   const motion=useRef<Motion>({from:position,to:position,start:0});
   const person=world.agents.find(a=>a.id===world.descent?.agentId);
@@ -196,24 +210,17 @@ export function MortalInterior({world,site,position,running,message,
     position.x,position.y]);
   return <section className="evo-interior" aria-label="Enterable building interior">
     <header className="evo-interior-header">
-      <div><small>INSIDE {site.settlementName.toUpperCase()}</small>
-        <strong>⌂ {BUILDING_LABELS[site.building.type]}</strong>
+      <div><strong>{BUILDING_LABELS[site.building.type]}</strong>
         <span>{ARCHITECTURE[site.building.culture].name} ·
           {' '}{Math.round(site.building.condition)}% condition</span></div>
       <div className="evo-interior-actions">
-        <button onClick={onToggleTime}>{running?'Ⅱ PAUSE':'▶ RESUME'}</button>
-        <button onClick={onExit}>↙ EXIT BUILDING</button>
-        <button onClick={onAscend}>↑ ASCEND</button>
+        <button onClick={onExit}>← Exit building</button>
       </div>
     </header>
     <canvas ref={canvas} width={CW} height={CH}
       aria-label={`${INTERIOR_TEMPLATES[site.building.type].name} with walkable floor, furniture and an exit`}/>
-    <div className="evo-interior-footer">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move inside ·
-        {' '}<kbd>E</kbd> Talk nearby / Exit at door ·
-        {' '}<kbd>Esc</kbd> Close / Leave</span>
-      {message&&<span role="status" className="evo-interior-message">{message}</span>}
-    </div>
+    {children}
+    {message&&<p role="status" className="evo-interior-message">{message}</p>}
     {active&&<aside className="evo-interior-dialogue"
       aria-label="Speak with a resident inside this home">
       <div className="evo-interior-dialogue-head">
@@ -232,8 +239,8 @@ export function MortalInterior({world,site,position,running,message,
           {lifeStage(active.agent)==='infant'?'OFFER CARE':'OFFER HELP'}</button>
       </div>}
     </aside>}
-    {household&&<aside className="evo-interior-household">
-      <strong>HOUSEHOLD · {life.members.length} LIVING RESIDENT{life.members.length===1?'':'S'}</strong>
+    {household&&<details className="evo-interior-household">
+      <summary>Household · {life.members.length} resident{life.members.length===1?'':'s'}</summary>
       <p>{life.present.length?`${life.present.length} at home`:
         'The other residents are away right now.'}
         {life.away.length?` · ${life.away.length} away`:''}
@@ -251,8 +258,6 @@ export function MortalInterior({world,site,position,running,message,
       </ul>}
       {life.away.length>0&&<small>Away: {life.away.slice(0,5).map(a=>
         nameOf(a.id)).join(' · ')}{life.away.length>5?' and others':''}</small>}
-      <small>Real family members rest, care for children, and share food when
-        they meet at home. Their routines continue while you are away.</small>
-    </aside>}
+    </details>}
   </section>;
 }

@@ -22,8 +22,6 @@ import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
-import {mortalMovementDelay} from './mortalGameplay';
-import {nearbyAdventureTrees} from './adventureScenery';
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,depthDrop,
   interpolatedGroundHeight,
   tileFromHit,tileHitColor,type DepthCamera} from './depthProjection';
@@ -299,12 +297,12 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
 function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   selected:{x:number;y:number}|null,zoom:number,
   positions:Map<number,Point>,walking:Set<number>,projector:Projector,
-  structures:DepthActor[],foregroundTrees:DepthActor[],
+  structures:DepthActor[],
   visibleAgents:readonly Agent[],
   sprites:PersonSpriteCache,
   facing:Map<number,Facing>,stride:Map<number,0|1|2|3>):void{
   const heights=topographyForWorld(w).heights;
-  const actors:DepthActor[]=[...structures,...foregroundTrees];
+  const actors:DepthActor[]=[...structures];
   for(const a of visibleAgents){
     const pos=positions.get(a.id)??{x:a.x,y:a.y};
     // Both the horizontal position and the changing elevation must advance
@@ -334,11 +332,11 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,
-  followId=null,onFollowPosition,adventure=false}:{
+  followId=null,onFollowPosition}:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
-  relief?:number;camera?:DepthCamera;followId?:number|null;adventure?:boolean;
+  relief?:number;camera?:DepthCamera;followId?:number|null;
   onFollowPosition?:(x:number,y:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
@@ -422,10 +420,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const visibleAgents=renderedPopulation(world.agents,popScene,{
       bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
       selected,focusId:followId,zoom:Math.max(1,zoom),maxVisible:350});
-    const positions=new Map(visibleAgents.map(a=>[
-      a.id,world.descent?.mode==='mortal'&&world.descent.agentId===a.id?
-        {x:a.x,y:a.y}:mortalWorldPoint(a,world),
-    ]));
+    const positions=new Map(visibleAgents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
     const now=performance.now();
     if(!previous||previous.seed!==world.settings.seed||
@@ -439,16 +434,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
         return !!from&&(to.x!==from.x||to.y!==from.y);
       })){
       const moving=new Map<number,Motion>();
-      const agentsById=new Map(visibleAgents.map(a=>[a.id,a]));
       for(const [id,to] of positions){
-        const isMortal=world.descent?.mode==='mortal'&&id===world.descent.agentId;
-        const old=motionsRef.current.get(id);
-        const from=isMortal&&old?.to&&previous.positions.has(id)?
-          motionFrame(old,now):previous.positions.get(id);
+        const from=previous.positions.get(id);
         if(!from||!canAnimate(from,to))continue;
-        moving.set(id,{from,to,start:now,
-          duration:isMortal&&agentsById.has(id)?
-            mortalMovementDelay(agentsById.get(id)!)+25:visualMotionDuration(speed),
+        moving.set(id,{from,to,start:now,duration:visualMotionDuration(speed),
           facing:directionBetween(from,to)});
       }
       motionsRef.current=moving;
@@ -468,16 +457,6 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       topography:world.topography,seed:world.settings.seed,
       relief,yaw:camera.yaw,pitch:camera.pitch,detail:zoomDetailTier,
       actors:structures};
-    const avatar=adventure&&world.descent?.mode==='mortal'?
-      world.agents.find(a=>a.id===world.descent?.agentId):undefined;
-    const heights=topographyForWorld(world).heights;
-    const foregroundTrees=avatar&&overlay==='terrain'?
-      nearbyAdventureTrees(world,avatar.x,avatar.y).map(tree=>{
-        const p=projector.project(tree.x,tree.y,
-          heights[tree.y*world.width+tree.x]);
-        return {order:p.y+.3,paint:()=>paintCachedTree(ctx,p,tree.pine,
-          tree.variant,zoomDetailTier,treeSpritesRef.current)};
-      }):[];
     let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
       // Maintain identical world-space positions and hit-testing at every
@@ -498,12 +477,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
           facingRef.current.set(id,frame.facing);
         }
       }
-      // The inspect diamond is grid-snapped by design. While playing as a
-      // mortal it visibly jumped ahead of the interpolated sprite every
-      // footstep, making smooth travel look like teleporting.
-      paintInhabitants(ctx,world,world.descent?.mode==='mortal'?null:selected,
-        zoom,interpolated,walking,
-        projector,structures,foregroundTrees,visibleAgents,personSpritesRef.current,
+      paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
+        projector,structures,visibleAgents,personSpritesRef.current,
         facingRef.current,strides);
       const tracked=followId!==null?interpolated.get(followId):undefined;
       if(tracked&&onFollowPosition&&(!lastFollow||
@@ -519,7 +494,6 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
   },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
-    adventure,
     camera.yaw,camera.pitch,followId,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);

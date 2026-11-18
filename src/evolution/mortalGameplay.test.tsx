@@ -8,7 +8,7 @@ import {createMortal} from './divineDescent';
 import {compactWorld,readSavedWorld} from './storage';
 import {MortalHUD} from './MortalHUD';
 import type {Building} from './construction';
-import {mortalDirection,mortalMovementDelay,mortalTileCapacity,
+import {mortalMovementDelay,mortalTileCapacity,
   nearbyMortals,nearbyMortalBuildings,mortalBuildingEntrance,
   describeMortalBuilding,interactWithMortal,walkMortal,
   walkMortalWithAssist} from './mortalGameplay';
@@ -54,21 +54,6 @@ function withDoor(world:World,offset:{x:number;y:number}={x:1,y:0}){
 }
 
 describe('v2.5.1 — mortal movement and interaction',()=>{
-  it('turns WASD with the camera without changing world coordinates',()=>{
-    const none=new Set<'w'|'a'|'s'|'d'>();
-    expect(mortalDirection(none,{yaw:0,pitch:30})).toBeNull();
-    const north=new Set<'w'>(['w']);
-    const initial=mortalDirection(north,{yaw:0,pitch:30});
-    const rotated=mortalDirection(north,{yaw:90,pitch:30});
-    expect(initial).not.toEqual(rotated);
-    for(const yaw of [0,45,90,135,180,225,270,315]){
-      const dir=mortalDirection(north,{yaw,pitch:30})!;
-      expect(Math.abs(dir.dx)).toBeLessThanOrEqual(1);
-      expect(Math.abs(dir.dy)).toBeLessThanOrEqual(1);
-      expect(dir.dx!==0||dir.dy!==0).toBe(true);
-    }
-  });
-
   it('uses the same local tile capacity as settlement occupancy',()=>{
     const w=makeWorld(),capacity=tileCapacity(w);
     for(let y=0;y<w.height;y+=7)for(let x=0;x<w.width;x+=7)
@@ -191,15 +176,14 @@ describe('v2.5.1 — mortal movement and interaction',()=>{
   it('renders an accessible, focused mortal HUD and conversation actions',()=>{
     const {world:w,targetId}=playmate(makeWorld());
     const markup=renderToStaticMarkup(createElement(MortalHUD,{
-      world:w,nearby:nearbyMortals(w),targetId,message:'Hello there!',
-      running:true,onTalk:()=>{},onSelect:()=>{},onClose:()=>{},
-      onToggleTime:()=>{},onLeave:()=>{},
+      world:w,person:nearbyMortals(w).find(a=>a.id===targetId),
+      site:undefined,message:'Hello there!',
+      onTalk:()=>{},onEnter:()=>{},onClose:()=>{},
     }));
-    expect(markup).toContain('Mortal player controls');
-    expect(markup).toContain('GREET');
-    expect(markup).toContain('ASK ABOUT LIFE');
-    expect(markup).toContain('OFFER HELP');
-    expect(markup).toContain('PAUSE TIME');
+    expect(markup).toContain('Conversation');
+    expect(markup).toContain('Greet');
+    expect(markup).toContain('Ask about life');
+    expect(markup).toContain('Offer help');
   });
 });
 
@@ -259,13 +243,11 @@ describe('v2.5.3 — physical entrances and assisted movement',()=>{
     const nearby=nearbyMortalBuildings(w);
     expect(nearby.length).toBeGreaterThan(0);
     const markup=renderToStaticMarkup(createElement(MortalHUD,{
-      world:w,nearby:[],buildings:nearby,
-      targetId:null,selectedBuilding:nearby[0],message:'',running:false,
-      onTalk:()=>{},onSelect:()=>{},onInspectBuilding:()=>{},
-      onClose:()=>{},onToggleTime:()=>{},onLeave:()=>{},
+      world:w,person:undefined,site:nearby[0],message:'',
+      onTalk:()=>{},onEnter:()=>{},onClose:()=>{},
     }));
     expect(markup).toContain('Nearby building');
-    expect(markup).toContain('ready to explore');
+    expect(markup).toContain('Enter building');
     expect(w.descent?.mode).toBe('mortal');
   });
 });

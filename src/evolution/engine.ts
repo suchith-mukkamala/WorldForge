@@ -46,6 +46,7 @@ import {isTraitHeritage,type TraitHeritage} from './traitHeritage';
 import {activeTraitBonus} from './traitEffects';
 import {advancePublicHealth,isDiseaseRecord,isPublicHealthState,
   type DiseaseRecord,type PublicHealthState} from './publicHealth';
+import {validAdventurePlace,type AdventurePlace} from './adventurePlaces';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -59,7 +60,8 @@ export type Ancestry=Record<Species,number>;
 export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
 export type MortalAppearance={skin:number;hair:number;hairStyle:number;
   outfit:MortalOutfit};
-export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number};
+export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number;
+  place?:AdventurePlace};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   appearance?:MortalAppearance;
@@ -997,7 +999,8 @@ export function isWorld(value:unknown):value is World{
     const d=w.descent;
     if(!d||!Number.isSafeInteger(d.agentId)||!records.has(d.agentId)||
       !['mortal','divine'].includes(d.mode)||
-      !Number.isInteger(d.createdYear)||d.createdYear<0||d.createdYear>year)
+      !Number.isInteger(d.createdYear)||d.createdYear<0||d.createdYear>year||
+      d.place!==undefined&&!validAdventurePlace(d.place,width,height))
       return false;
   }
   // Optional because v0.2 JSON saves had no diagnostics. New saves are

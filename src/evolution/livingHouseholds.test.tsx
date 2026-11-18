@@ -83,10 +83,10 @@ describe('v2.6.1 — living households',()=>{
   it('shows family activities and away notices without changing saved agents',()=>{
     const {world,site}=fixture(),before=JSON.stringify(world);
     const markup=renderToStaticMarkup(createElement(MortalInterior,{
-      world,site,position:INTERIOR_DOOR,running:false,message:'',
-      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+      world,site,position:INTERIOR_DOOR,message:'',
+      onExit:()=>{},
     }));
-    expect(markup).toContain('HOUSEHOLD');
+    expect(markup).toContain('Household');
     expect(markup).toContain('Caring for family');
     expect(markup).toContain('2 at home');
     expect(markup).toContain('1 away');
@@ -98,16 +98,16 @@ describe('v2.6.1 — living households',()=>{
     const near=livingHousehold(world,site).present[0].position;
     const markup=renderToStaticMarkup(createElement(MortalInterior,{
       world,site,position:{x:near.x,y:near.y+1},
-      targetId:people[0].id,running:false,message:'',
+      targetId:people[0].id,message:'',
       onSelectResident:()=>{},onTalk:()=>{},onCloseConversation:()=>{},
-      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+      onExit:()=>{},
     }));
     expect(markup).toContain('Speak with a resident inside this home');
     expect(markup).toContain('ASK ABOUT LIFE');
     const far=renderToStaticMarkup(createElement(MortalInterior,{
       world,site,position:INTERIOR_DOOR,targetId:people[0].id,
-      running:false,message:'',onTalk:()=>{},
-      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+      message:'',onTalk:()=>{},
+      onExit:()=>{},
     }));
     expect(far).not.toContain('Speak with a resident inside this home');
   });
@@ -142,8 +142,8 @@ describe('v2.6.1 — living households',()=>{
       p.agent.id===people[1].id)!;
     const markup=renderToStaticMarkup(createElement(MortalInterior,{
       world:baby,site,position:{x:infant.position.x,y:infant.position.y+1},
-      targetId:people[1].id,running:false,message:'',onTalk:()=>{},
-      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+      targetId:people[1].id,message:'',onTalk:()=>{},
+      onExit:()=>{},
     }));
     expect(markup).toContain('OFFER CARE');
     expect(markup).not.toContain('ASK ABOUT LIFE');
