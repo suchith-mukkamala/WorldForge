@@ -478,6 +478,46 @@
 }
 .world-atlas .evo-map-actions .atlas-places-toggle:hover,
 .world-atlas .evo-map-actions .atlas-places-toggle[aria-expanded="true"] { background: #f9dfb2; }
+.world-atlas .evo-map-actions .atlas-trade-toggle[aria-pressed="true"] {
+  background: #415d47; border-color: #d0b984; color: #ffedc8;
+}
+.atlas-trade-card > .evo-card-heading {
+  min-height: 41px; padding: 8px 12px; background: #1a3234;
+}
+.atlas-trade-card > .evo-card-heading strong,
+.atlas-town-market h3 {
+  color: #f1e5c8; font: 700 16px/1.25 var(--heading-font);
+}
+.atlas-trade-card > .evo-card-heading span,
+.atlas-trade-content {
+  color: #c4d5c9; font: 600 13px/1.45 var(--reading-font);
+}
+.atlas-trade-content { display: grid; gap: 10px; padding: 10px 12px; }
+.atlas-trade-content p, .atlas-town-market h3 { margin: 0; }
+.atlas-shipment-list {
+  display: grid; gap: 5px; max-height: 232px; overflow: auto;
+  list-style: none; margin: 0; padding: 1px;
+}
+.atlas-shipment-list button {
+  display: grid; gap: 2px; width: 100%; min-height: 43px;
+  padding: 6px 8px; border: 1px solid #516d63; border-inline-start: 3px solid #f1c77b;
+  border-radius: 4px; background: #1e3838; color: #f4e8cd;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.atlas-shipment-list button.is-sea { border-inline-start-color: #93dff2; }
+.atlas-shipment-list button:hover, .atlas-shipment-list button:focus-visible {
+  background: #294b46; outline-offset: -2px;
+}
+.atlas-shipment-list button span { color: #b9d2c8; }
+.atlas-town-market { display: grid; gap: 5px; padding-top: 9px; border-top: 1px solid #415b54; }
+.atlas-town-market ul {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 0; margin: 1px 0 0; list-style: none;
+}
+.atlas-town-market li {
+  padding: 3px 6px; border: 1px solid #775c4d; border-radius: 4px;
+  background: #342e2e; color: #f2ce9f;
+}
+.atlas-town-market small { color: #e6ceba; font-size: 11px; }
 .world-atlas .atlas-viewport {
   --atlas-height: min(72vh, 820px);
   min-height: 0; max-height: var(--atlas-height); background: #102531;
@@ -586,6 +626,11 @@
   .world-atlas .evo-map-heading { padding: 8px 9px; }
   .world-atlas .evo-map-actions button { min-width: 39px; min-height: 40px; padding-inline: 7px; }
   .atlas-places-panel input { font-size: 16px; }
+}
+@media (max-width: 460px) {
+  .world-atlas .evo-map-heading { flex-wrap: wrap; }
+  .world-atlas .atlas-map-title { flex-basis: 100%; }
+  .world-atlas .evo-map-actions { justify-content: flex-end; width: 100%; }
 }
 @media (max-width: 650px) {
   .world-preview-card { grid-template-columns: minmax(0, 1fr); gap: 8px; }

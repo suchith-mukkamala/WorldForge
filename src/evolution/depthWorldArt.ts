@@ -5,6 +5,7 @@
 import type {Biome,World} from './engine';
 import {settlementStage} from './construction';
 import {wornPathTiles} from './trailNetwork';
+import {woodlandPalette} from './terrainDetails';
 type Point={x:number;y:number};
 type Projector={project:(x:number,y:number,elevation:number)=>Point};
 const shades:Record<Biome,readonly string[]>={
@@ -16,15 +17,17 @@ const shades:Record<Biome,readonly string[]>={
   wasteland:['#a28182','#b19085','#957580','#ae8c82','#9d7c78'],
   water:['#367c9b','#357694','#4385a1','#397b9b','#30738e'],
 };
+const canopyShades=shades.plains.map((plains,i)=>woodlandPalette(plains,shades.forest[i]));
 export function pixelTerrainHash(x:number,y:number,seed:number):number{
   let n=(Math.imul(x+1,73856093)^Math.imul(y+3,19349663)^seed)>>>0;
   n=Math.imul(n^(n>>>15),0x2c1b3c6d);
   n=Math.imul(n^(n>>>12),0x297a2d39);
   return (n^(n>>>15))>>>0;
 }
-export function surfaceColor(biome:Biome,x:number,y:number,seed:number):string{
+export function surfaceColor(biome:Biome,x:number,y:number,seed:number,cover?:number):string{
   const t=shades[biome],hash=pixelTerrainHash(x,y,seed);
-  return t[hash%t.length];
+  const shade=hash%t.length;
+  return cover===undefined?t[shade]:canopyShades[shade][Math.round(cover*63)];
 }
 /** Small top-surface markings suggest terrain material rather than uniform
  * flat faces. The current painter's fill pixels never alter collision masks. */

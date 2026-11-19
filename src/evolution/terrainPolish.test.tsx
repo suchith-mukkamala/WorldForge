@@ -67,12 +67,12 @@ describe('v1.9.5 — polished, economical, compatible rendering',()=>{
     const labels:Record<MapOverlay,string>={
       terrain:'LIVING LANDSCAPE',resources:'FOOD AVAILABILITY',
       deposits:'HARVESTABLE DEPOSITS',
-      elevation:'HEIGHTMAP',watersheds:'DRAINAGE & CATCHMENTS',
+      elevation:'HEIGHTMAP',watersheds:'DRAINAGE & CATCHMENTS',trade:'TRADE ROUTES',
     };
     for(const [overlay,label] of Object.entries(labels) as [MapOverlay,string][]){
       const html=renderToStaticMarkup(createElement(MapLayerLegend,{overlay}));
       expect(html).toContain(label.replaceAll('&','&amp;'));
-      expect(html.match(/aria-hidden="true"/g)).toHaveLength(3);
+      expect(html.match(/aria-hidden="true"/g)).toHaveLength(overlay==='trade'?2:3);
       expect(html).toContain('role="note"');
     }
     expect(renderToStaticMarkup(createElement(MapLayerLegend,{overlay:'watersheds'})))

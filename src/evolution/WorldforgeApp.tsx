@@ -7,6 +7,8 @@ import {DepthCanvas} from './DepthCanvas';
 import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
+import {TradePanel} from './TradePanel';
+import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
@@ -69,7 +71,7 @@ function initialWorld():World{
     }catch{/* Restricted storage: continue with an in-memory world. */}
   }
   // First-time visitors get their own world; existing local saves always win.
-  return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
+  return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,livingBiomes:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
@@ -671,6 +673,8 @@ export function WorldforgeApp(){
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
   const drainage=displayed?hydrologyForWorld(world):null;
   const drainageIndex=displayed?displayed.y*world.width+displayed.x:-1;
+  const treeCover=tile&&woodlandHabitat(tile.biome)?
+    woodlandCover(world.woodland,drainageIndex):undefined;
   const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
   const receiving=drainageIndex>=0?drainage?.basin[drainageIndex]??-1:-1;
   const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
@@ -1048,6 +1052,11 @@ export function WorldforgeApp(){
             <div className="evo-map-actions">
               <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}/>
               <button type="button" onClick={fitAtlas} aria-label="Fit world view">World</button>
+              <button type="button" className="atlas-trade-toggle" aria-pressed={overlay==='trade'}
+                onClick={()=>{
+                  setOverlay(overlay==='trade'?'terrain':'trade');
+                  setBrush({kind:'inspect'});
+                }}>Trade</button>
               <button type="button" onClick={()=>zoomAtlas(v=>v-.5)}
                 disabled={zoom<=1} aria-label="Zoom out">−</button>
               <button type="button" onClick={()=>zoomAtlas(v=>v+.5)}
@@ -1068,7 +1077,7 @@ export function WorldforgeApp(){
                 ▦ OVERHEAD</button>
             </div>
             <details className="evo-layer-menu">
-              <summary>▤ LAYERS{overlay==='terrain'?'':' · '+overlay.toUpperCase()}</summary>
+              <summary>▤ LAYERS{overlay==='terrain'||overlay==='trade'?'':' · '+overlay.toUpperCase()}</summary>
               <div className="evo-layer-chips" role="group" aria-label="Map layers">
                 {([['terrain','WORLD'],['resources','FOOD'],
                   ['deposits','RESOURCES'],['elevation','HEIGHT'],
@@ -1183,6 +1192,14 @@ export function WorldforgeApp(){
               <small>Seasonal light · layered scenery · pixel atmosphere</small></span>
             <span className="evo-season-dot" aria-hidden="true"/>
           </div>}
+          {!world.settings.livingBiomes&&<div className="evo-terrain-upgrade">
+            <div><strong>Living biome borders</strong>
+              <span>Grassland and woodland can blend and shift over the years.</span></div>
+            <button onClick={()=>{
+              setWorld(enableLivingBiomes);
+              setNotice('Living biome borders are active. Advance time to watch the tree cover change.');
+            }}>Enable living biomes</button>
+          </div>}
           {!hasPhysicalTerrain(world)&&<div className="evo-terrain-upgrade" role="note">
             <div><strong>CLASSIC TERRAIN RULES</strong>
               <span>This older world keeps its original routes and farming.
@@ -1231,6 +1248,7 @@ export function WorldforgeApp(){
             </div>}
           <div className="evo-map-footer">
             <span className="atlas-map-tip">{brush.kind!=='inspect'?'Click a tile to apply the active tool.':
+              overlay==='trade'?'Choose a shipment to see where it is.':
               detail==='world'?(world.settlements.length?'Select a town to see its buildings.':
                 'Advance time to see the first settlements.'):'Select a building to inspect it.'}</span>
             <details className="evo-map-help">
@@ -1265,7 +1283,12 @@ export function WorldforgeApp(){
           {notice&&<div className="evo-notice" role="status">{notice}</div>}
         </section>
         <aside className="evo-world-sidebar">
-          <section className="evo-section-card evo-inspector-card">
+          {overlay==='trade'&&<TradePanel world={world} town={settlement} onLocate={index=>{
+            locateAtlasPoint({x:index%world.width,y:Math.floor(index/world.width)},1);
+            mapScrollRef.current?.scrollIntoView({block:'nearest'});
+            focusMap();
+          }}/>}
+          {(overlay!=='trade'||displayed)&&<section className="evo-section-card evo-inspector-card">
             <div className="evo-card-heading">
               <strong>{displayed?'Place details':'✧ START HERE'}</strong>
               <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:''}</span>
@@ -1362,7 +1385,9 @@ export function WorldforgeApp(){
                     style={{background:BIOME_INFO[tile.biome].color}}/>
                   <div><strong>{BIOME_INFO[tile.biome].name}</strong>
                     <small>Food available: {tile.food.toFixed(1)} units
-                      {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
+                      {altitude!==null?' · Elevation '+altitude+'/255':''}</small>
+                    {treeCover!==undefined&&<small>Tree cover {Math.round(treeCover*100)}%</small>}
+                  </div>
                 </div>
                 {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
                   <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
@@ -1396,7 +1421,7 @@ export function WorldforgeApp(){
                 </div>}
               </details>
             </>}
-          </section>
+          </section>}
           <details className="evo-section-card evo-world-actions evo-disclosure">
             <summary>⇩ SAVE, IMPORT & REPLAY</summary>
             <div className="evo-actions-buttons">

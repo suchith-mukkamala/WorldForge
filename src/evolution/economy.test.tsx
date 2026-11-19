@@ -4,6 +4,7 @@ import {createWorld,editWorld,isWorld,stepWorld,type Settlement,type World} from
 import {advanceConstruction,prepareInfrastructure,type Building} from './construction';
 import {advanceEconomy,createEconomy,stockOf,validEconomy} from './economy';
 import {SettlementView} from './SettlementView';
+import {TradePanel} from './TradePanel';
 import {compactWorld,readSavedWorld} from './storage';
 
 function neighbors(w:World,x:number,y:number){
@@ -97,6 +98,10 @@ describe('Worldforge v0.8 — autonomous economy, work and trade',()=>{
     expect(stockOf(target,'food')).toBe(0);
     expect(s.economy!.food).toBeLessThan(255);
     expect(shipment!.route.every(idx=>w.tiles[idx].biome!=='water')).toBe(true);
+    const atlas=renderToStaticMarkup(<TradePanel world={w} town={target} onLocate={()=>{}}/>);
+    expect(atlas).toContain('Market Town → Needham');
+    expect(atlas).toContain(amount+' food · Caravan · 0% of route');
+    expect(atlas).toContain('Market shortages');
     const carrier=w.agents.find(a=>a.id===shipment!.carrierId)!;
     // Advance the physical courier to the destination; goods cannot arrive early.
     carrier.x=target.x;carrier.y=target.y;

@@ -35,7 +35,7 @@ import {advanceCulture,cloneCulture,validCulture,
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
 import {generateSeedTerrain,WORLD_LAYOUTS,type WorldLayout} from './worldGeography';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
-import {generateTopography,validTopography,type Topography} from './topography';
+import {generateTopography,topographyForWorld,validTopography,type Topography} from './topography';
 import {advanceEarthworks,validEarthworks,type Earthwork} from './earthworks';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './traitRanks';
@@ -49,6 +49,7 @@ import {validAdventurePlace,type AdventurePlace} from './adventurePlaces';
 import {validMortalJournal,type MortalJournal} from './errandRecords';
 import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
+import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -56,6 +57,7 @@ export type WorldSettings={
   seed:number;size:WorldSize;starting:Record<Species,number>;
   resourceLevel:number;wandering:number;interbreeding:boolean;
   layout?:WorldLayout;
+  livingBiomes?:boolean;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
@@ -124,6 +126,7 @@ export type Sample={year:number;total:number;human:number;elf:number;dwarf:numbe
 export type World={version:2;settings:WorldSettings;width:number;height:number;
   year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
   nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;
+  woodland?:string;
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -203,6 +206,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     resourceLevel:clamp(Number.isFinite(input.resourceLevel)?input.resourceLevel!:1,.5,1.8),
     wandering:clamp(Number.isFinite(input.wandering)?input.wandering!:1,.5,1.8),
     interbreeding:input.interbreeding!==false,
+    ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
     ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
 export function population(world:Pick<World,'agents'>):Record<Species,number>{
@@ -270,6 +274,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     transport:{roads:[],bridges:[]},tradeRelations:[],
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
     ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
+  if(settings.livingBiomes)world.woodland=initialWoodland(world);
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
   const occupied=new Set<number>();
@@ -403,7 +408,8 @@ export function stepWorld(previous:World):World{
       lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
     expeditions:previous.expeditions?.map(e=>({...e}))??[]};
   prepareDevelopment(world);
-  regrowDeposits(world);
+  const newForests=world.settings.livingBiomes?advanceWoodland(world):undefined;
+  regrowDeposits(world,newForests);
   for(const s of world.settlements){
     if(!world.codex!.settlements.some(r=>r.id===s.id)){
       world.codex!.settlements.push({id:s.id,species:s.species,name:s.name,
@@ -780,9 +786,23 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
   }else{
     world.tiles[index]={biome:brush.biome,food:round(
       BIOME_INFO[brush.biome].food*world.settings.resourceLevel)};
-    // Terrain edits also refresh elevation, without changing existing paths.
-    world.topography=generateTopography(world.width,world.height,
+    if(tile.biome!==brush.biome)paintWoodland(world,index);
+    const topography=generateTopography(world.width,world.height,
       world.tiles,world.settings.seed);
+    if(world.woodland!==undefined){
+      // Canopy changes over time without raising or lowering the ground.
+      // Only refresh the painted tile and any shore affected by this edit.
+      const heights=topographyForWorld(previous).heights.slice();
+      const radius=(tile.biome==='water')!==(brush.biome==='water')?2:0;
+      for(let ny=Math.max(0,y-radius);ny<=Math.min(world.height-1,y+radius);ny++){
+        for(let nx=Math.max(0,x-radius);nx<=Math.min(world.width-1,x+radius);nx++){
+          const neighbor=ny*world.width+nx;
+          heights[neighbor]=topography.heights[neighbor];
+        }
+      }
+      topography.heights=heights;
+    }
+    world.topography=topography;
     editDeposit(world,index);
     reconcileTradeTerrain(world,index);
     reconcileTransportTerrain(world,index);
@@ -799,6 +819,7 @@ export function isWorld(value:unknown):value is World{
   if(w.version!==2||!settings||!Object.hasOwn(WORLD_SIZES,settings.size)||
     !Number.isSafeInteger(settings.seed)||settings.seed<1||settings.seed>2147483647||
     settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
+    settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||
     settings.wandering<.5||settings.wandering>1.8||
@@ -839,6 +860,7 @@ export function isWorld(value:unknown):value is World{
   if(!validEarthworks(w as World))return false;
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
+  if(!validWoodland(w as World))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();
   const traversableBridges=bridgeTiles(w as World);
   const captains=new Map((w.shipments??[]).filter(t=>t.mode==='sea')

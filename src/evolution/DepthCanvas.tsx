@@ -5,6 +5,8 @@ import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
+import {woodlandCover,woodlandHabitat} from './woodland';
+import {paintTradeRoutes} from './tradeRoutes';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
 import {coastalDepth,OCEAN_TONES} from './oceanDepth';
@@ -113,7 +115,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
   const multiShore=isMultiIslandLayout(w.settings.layout);
-  const ocean=multiShore&&overlay==='terrain'?
+  const ocean=overlay==='trade'||multiShore&&overlay==='terrain'?
     coastalDepth(W,H,i=>w.tiles[i].biome==='water'):null;
   const skyline=ctx.createLinearGradient(0,0,0,ctx.canvas.height/sceneryDensity);
   skyline.addColorStop(0,'#10233b');
@@ -133,9 +135,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
       const p=projector.project(x,y,height);
       const corners=projector.tileCorners(x,y,height);
       const biome=w.tiles[index].biome,palette=PALETTE[biome];
+      const cover=(overlay==='terrain'||overlay==='trade')&&woodlandHabitat(biome)?
+        woodlandCover(w.woodland,index):undefined;
       if(ocean&&biome==='water'){
         polygon(ctx,corners,OCEAN_TONES[ocean[index]]);
-        if(ocean[index]<=3&&(x*13+y*37)%5===0)
+        if(overlay==='terrain'&&ocean[index]<=3&&(x*13+y*37)%5===0)
           paintDepthSurfaceDetail(ctx,biome,p,x,y,w.settings.seed);
         polygon(hit,corners,tileHitColor(index));
         continue;
@@ -165,8 +169,8 @@ function renderTerrain(w:World,overlay:MapOverlay,
           fy>0?corners[3]:corners[1],drop,
           fy>0?palette.left:palette.right,index);
       }
-      polygon(ctx,corners,overlay==='terrain'?
-        surfaceColor(biome,x,y,w.settings.seed):
+      polygon(ctx,corners,overlay==='terrain'||overlay==='trade'?
+        surfaceColor(biome,x,y,w.settings.seed,cover):
         tileColor(w,index,overlay,height,drainage));
       if(overlay==='terrain'||overlay==='elevation'){
         // A northwest sun illuminates west-facing slopes; the other aspect
@@ -181,7 +185,8 @@ function renderTerrain(w:World,overlay:MapOverlay,
             (height-125)/380).toFixed(3)})`);
       }
       if(overlay==='terrain'){
-        paintDepthSurfaceDetail(ctx,biome,p,x,y,w.settings.seed);
+        paintDepthSurfaceDetail(ctx,cover===undefined?biome:cover>=.5?'forest':'plains',
+          p,x,y,w.settings.seed);
         if(biome!=='water'&&[east,south,west,north].some((_,n)=>{
           const at=n===0?index+1:n===1?index+W:n===2?index-1:index-W;
           const inBounds=n===0?x<W-1:n===1?y<H-1:n===2?x>0:y>0;
@@ -213,7 +218,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
       const vegetationHash=(Math.imul(x+w.settings.seed,73856093)^
         Math.imul(y+w.settings.seed,19349663))>>>0;
       if(overlay==='terrain'&&vegetationHash%7===0){
-        const detail=terrainDetailAt(biome,x,y,w.settings.seed,height);
+        const detail=terrainDetailAt(biome,x,y,w.settings.seed,height,false,cover);
         if(detail.motif==='oak'||detail.motif==='pine'){
           paintCachedTree(ctx,p,detail.motif==='pine',
             (vegetationHash>>>5)%3,detailTier,trees);
@@ -362,6 +367,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     yaw:number;pitch:number;detail:DepthArtDetail;
     structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
+    woodland:World['woodland'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
     detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;
@@ -399,6 +405,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       {willReadFrequently:true});
     if(!backdrop||!hit)return;
     const stamp=stampRef.current;
+    const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const roadKey=showBuildings&&overlay==='terrain'?depthRoadSignature(world):0;
     const siteKey=showBuildings?(world.ancientSites??[]).map(site=>
       [site.id,site.x,site.y,site.kind,!!(site.visits??site.visitors.length)].join(':')).join('|'):'';
@@ -406,6 +413,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       overlay==='resources'||stamp.tiles.length!==world.tiles.length||
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||landChanged||stamp.topography!==world.topography||
+      stamp.woodland!==woodland||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
       stamp.detail!==zoomDetailTier||stamp.showBuildings!==showBuildings||
@@ -418,7 +426,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       renderTerrain(world,overlay,backdrop,hit,projector,
         zoomDetailTier,treeSpritesRef.current,sceneryDensity,showBuildings);
     }
-    stampRef.current={tiles:world.tiles,topography:world.topography,
+    stampRef.current={tiles:world.tiles,topography:world.topography,woodland,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
       yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,
       sceneryDensity,showBuildings,siteKey};
@@ -435,7 +443,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       width:world.width,height:world.height,scene:popScene};
     const visibleAgents=renderedPopulation(world.agents,popScene,{
       bounds:{minX:0,minY:0,maxX:world.width-1,maxY:world.height-1},
-      focusId:followId??personId,focusOnly:!showResidents,
+      focusId:followId??personId,focusOnly:!showResidents||overlay==='trade',
       zoom:Math.max(1,zoom),maxVisible:350});
     const positions=new Map(visibleAgents.map(a=>[a.id,mortalWorldPoint(a,world)]));
     const previous=priorRef.current,day=world.dayOfYear??0;
@@ -483,6 +491,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       ctx.imageSmoothingEnabled=false;
       ctx.drawImage(scenery,0,0,size.width,size.height);
       if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
+      if(overlay==='trade'){
+        ctx.fillStyle='rgba(12,29,33,.26)';
+        ctx.fillRect(0,0,size.width,size.height);
+        const heights=topographyForWorld(world).heights;
+        paintTradeRoutes(ctx,world.shipments??[],index=>
+          projector.project(index%world.width,Math.floor(index/world.width),heights[index]),
+          size.width/(canvas.clientWidth||size.width));
+      }
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
       const strides=new Map<number,0|1|2|3>();
       for(const [id,target] of positions){

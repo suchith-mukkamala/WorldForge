@@ -28,6 +28,7 @@ export function WorldCreator({
   const [draft,setDraft]=useState<WorldSettings>(()=>normalizeSettings({
     ...current,seed:freshWorldSeed(current.seed),
     layout:current.layout??DEFAULT_WORLD_LAYOUT,
+    livingBiomes:current.livingBiomes??true,
   }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
@@ -149,6 +150,13 @@ export function WorldCreator({
               <span><b>ALLOW CROSS-SPECIES FAMILIES</b>
                 <small>Adults from different peoples can bond. Children inherit
                   blended ancestry, genetic traits and lifespan.</small>
+              </span>
+            </label>
+            <label className="evo-hybrid-toggle" htmlFor="evo-living-biomes">
+              <input id="evo-living-biomes" type="checkbox" checked={draft.livingBiomes}
+                onChange={e=>update('livingBiomes',e.target.checked)}/>
+              <span><b>LET BIOMES CHANGE OVER TIME</b>
+                <small>Forests can spread into grassland or thin into meadows as years pass.</small>
               </span>
             </label>
           </div>

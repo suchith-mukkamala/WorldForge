@@ -26,6 +26,14 @@ export function biomeHome(seed:number,species:Species):[number,number]{
 }
 const distance=(u:number,v:number,p:[number,number])=>
   Math.hypot(u-p[0],v-p[1]);
+export function terrainHumidity(x:number,y:number,scale:number,seed:number):number{
+  return terrainNoise(x+31,y-17,scale*.26,seed+241)*.68+
+    terrainNoise(x,y,scale*.09,seed+307)*.32;
+}
+export function terrainTemperature(x:number,y:number,scale:number,v:number,seed:number):number{
+  return .53+.24*Math.sin((v+fract(seed*.00071))*Math.PI*2)+
+    terrainNoise(x-7,y+41,scale*.29,seed+619)*.21;
+}
 export function seededBiome(x:number,y:number,w:number,h:number,seed:number):Biome{
   const u=(x+.5)/w,v=(y+.5)/h;
   const elf=distance(u,v,biomeHome(seed,'elf'));
@@ -35,12 +43,10 @@ export function seededBiome(x:number,y:number,w:number,h:number,seed:number):Bio
   const broad=terrainNoise(x,y,scale*.31,seed+17);
   const patches=terrainNoise(x,y,scale*.12,seed+83);
   const detail=terrainNoise(x,y,scale*.042,seed+139);
-  const humidity=terrainNoise(x+31,y-17,scale*.26,seed+241)*.68+
-    terrainNoise(x,y,scale*.09,seed+307)*.32;
+  const humidity=terrainHumidity(x,y,scale,seed);
   const ridge=Math.abs(terrainNoise(x+11,y-19,scale*.34,seed+401))*.55+
     patches*.38+detail*.15;
-  const temperature=.53+.24*Math.sin((v+fract(seed*.00071)) * Math.PI*2)+
-    terrainNoise(x-7,y+41,scale*.29,seed+619)*.21;
+  const temperature=terrainTemperature(x,y,scale,v,seed);
   // Small archipelagos have different river directions and meanders.
   const angle=climatePhase(seed),river=
     .5+.18*Math.sin(u*5+angle)+.06*Math.sin(u*14-angle)+
