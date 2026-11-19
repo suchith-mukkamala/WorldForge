@@ -3,6 +3,7 @@ import {ARCHITECTURE,buildingTier,type Building} from './construction';
 import {pixelTerrainHash} from './depthWorldArt';
 import {adventureDistance,type AdventureLandscape,type AdventureRegion} from './adventureMap';
 import type {Point} from './motion';
+import type {AncientKind} from './knowledge';
 
 export const ADVENTURE_TILE=24;
 const T=ADVENTURE_TILE;
@@ -45,6 +46,41 @@ function shadow(ctx:CanvasRenderingContext2D,x:number,y:number,width:number,heig
   ctx.beginPath();
   ctx.ellipse(x,y,width,height,0,0,Math.PI*2);
   ctx.fill();
+}
+
+export function paintAdventureLandmark(ctx:CanvasRenderingContext2D,kind:AncientKind,
+  x:number,y:number,landscape:AdventureLandscape){
+  const [deep,stone,edge]=paving[landscape];
+  shadow(ctx,x+12,y+19,11,3);
+  rect(ctx,deep,x+2,y+17,20,4);
+  rect(ctx,stone,x+4,y+16,16,3);
+  if(kind==='ruin'){
+    rect(ctx,deep,x+4,y+6,6,11);
+    rect(ctx,stone,x+5,y+6,4,10);
+    rect(ctx,edge,x+4,y+5,5,2);
+    rect(ctx,deep,x+15,y+10,5,7);
+    rect(ctx,stone,x+16,y+10,4,7);
+    rect(ctx,edge,x+15,y+9,4,2);
+    rect(ctx,stone,x+11,y+14,3,3);
+  }else{
+    rect(ctx,deep,x+4,y+7,16,10);
+    rect(ctx,'#2b3835',x+9,y+9,6,8);
+    rect(ctx,stone,x+5,y+8,3,9);
+    rect(ctx,stone,x+16,y+8,3,9);
+    rect(ctx,edge,x+5,y+9,1,7);
+    if(kind==='crypt'||kind==='vault'){
+      rect(ctx,stone,x+6,y+5,12,4);
+      rect(ctx,edge,x+9,y+4,6,2);
+      rect(ctx,deep,x+10,y+10,4,1);
+    }else{
+      poly(ctx,stone,[x+3,y+8,x+12,y+2,x+21,y+8]);
+      rect(ctx,edge,x+5,y+7,14,2);
+      rect(ctx,deep,x+11,y+5,2,2);
+    }
+  }
+  rect(ctx,'#58785b',x+3,y+16,5,2);
+  rect(ctx,'#9caa74',x+3,y+15,3,1);
+  rect(ctx,edge,x+17,y+18,4,1);
 }
 
 type ArtMap={

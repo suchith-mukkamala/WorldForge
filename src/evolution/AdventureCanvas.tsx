@@ -4,27 +4,31 @@ import {adventurePlaceKey} from './adventurePlaces';
 import type {AdventureGate,AdventureMap,AdventureRegion} from './adventureMap';
 import {ADVENTURE_TILE as TILE,adventureProp,paintAdventureBuilding,
   paintAdventureGround,paintAdventureProp,paintAdventureSign,
-  paintErrandMarker} from './adventureArt';
+  paintAdventureLandmark,paintErrandMarker} from './adventureArt';
 import {actionPose,canAnimate,directionBetween,motionFrame,type Motion,
   type Point,type SpritePose} from './motion';
 import {paintPerson} from './pixelArt';
 import {mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {mortalWorldPoint} from './spatialDetails';
+import type {AncientSite} from './knowledge';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;
-  marked:Point|null;board?:Point;gather?:Point;onSelect:(point:Point)=>void};
+  marked:Point|null;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
+  onSelect:(point:Point)=>void};
 
 type Scenery={x:number;y:number;depth:number;opacity:number;
   draw:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void};
 
-function sceneScenery({world,map,region}:Props,origin:Point,cols:number,rows:number){
+function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number){
   const scenery:Scenery[]=[];
   const signs=new Map<number,AdventureGate>();
+  const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
   for(const gate of region.gates)signs.set(gate.point.y*world.width+gate.point.x,gate);
   for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+rows);y++){
     for(let x=Math.max(0,origin.x);x<Math.min(world.width,origin.x+cols);x++){
       const index=y*world.width+x,site=map.buildings.get(index),sign=signs.get(index);
+      const ruin=ruins.get(index);
       const opacity=region.area.has(index)||site&&site.settlementId===region.settlement?.id?
         1:.72;
       const variant=pixelTerrainHash(x,y,world.settings.seed);
@@ -33,7 +37,9 @@ function sceneScenery({world,map,region}:Props,origin:Point,cols:number,rows:num
         paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant)});
       if(sign)scenery.push({x,y,depth:depth-7,opacity:1,draw:(ctx,px,py)=>
         paintAdventureSign(ctx,px+6,py-4,sign.direction,region.landscape,!!sign.ferry)});
-      const prop=adventureProp(world,map,region,x,y);
+      if(ruin)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
+        paintAdventureLandmark(ctx,ruin.kind,px,py,region.landscape)});
+      const prop=!ruin&&adventureProp(world,map,region,x,y);
       if(prop)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
         paintAdventureProp(ctx,prop,px,py,variant)});
     }

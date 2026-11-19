@@ -6,6 +6,7 @@ import {AdventureCanvas} from './AdventureCanvas';
 import {MortalHUD,mortalName} from './MortalHUD';
 import {MortalInterior} from './MortalInterior';
 import {ErrandTracker,TownNoticeBoard} from './TownErrands';
+import {FieldJournal} from './FieldJournal';
 import {PixelPortrait} from './PixelPortrait';
 import {adventureDistance,adventureMapFor,adventureRegion,LANDSCAPE_NAME,
   useAdventureGate,walkAdventure,type AdventureGate} from './adventureMap';
@@ -20,6 +21,8 @@ import {abandonErrand,abandonErrandLabel,acceptErrand,availableErrands,buyMeal,
   deliverErrand,errandObjective,gatherErrand,journalFor,noticeBoard,
   type ErrandResult} from './mortalErrands';
 import {coinLabel} from './errandRecords';
+import {reachableLandmarks,surveyLandmark} from './mortalSurveys';
+import type {AncientSite} from './knowledge';
 import type {Point} from './motion';
 
 const buildingKey=(site:MortalBuilding)=>site.settlementId+':'+site.building.id;
@@ -47,6 +50,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const [boardOpen,setBoardOpen]=useState(false);
   const [boardPinned,setBoardPinned]=useState(false);
   const [errandMessage,setErrandMessage]=useState('');
+  const [landmarkPin,setLandmarkPin]=useState<number|null>(null);
   const map=adventureMapFor(world),region=adventureRegion(world,map,actor);
   const scene=adventurePlaceKey(region.place);
   const board=noticeBoard(world,region),boardNear=!!board&&adventureDistance(actor,board)<=1;
@@ -67,6 +71,13 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     distance:adventureDistance(actor,gate.point),key:adventurePlaceKey(gate.destination)}))
     .sort((a,b)=>a.distance-b.distance);
   const pinned=gates.find(g=>g.key===waypoint);
+  const landmarks=interior?[]:reachableLandmarks(world,map,region);
+  const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
+  const unsurveyed=landmarks.filter(site=>!surveyed.has(site.id))
+    .sort((a,b)=>adventureDistance(actor,a)-adventureDistance(actor,b)||a.id-b.id);
+  const markedLandmark=unsurveyed.find(site=>site.id===landmarkPin);
+  const landmark=markedLandmark??unsurveyed[0];
+  const closeLandmark=unsurveyed.find(site=>adventureDistance(actor,site)<=1);
 
   const commit=(next:World)=>{
     current.current=next;
@@ -105,11 +116,11 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const selectPerson=(person:Agent)=>{
     setFocus({personId:person.id});setMessage('');
   };
-  const performErrand=(action:(before:World)=>ErrandResult,close=false)=>{
+  const performAction=(action:(before:World)=>ErrandResult,close=false)=>{
     const before=current.current,result=action(before);
     if(result.world!==before){
       commit(result.world);
-      setWaypoint(null);setBoardPinned(false);
+      setWaypoint(null);setBoardPinned(false);setLandmarkPin(null);
       if(close)setBoardOpen(false);
     }
     setErrandMessage(result.message);
@@ -120,18 +131,27 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   };
   const selectBoard=()=>{
     if(boardNear)openBoard();
-    else{setWaypoint(null);setBoardPinned(value=>!value);}
+    else{setWaypoint(null);setLandmarkPin(null);setBoardPinned(value=>!value);}
   };
   const pinGate=(key:string)=>{
-    setBoardPinned(false);
+    setBoardPinned(false);setLandmarkPin(null);
     setWaypoint(current=>current===key?null:key);
+  };
+  const selectLandmark=(site:AncientSite)=>{
+    clear();
+    if(adventureDistance(actor,site)<=1){
+      performAction(before=>surveyLandmark(before,site.id));
+      return;
+    }
+    setWaypoint(null);setBoardPinned(false);
+    setLandmarkPin(value=>value===site.id?null:site.id);
   };
   const goalPoint=objective?.point;
   const goalNear=!!goalPoint&&adventureDistance(actor,goalPoint)<=1;
   const workAction:Interaction|undefined=goalNear&&objective?.action?
     objective.action==='gather'?
-      {label:'Gather food',point:goalPoint,run:()=>performErrand(gatherErrand)}:
-      {label:'Deliver supplies',point:goalPoint,run:()=>performErrand(deliverErrand,true)}:
+      {label:'Gather food',point:goalPoint,run:()=>performAction(gatherErrand)}:
+      {label:'Deliver supplies',point:goalPoint,run:()=>performAction(deliverErrand,true)}:
     undefined;
   const enterBuilding=(site:MortalBuilding)=>{
     const actual=nearbyMortalBuildings(current.current,12).find(b=>
@@ -154,7 +174,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     const result=useAdventureGate(before,actual,player,exit);
     if(!result.moved){setMessage(result.reason??'The exit is blocked.');return;}
     commit(result.world);
-    setBoardPinned(false);
+    setBoardPinned(false);setLandmarkPin(null);
     const destination=exit.destination;
     const ahead=destination.kind==='route'?
       (adventurePlaceKey(destination.to)===scene?destination.from:destination.to):null;
@@ -192,9 +212,12 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
       resident?[{label:'Talk to '+mortalName(world,resident.agent),
         run:()=>{setInterior({...interior,target:resident.agent.id});setMessage('');}}]:[];
   }else{
+    const surveyActions=closeLandmark?[{label:'Survey landmark',point:closeLandmark,
+      run:()=>selectLandmark(closeLandmark)}]:[];
+    const exits=gates.filter(g=>g.distance<=1).map(g=>gateAction(g.gate));
     actions=[
       ...(workAction?[workAction]:[]),
-      ...gates.filter(g=>g.distance<=1).map(g=>gateAction(g.gate)),
+      ...(region.place.kind==='wild'?[...surveyActions,...exits]:[...exits,...surveyActions]),
       ...buildings.filter(site=>site.distance===0).map(buildingAction),
       ...(boardNear?[{label:'Read town board',run:openBoard,point:board}]:[]),
       ...nearby.map(personAction),
@@ -250,6 +273,8 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
       else pinGate(exit.key);
       return;
     }
+    const ruin=unsurveyed.find(site=>equal(site,point));
+    if(ruin){selectLandmark(ruin);return;}
     const person=nearby.find(a=>equal(a,point));
     if(person){selectPerson(person);return;}
     const site=buildings.find(b=>equal(b.building,point)||equal(b.entrance,point));
@@ -259,9 +284,9 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const regionDetails=region.ends?region.ends.join(' ↔ '):region.settlement?
     LANDSCAPE_NAME[region.landscape]+' · '+settlementStage(region.settlement):
     LANDSCAPE_NAME[region.landscape];
-  const routeMessage=region.place.kind==='route'?'Follow the path to a town sign.':
+  const routeMessage=region.place.kind==='route'?'Follow the path to a signpost.':
     gates.some(({gate})=>gate.ferry)?'Follow the path to a trail or ferry landing.':
-      gates.length?'Follow a signed trail to the next town.':region.settlement?
+      gates.length?'Follow a signpost to take a trail.':region.settlement?
         'No routes reach this settlement yet.':'No settlements are reachable from here yet.';
   const showAction=!showBoard&&!focusedPerson&&!focusedBuilding&&
     (!interior||interior.target===null&&!atInteriorDoor(interior.position));
@@ -324,16 +349,17 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
             onExit={exitInterior}>{movementControls}</MortalInterior>:<>
             <div className="adventure-picture">
               <AdventureCanvas world={world} map={map} region={region} actor={actor}
-                board={board} gather={objective?.action==='gather'?goalPoint:undefined}
+                board={board} landmarks={landmarks} gather={objective?.action==='gather'?goalPoint:undefined}
                 marked={focusedBuilding?.entrance??focusedPerson??
-                  (boardPinned?board:undefined)??pinned?.gate.point??goalPoint??primary?.point??null}
+                  (boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
+                  goalPoint??primary?.point??null}
                 onSelect={selectTile}/>
               {showBoard?<TownNoticeBoard world={world} journal={journal}
                 offers={availableErrands(world,region)} objective={objective}
                 canDeliver={goalNear&&objective?.action==='deliver'} message={errandMessage}
-                onAccept={order=>performErrand(before=>acceptErrand(before,order),true)}
-                onDeliver={()=>performErrand(deliverErrand,true)}
-                onMeal={()=>performErrand(buyMeal)} onClose={()=>setBoardOpen(false)}/>:
+                onAccept={order=>performAction(before=>acceptErrand(before,order),true)}
+                onDeliver={()=>performAction(deliverErrand,true)}
+                onMeal={()=>performAction(buyMeal)} onClose={()=>setBoardOpen(false)}/>:
                 <MortalHUD world={world} person={focusedPerson} site={focusedBuilding}
                   message={message} onClose={clear}
                   onEnter={()=>{if(focusedBuilding)enterBuilding(focusedBuilding);}}
@@ -361,7 +387,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
               (boardPinned?'Board marked · ':'Mark town board · ')+adventureDistance(actor,board)+
               ' tiles '+directionTo(actor,board)):undefined}
             abandonLabel={activeErrand&&abandonErrandLabel(world,region,actor,activeErrand)}
-            onBoard={selectBoard} onAbandon={()=>performErrand(abandonErrand,true)}/>}
+            onBoard={selectBoard} onAbandon={()=>performAction(abandonErrand,true)}/>}
           {!interior&&<section className="adventure-exits">
             <h2>{region.place.kind==='route'?'Trail ends':
               gates.some(({gate})=>gate.ferry)?'Trails & ferries':'Trails'}</h2>
@@ -372,7 +398,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
                 title={gate.ferry?(distance<=1?'Board ferry':'Mark ferry landing'):
                   distance<=1?'Use this signpost':'Mark this signpost'}>
                 <span className="adventure-direction" aria-hidden="true">
-                  {distance<=1?(gate.ferry?'≈':'•'):directionTo(actor,gate.point)}
+                  {distance<=1?(gate.ferry?'≈':gate.landmark?'✧':'•'):directionTo(actor,gate.point)}
                 </span>
                 <span><strong>{gate.label}</strong>
                   <small>{distance<=1?(gate.ferry?'Ferry · '+gate.ferry.seaTiles+' sea tiles':
@@ -382,6 +408,11 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
               </button>
             </li>)}</ul>:<p>{routeMessage}</p>}
           </section>}
+          <FieldJournal world={world} site={showBoard?undefined:landmark}
+            directions={landmark?adventureDistance(actor,landmark)+' tiles '+directionTo(actor,landmark):undefined}
+            near={!!landmark&&adventureDistance(actor,landmark)<=1} marked={!!markedLandmark}
+            onExplore={landmark&&!(showAction&&primary?.point===landmark&&
+              primary.label==='Survey landmark')?()=>selectLandmark(landmark):undefined}/>
         </aside>
       </div>
     </main>

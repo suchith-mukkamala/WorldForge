@@ -9,15 +9,16 @@ import {isMultiIslandLayout} from './worldGeography';
 import {bridgeTiles,roadTiles} from './transport';
 import type {Building} from './construction';
 import type {Point} from './motion';
+import {ancientSiteName} from './knowledge';
 
 export type AdventureLandscape='meadow'|'woodland'|'coast'|'highland'|'ash';
 type Bounds={left:number;right:number;top:number;bottom:number};
 type Town={place:TownStop;settlement:Settlement;anchor:number;area:Set<number>};
-type Route={place:AdventureRoute;path:number[];fromName:string;toName:string};
+type Route={place:AdventureRoute;path:number[];fromName:string;toName:string;landmark?:true};
 type Boundary={a:number;b:number;distance:number;left:number;right:number};
 
 export type AdventureGate={point:Point;destination:AdventurePlace;label:string;direction:Point;
-  ferry?:{landing:Point;seaTiles:number}};
+  ferry?:{landing:Point;seaTiles:number};landmark?:true};
 export type AdventureRegion={
   place:AdventurePlace;
   name:string;
@@ -40,6 +41,7 @@ export type AdventureMap={
   buildings:ReadonlyMap<number,{building:Building;settlementId:number}>;
   towns:Town[];
   routes:Map<string,Route>;
+  landmarkTrails:Map<string,Route>;
   ferries:Map<number,AdventureGate[]>;
   regions:Map<string,AdventureRegion>;
 };
@@ -96,6 +98,38 @@ function trimRoute(path:number[],first:ReadonlySet<number>,last:ReadonlySet<numb
   return path.slice(start,end+1);
 }
 
+/** Borrow the nearest town's walking paths. Leave longer trips and
+ * uninhabited islands to the atlas, and keep room for ordinary signposts. */
+function addLandmarkTrails(world:World,map:AdventureMap){
+  const blocked=new Set<number>();
+  for(const {path} of map.routes.values()){blocked.add(path[0]);blocked.add(path.at(-1)!);}
+  for(const gates of map.ferries.values())for(const sign of gates)
+    blocked.add(tile(map.width,sign.point));
+  for(const site of world.ancientSites??[])blocked.add(tile(map.width,site));
+  const candidates=[];
+  for(const site of world.ancientSites??[]){
+    const index=tile(map.width,site),town=map.towns[map.owners[index]-1];
+    if(!town||town.area.has(index)||!map.open[index]||map.buildings.has(index)||
+      world.tiles[index].biome==='water')continue;
+    const path=trace(map.parents,index);
+    if(path.length<=32)candidates.push({site,town,path,index});
+  }
+  const posted=new Set<number>();
+  for(const {site,town,path,index} of candidates.sort((a,b)=>a.path.length-b.path.length||
+    a.site.id-b.site.id)){
+    if(posted.has(town.place.id))continue;
+    const end=path.findIndex((i,step)=>step>=5&&town.area.has(i)&&!blocked.has(i));
+    if(end<0)continue;
+    const from:WildStop={kind:'wild',x:site.x,y:site.y};
+    const area=connectedArea(map,index,boundsAround(map,from,5));
+    // Keep the sign beside the ruin so both remain visible and clickable.
+    const route=trimRoute(path.slice(1,end+1),area,new Set([path[end]]),5);
+    map.landmarkTrails.set(adventurePlaceKey(from),{place:{kind:'route',from,to:town.place},
+      path:route,fromName:ancientSiteName(site),toName:town.settlement.name,landmark:true});
+    posted.add(town.place.id);
+  }
+}
+
 /** Grow one weighted wave from all living towns. Where waves meet, their
  * parent chains give a route on the actual terrain. A shortest-link forest
  * connects every reachable town without filling each gate with destinations. */
@@ -114,7 +148,7 @@ function buildAdventureMap(world:World):AdventureMap{
   }
   const owners=new Int32Array(open.length),parents=new Int32Array(open.length).fill(-1);
   const map:AdventureMap={width,height,open,owners,parents,roads,bridges,buildings,
-    towns:[],routes:new Map(),ferries:new Map(),regions:new Map()};
+    towns:[],routes:new Map(),landmarkTrails:new Map(),ferries:new Map(),regions:new Map()};
   if(!world.settlements.length)return map;
 
   const costs=new Float64Array(open.length).fill(Infinity);
@@ -203,6 +237,7 @@ function buildAdventureMap(world:World):AdventureMap{
       }
     }
   }
+  addLandmarkTrails(world,map);
   return map;
 }
 
@@ -210,15 +245,16 @@ function buildAdventureMap(world:World):AdventureMap{
 // or transport changes, never for each sprite frame or player step.
 const maps=new WeakMap<World['tiles'],{
   settlements:World['settlements'];transport:World['transport'];
+  sites:World['ancientSites'];
   layout:World['settings']['layout'];map:AdventureMap}>();
 export function adventureMapFor(world:World):AdventureMap{
   const cached=maps.get(world.tiles);
   if(cached?.settlements===world.settlements&&cached?.transport===world.transport&&
-    cached?.layout===world.settings.layout)
+    cached?.layout===world.settings.layout&&cached.sites===world.ancientSites)
     return cached.map;
   const map=buildAdventureMap(world);
   maps.set(world.tiles,{settlements:world.settlements,transport:world.transport,
-    layout:world.settings.layout,map});
+    layout:world.settings.layout,sites:world.ancientSites,map});
   return map;
 }
 
@@ -262,8 +298,9 @@ function gate(width:number,at:number,towards:number,destination:AdventurePlace,
 
 function stopGate(width:number,route:Route,first:boolean):AdventureGate{
   const {path,place,fromName,toName}=route;
-  return first?gate(width,path[0],path[1],place,toName):
+  const sign=first?gate(width,path[0],path[1],place,toName):
     gate(width,path.at(-1)!,path.at(-2)!,place,fromName);
+  return route.landmark?{...sign,landmark:true}:sign;
 }
 
 function wildRoute(map:AdventureMap,place:WildStop,area:ReadonlySet<number>):Route|undefined{
@@ -293,7 +330,8 @@ function routeRegion(world:World,map:AdventureMap,route:Route):AdventureRegion{
     }
   }
   const landscape=[...counts].sort((a,b)=>b[1]-a[1])[0][0];
-  return {place,name:ROUTE_NAME[landscape],landscape,focus:point(width,path[0]),
+  return {place,name:route.landmark?'Landmark Trail':ROUTE_NAME[landscape],
+    landscape,focus:point(width,path[0]),
     bounds:areaBounds(width,area),area,trail:new Set(path),ends:[fromName,toName],
     gates:[gate(width,path[0],path[1],place.from,fromName),
       gate(width,path.at(-1)!,path.at(-2)!,place.to,toName)]};
@@ -315,6 +353,8 @@ function regionFor(world:World,map:AdventureMap,place:AdventurePlace):AdventureR
         gates.push(stopGate(width,route,true));
       else if(route.place.to.id===place.id)gates.push(stopGate(width,route,false));
     }
+    for(const route of map.landmarkTrails.values())
+      if(route.place.to.id===place.id)gates.push(stopGate(width,route,false));
     const trail=new Set([town.anchor]);
     for(const sign of gates){
       for(let i=tile(width,sign.point);i>=0&&area.has(i);i=map.parents[i])trail.add(i);
@@ -323,15 +363,17 @@ function regionFor(world:World,map:AdventureMap,place:AdventurePlace):AdventureR
       focus:settlement,bounds:areaBounds(width,area),area,trail,gates,settlement};
   }else if(place.kind==='wild'){
     const area=connectedArea(map,tile(width,place),boundsAround(map,place,5));
-    const route=wildRoute(map,place,area);
-    region={place,name:'Wilderness',landscape:landscapeAt(world,place),focus:place,
+    const landmark=map.landmarkTrails.get(key);
+    const route=landmark??wildRoute(map,place,area);
+    region={place,name:landmark?.fromName??'Wilderness',landscape:landscapeAt(world,place),focus:place,
       bounds:areaBounds(width,area),area,trail:new Set(),
       gates:route?[stopGate(width,route,true)]:[]};
   }else{
     let route=map.routes.get(key);
     if(place.from.kind==='wild'){
       const start=regionFor(world,map,place.from);
-      route=start&&wildRoute(map,place.from,start.area);
+      route=start&&(map.landmarkTrails.get(adventurePlaceKey(place.from))??
+        wildRoute(map,place.from,start.area));
     }
     if(route&&adventurePlaceKey(route.place)===key)region=routeRegion(world,map,route);
   }
@@ -352,11 +394,12 @@ export function adventureArrival(world:World,species:Agent['species'],
   available:(index:number)=>boolean):{point:Point;place:TownStop}|undefined{
   if(!world.settlements.length)return undefined;
   const map=adventureMapFor(world);
-  const candidates=map.towns.map(town=>({town,region:regionFor(world,map,town.place)!}))
-    .sort((a,b)=>Number(!!b.region.gates.length)-Number(!!a.region.gates.length)||
+  const candidates=map.towns.map(town=>({town,
+    gates:regionFor(world,map,town.place)!.gates.filter(g=>!g.landmark)}))
+    .sort((a,b)=>Number(!!b.gates.length)-Number(!!a.gates.length)||
       Number(b.town.settlement.species===species)-Number(a.town.settlement.species===species));
-  for(const {town,region} of candidates){
-    const starts=[...region.gates.map(exit=>tile(world.width,exit.point)),town.anchor,
+  for(const {town,gates} of candidates){
+    const starts=[...gates.map(exit=>tile(world.width,exit.point)),town.anchor,
       ...town.area];
     const i=starts.find(available);
     if(i!==undefined)return {point:point(world.width,i),place:town.place};

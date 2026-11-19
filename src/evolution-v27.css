@@ -663,6 +663,12 @@
 .adventure-errand-history ul { list-style: none; margin: 5px 0 0; padding: 0; font-size: 12px; }
 .adventure-errand-history li { display: flex; justify-content: space-between; gap: 5px; padding: 4px 0; }
 .adventure-errand-history small { color: var(--muted-ui); flex-shrink: 0; }
+.adventure-field-journal .adventure-errand-history:first-child {
+  margin-top: 0; padding-top: 0; border-top: 0;
+}
+.adventure-field-journal .adventure-errand-history ul { max-height: 225px; overflow-y: auto; }
+.adventure-field-journal h2, .adventure-field-journal li span { overflow-wrap: anywhere; }
+.adventure-field-journal li span small { display: block; }
 .adventure-shell .adventure-abandon { font-size: 11px; margin-top: 7px; }
 .adventure-shell .adventure-board-link { font-size: 12px; width: 100%; text-align: left; }
 @media (max-width: 560px) {

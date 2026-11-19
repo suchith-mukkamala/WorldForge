@@ -41,6 +41,7 @@ export function noticeBoard(world:World,region:AdventureRegion):Point|undefined{
   const candidates=[{x:x+1,y:y-1},{x:x-1,y:y-1},{x,y:y+1},{x,y}];
   const isBoardSite=(point:Point)=>within(world,point)&&region.area.has(indexAt(world,point))&&
     world.tiles[indexAt(world,point)].biome!=='water'&&
+    !world.ancientSites?.some(site=>adventureDistance(site,point)===0)&&
     !region.gates.some(g=>adventureDistance(g.point,point)===0);
   return candidates.find(isBoardSite)??[...region.area].map(i=>pointAt(world.width,i))
     .find(isBoardSite);
@@ -52,7 +53,8 @@ function foragePatch(world:World,region:AdventureRegion,board:Point):Point|undef
     const tile=world.tiles[index];
     if(tile.biome==='water'||tile.food<ERRAND_AMOUNT)continue;
     const point=pointAt(world.width,index),distance=adventureDistance(board,point);
-    if(distance<2||distance>6||region.gates.some(g=>adventureDistance(g.point,point)===0))
+    if(distance<2||distance>6||region.gates.some(g=>adventureDistance(g.point,point)===0)||
+      world.ancientSites?.some(site=>adventureDistance(site,point)===0))
       continue;
     const rank=Math.abs(distance-4)+(tile.biome==='forest'?0:.25)+
       terrainHash(point.x,point.y,world.settings.seed)*.17;

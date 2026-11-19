@@ -2,13 +2,9 @@ import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import type {FocusEvent,KeyboardEvent} from 'react';
 import {SPECIES_INFO,type Settlement,type World} from './engine';
 import {settlementStage} from './construction';
-import type {AncientSite} from './knowledge';
+import {ancientSiteName,type AncientSite} from './knowledge';
 import type {Point} from './motion';
 import {atlasLabelSides} from './atlasMap';
-
-export function atlasSiteName(site:AncientSite){
-  return site.name??'Ancient '+site.kind+' #'+site.id;
-}
 
 export function AtlasPlacePicker({world,onTown,onSite}:{
   world:World;onTown:(id:number)=>void;onSite:(x:number,y:number)=>void;
@@ -41,7 +37,8 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
   const matches=(text:string)=>text.toLocaleLowerCase().includes(filter);
   const towns=open?world.settlements.filter(town=>matches(town.name))
     .sort((a,b)=>a.name.localeCompare(b.name)): [];
-  const sites=open?(world.ancientSites??[]).filter(site=>matches(atlasSiteName(site))): [];
+  const sites=open?(world.ancientSites??[]).filter(site=>matches(ancientSiteName(site))): [];
+  const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
   const chooseTown=(id:number)=>{close();onTown(id);};
   const chooseSite=(site:AncientSite)=>{close();onSite(site.x,site.y);};
   return <div ref={picker} className="atlas-place-picker" onBlur={blur} onKeyDown={keyDown}>
@@ -68,7 +65,8 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
         {sites.length>0&&<><h3>Ancient sites</h3><ul>
           {sites.map(site=><li key={site.id}>
             <button type="button" onClick={()=>chooseSite(site)}>
-              <span aria-hidden="true">✧</span><span>{atlasSiteName(site)}</span>
+              <span aria-hidden="true">✧</span>
+              <span>{ancientSiteName(site)}{surveyed.has(site.id)&&<small>Surveyed</small>}</span>
             </button>
           </li>)}
         </ul></>}

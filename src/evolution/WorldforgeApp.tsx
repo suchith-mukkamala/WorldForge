@@ -23,7 +23,7 @@ import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import type {Point} from './motion';
 import {ATLAS_PLACE_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
-import {AtlasPlacePicker,AtlasSettlementMarkers,atlasSiteName} from './AtlasPlaces';
+import {AtlasPlacePicker,AtlasSettlementMarkers} from './AtlasPlaces';
 import {AtlasTownCard} from './AtlasTownCard';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
@@ -37,7 +37,7 @@ import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
-import {TOPIC_INFO} from './knowledge';
+import {ancientSiteName,TOPIC_INFO} from './knowledge';
 import {DivinePowers} from './DivinePowers';
 import {BUILDING_LABELS} from './construction';
 import {RESOURCE_LABELS,RESOURCE_COLORS} from './resources';
@@ -1037,7 +1037,7 @@ export function WorldforgeApp(){
         <section className="evo-map-card" aria-label="World map" data-map-detail={detail}>
           <div className="evo-card-heading evo-map-heading">
             <div className="atlas-map-title" aria-live="polite">
-              <strong>{closeup?(settlement?.name??(ancientSite&&atlasSiteName(ancientSite))??
+              <strong>{closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
                 (detail==='street'?'Street map':'Local map')):'World map'}</strong>
               <small>{building?BUILDING_LABELS[building.type]:
                 detail==='street'?'Buildings & people':detail==='town'?'Buildings':
@@ -1280,7 +1280,7 @@ export function WorldforgeApp(){
                 onOpen={()=>openSettlement(settlement.id)}
                 onBuilding={plot=>locateAtlasPoint({x:plot.x,y:plot.y},ATLAS_TOWN_ZOOM)}/>}
               {ancientSite&&<div className="evo-selected-settlement">
-                <strong>{atlasSiteName(ancientSite)}</strong>
+                <strong>{ancientSiteName(ancientSite)}</strong>
                 <span>Risk {ancientSite.danger}/100 ·
                   {' '}{ancientSite.visits??ancientSite.visitors.length} previous expeditions</span>
                 {ancientSite.origin==='collapsed'&&<span>
