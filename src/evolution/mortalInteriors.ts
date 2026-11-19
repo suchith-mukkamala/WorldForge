@@ -1,16 +1,18 @@
-/** v2.6.0 — shared room templates keyed by actual building type. These are
- * presentation-only: no rooms, duplicates or NPCs are added to world saves. */
+/** Shared templates for the walkable rooms inside real buildings. */
 import type {World} from './engine';
 import {BUILDING_LABELS,type BuildingType} from './construction';
-import type {MortalBuilding} from './mortalGameplay';
+import {isOpenBuilding,mortalBuildingEntrance,type MortalBuilding} from './mortalGameplay';
+import {samePoint,type Point} from './motion';
+import {insideRoom,INTERIOR_DOOR,type RoomReference} from './roomSave';
 
-export type InteriorPosition={x:number;y:number};
-export type InteriorProp={x:number;y:number;kind:string};
+export {INTERIOR_DOOR,ROOM_WIDTH,ROOM_HEIGHT} from './roomSave';
+export type InteriorPosition=Point;
+export type InteriorProp={x:number;y:number;kind:InteriorPropKind};
+export type InteriorPropKind='bed'|'fire'|'crate'|'rug'|'shelf'|'table'|'chair'|'chest'|
+  'hay'|'barrel'|'tools'|'well'|'forge'|'stall'|'boat'|'net'|'bench';
 export type InteriorTemplate={name:string;floor:string;wall:string;
   props:readonly InteriorProp[]};
-export const ROOM_WIDTH=13,ROOM_HEIGHT=9;
-export const INTERIOR_DOOR:InteriorPosition={x:6,y:8};
-const thing=(kind:string,x:number,y:number):InteriorProp=>({kind,x,y});
+const thing=(kind:InteriorPropKind,x:number,y:number):InteriorProp=>({kind,x,y});
 
 export const INTERIOR_TEMPLATES:Record<BuildingType,InteriorTemplate>={
   shelter:{name:'Shelter',floor:'#8a7963',wall:'#796a59',props:[
@@ -43,23 +45,43 @@ export const INTERIOR_TEMPLATES:Record<BuildingType,InteriorTemplate>={
     thing('bench',3,5),thing('bench',9,5),thing('fire',6,2)]},
 };
 
-export function canEnterMortalBuilding(world:World,site:MortalBuilding):boolean{
-  const actor=world.agents.find(a=>a.id===world.descent?.agentId);
-  if(world.descent?.mode!=='mortal'||!actor||site.distance>1)return false;
-  const settlement=world.settlements.find(s=>s.id===site.settlementId);
-  return !!settlement?.infrastructure?.buildings.some(b=>
-    b.id===site.building.id&&b.stage==='complete'&&b.condition>0);
+export function findMortalBuilding(world:World,reference:RoomReference):MortalBuilding|null{
+  const settlement=world.settlements.find(s=>s.id===reference.settlementId);
+  const building=settlement?.infrastructure?.buildings.find(b=>b.id===reference.buildingId);
+  const actor=world.descent?.mode==='mortal'&&world.agents.find(a=>a.id===world.descent?.agentId);
+  if(!settlement||!building||!actor)return null;
+  const entrance=mortalBuildingEntrance(world,settlement,building);
+  return {building,settlementId:settlement.id,settlementName:settlement.name,entrance,
+    distance:Math.max(Math.abs(entrance.x-actor.x),Math.abs(entrance.y-actor.y))};
 }
 
-export function findInteriorBuilding(world:World,
-  reference:{settlementId:number;buildingId:number}):MortalBuilding|null{
-  const settlement=world.settlements.find(s=>s.id===reference.settlementId);
-  const building=settlement?.infrastructure?.buildings.find(b=>
-    b.id===reference.buildingId&&b.stage==='complete'&&b.condition>0);
-  if(!settlement||!building||world.descent?.mode!=='mortal'||
-    !world.agents.some(a=>a.id===world.descent?.agentId))return null;
-  return {building,settlementId:settlement.id,settlementName:settlement.name,
-    entrance:{x:building.x,y:building.y},distance:0};
+export function findInteriorBuilding(world:World,reference:RoomReference):MortalBuilding|null{
+  const site=findMortalBuilding(world,reference);
+  return site&&isOpenBuilding(site.building)&&!samePoint(site.entrance,site.building)?site:null;
+}
+
+export function canEnterMortalBuilding(world:World,site:MortalBuilding):boolean{
+  if(world.descent?.interior||site.distance>1)return false;
+  const door=findInteriorBuilding(world,{settlementId:site.settlementId,buildingId:site.building.id});
+  return !!door&&door.distance<=1;
+}
+
+export function occupiedMortalRoom(world:World):MortalBuilding|null{
+  const room=world.descent?.interior,site=room&&findInteriorBuilding(world,room);
+  return site&&site.distance===0?site:null;
+}
+
+export function enterMortalRoom(world:World,reference:RoomReference):World{
+  if(!world.descent||world.descent.interior)return world;
+  const site=findInteriorBuilding(world,reference);
+  if(!site||site.distance!==0)return world;
+  return {...world,descent:{...world.descent,interior:{...reference,position:{...INTERIOR_DOOR}}}};
+}
+
+export function leaveMortalRoom(world:World):World{
+  if(!world.descent?.interior)return world;
+  const {interior,...descent}=world.descent;
+  return {...world,descent};
 }
 
 export function moveInside(type:BuildingType,from:InteriorPosition,
@@ -67,7 +89,7 @@ export function moveInside(type:BuildingType,from:InteriorPosition,
   if(!Number.isInteger(dx)||!Number.isInteger(dy)||
     Math.abs(dx)>1||Math.abs(dy)>1||!dx&&!dy)return from;
   const next={x:from.x+dx,y:from.y+dy};
-  if(next.x<1||next.x>=ROOM_WIDTH-1||next.y<1||next.y>=ROOM_HEIGHT)return from;
+  if(!insideRoom(next))return from;
   if(occupied?.has(`${next.x}:${next.y}`))return from;
   const props=INTERIOR_TEMPLATES[type].props;
   if(props.some(p=>p.x===next.x&&p.y===next.y&&p.kind!=='rug'))return from;
@@ -76,8 +98,7 @@ export function moveInside(type:BuildingType,from:InteriorPosition,
   return next;
 }
 
-export const atInteriorDoor=(position:InteriorPosition)=>
-  Math.abs(position.x-INTERIOR_DOOR.x)<=1&&position.y>=INTERIOR_DOOR.y-1;
+export const atInteriorDoor=(position:InteriorPosition)=>samePoint(position,INTERIOR_DOOR);
 
 export const interiorTitle=(type:BuildingType)=>
   INTERIOR_TEMPLATES[type]?.name??BUILDING_LABELS[type];

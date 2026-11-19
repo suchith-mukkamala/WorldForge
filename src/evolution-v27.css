@@ -113,6 +113,14 @@
   width: 100%;
   height: 100%;
   image-rendering: pixelated;
+  animation: adventure-arrival 180ms ease-out;
+}
+@keyframes adventure-arrival {
+  from { opacity: .45; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adventure-canvas { animation: none; }
 }
 .adventure-sidebar { display: grid; gap: 12px; min-width: 0; }
 .adventure-profile, .adventure-exits {
@@ -226,7 +234,11 @@
 .adventure-dialogue-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 .adventure-shell .adventure-close { flex: 0 0 auto; font-size: 19px; padding: 4px 9px; min-height: 30px; }
 .adventure-shell .evo-interior { padding: 13px; border: 0; gap: 10px; border-radius: 8px 8px 0 0; background: #203532; }
-.adventure-shell .evo-interior canvas { border: 1px solid #7f8a75; border-radius: 3px; width: min(100%, 770px); box-shadow: none; }
+.adventure-shell .room-picture { width: 100%; border: 1px solid #6d7e70; border-radius: 5px; background: #111e27; }
+.adventure-shell .evo-interior .adventure-canvas {
+  border: 0; width: 100%; height: 100%; aspect-ratio: auto; box-shadow: none;
+}
+.adventure-shell .evo-interior .adventure-dialogue strong { font-family: var(--heading-font); }
 .adventure-shell .evo-interior strong, .adventure-shell .evo-interior p,
 .adventure-shell .evo-interior small { font-family: var(--reading-font); }
 .adventure-shell .evo-interior-message { width: 100%; margin: 0; }

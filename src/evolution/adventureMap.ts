@@ -415,8 +415,9 @@ const setPlace=(world:World,place:AdventurePlace):World=>{
   return {...world,descent:{...current,place}};
 };
 
-export function walkAdventure(world:World,region:AdventureRegion,dx:number,dy:number){
-  const result=walkMortalWithAssist(world,dx,dy,within(world,region));
+export function walkAdventure(world:World,region:AdventureRegion,dx:number,dy:number,assist=true){
+  const walk=assist?walkMortalWithAssist:walkMortal;
+  const result=walk(world,dx,dy,within(world,region));
   return result.moved?{...result,world:setPlace(result.world,region.place)}:result;
 }
 
@@ -425,6 +426,7 @@ export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
   const before=world;
   if(world.descent?.mode!=='mortal'||world.descent.agentId!==actor.id)
     return {world,moved:false,reason:'Resume your mortal to travel.'};
+  if(world.descent.interior)return {world,moved:false,reason:'Leave the room before traveling.'};
   if(!region.gates.includes(exit)||adventureDistance(actor,exit.point)>1)
     return {world,moved:false,reason:exit.ferry?'Walk to the ferry landing to sail.':
       'Walk to the signpost to travel.'};

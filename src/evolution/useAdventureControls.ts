@@ -2,7 +2,7 @@ import {useEffect,useRef} from 'react';
 import type {PointerEvent} from 'react';
 import type {Point} from './motion';
 
-const bindings:Readonly<Record<string,string>>={
+const bindings:Readonly<Record<string,Direction>>={
   w:'north',arrowup:'north',a:'west',arrowleft:'west',
   s:'south',arrowdown:'south',d:'east',arrowright:'east',
 };
@@ -19,22 +19,19 @@ export function useAdventureControls(callbacks:{
 }){
   const latest=useRef(callbacks);
   latest.current=callbacks;
-  const keys=useRef(new Map<string,string>());
+  const keys=useRef(new Map<string,Direction>());
   const pointers=useRef(new Map<number,Direction>());
-  const queued=useRef<string|null>(null);
+  const queued=useRef<Direction|null>(null);
   const nextMove=useRef(0);
 
   const move=()=>{
     const now=performance.now();
     if(now<nextMove.current)return;
-    const held=new Set([...keys.current.values(),...pointers.current.values()]);
-    if(!held.size&&queued.current)held.add(queued.current);
+    const direction=queued.current??[...pointers.current.values()].at(-1)??
+      [...keys.current.values()].at(-1);
     queued.current=null;
-    let x=0,y=0;
-    for(const direction of WALK_DIRECTIONS){
-      if(held.has(direction.id)){x+=direction.x;y+=direction.y;}
-    }
-    if(x||y)nextMove.current=now+latest.current.move({x,y});
+    const step=WALK_DIRECTIONS.find(entry=>entry.id===direction);
+    if(step)nextMove.current=now+latest.current.move(step);
   };
   useEffect(()=>{
     const down=(event:KeyboardEvent)=>{

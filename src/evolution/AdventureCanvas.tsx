@@ -4,16 +4,17 @@ import {adventurePlaceKey} from './adventurePlaces';
 import type {AdventureGate,AdventureMap,AdventureRegion} from './adventureMap';
 import {ADVENTURE_TILE as TILE,adventureProp,paintAdventureBuilding,
   paintAdventureGround,paintAdventureProp,paintAdventureSign,
-  paintAdventureLandmark,paintErrandMarker} from './adventureArt';
-import {actionPose,canAnimate,directionBetween,motionFrame,type Motion,
+  paintAdventureLandmark,paintDoorstep,paintErrandMarker} from './adventureArt';
+import {actionPose,canAnimate,motionFrame,samePoint,type Facing,type Motion,
   type Point,type SpritePose} from './motion';
+import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {paintPerson} from './pixelArt';
-import {mortalMovementDelay} from './mortalGameplay';
+import {isOpenBuilding,mortalBuildingEntrance,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {mortalWorldPoint} from './spatialDetails';
 import type {AncientSite} from './knowledge';
 
-type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;
+type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;facing:Facing;
   marked:Point|null;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
   onSelect:(point:Point)=>void};
 
@@ -33,8 +34,16 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         1:.72;
       const variant=pixelTerrainHash(x,y,world.settings.seed);
       const depth=y*TILE+20;
-      if(site)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-        paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant)});
+      if(site){
+        const town=world.settlements.find(s=>s.id===site.settlementId);
+        const door=town&&isOpenBuilding(site.building)?mortalBuildingEntrance(world,town,site.building):undefined;
+        const side=door&&!samePoint(door,site.building)?{x:door.x-x,y:door.y-y}:undefined;
+        scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
+          paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant,side)});
+        if(side&&door&&region.area.has(door.y*world.width+door.x))
+          scenery.push({...door,depth:door.y*TILE+12,opacity:1,draw:(ctx,px,py)=>
+            paintDoorstep(ctx,px,py,side)});
+      }
       if(sign)scenery.push({x,y,depth:depth-7,opacity:1,draw:(ctx,px,py)=>
         paintAdventureSign(ctx,px+6,py-4,sign.direction,region.landscape,!!sign.ferry)});
       if(ruin)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
@@ -46,13 +55,6 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
   }
   return scenery;
 }
-
-const anchor=(first:number,last:number,view:number,focus:number)=>{
-  const min=first*TILE-view*.15,max=(last+1)*TILE+view*.15;
-  return max-min<=view?(min+max-view)/2:
-    Math.max(min,Math.min(max-view,(focus+.5)*TILE-view/2));
-};
-const samePoint=(a:Point,b:Point)=>a.x===b.x&&a.y===b.y;
 
 export function AdventureCanvas(props:Props){
   const canvas=useRef<HTMLCanvasElement>(null);
@@ -66,18 +68,17 @@ export function AdventureCanvas(props:Props){
     const ground=background.getContext('2d',{alpha:false});
     if(!ground)return;
     const actorMotion:Motion={from:latest.current.actor,to:latest.current.actor,start:0,
-      duration:1,facing:'south'};
+      duration:1,facing:latest.current.facing};
     let previous:Props|null=null,lastKey='',lastFrame=-Infinity;
     let origin={x:Infinity,y:Infinity};
     let foreground:Scenery[]=[];
     let people:Agent[]=[];
-    let nativeWidth=480,nativeHeight=288;
+    let frameSize={width:312,height:184};
     let frame=0;
     const resize=()=>{
       const {width,height}=element.getBoundingClientRect();
       if(width<=0||height<=0)return;
-      nativeWidth=width<540?264:432;
-      nativeHeight=Math.max(180,Math.round(nativeWidth*height/width));
+      frameSize=adventureFrameSize(width,height);
     };
     const observer=new ResizeObserver(resize);
     observer.observe(element);
@@ -90,24 +91,24 @@ export function AdventureCanvas(props:Props){
       const active=now-actorMotion.start<actorMotion.duration;
       if(now-lastFrame<(active||changed?25:125))return;
       lastFrame=now;
+      actorMotion.facing=view.facing;
       if(scene!==lastKey||!samePoint(actorMotion.to,actor)){
         const from=motionFrame(actorMotion,now);
         const slide=scene===lastKey&&canAnimate(actorMotion.to,actor);
-        actorMotion.facing=directionBetween(from,actor,actorMotion.facing);
         actorMotion.from=slide?from:actor;
         actorMotion.to=actor;
         actorMotion.start=now;
         actorMotion.duration=slide?mortalMovementDelay(actor)*.88:1;
       }
       const player=motionFrame(actorMotion,now);
+      const {width:nativeWidth,height:nativeHeight}=frameSize;
       if(element.width!==nativeWidth||element.height!==nativeHeight){
         element.width=nativeWidth;element.height=nativeHeight;
         ctx.imageSmoothingEnabled=false;
         origin={x:Infinity,y:Infinity};
       }
-      const {left,right,top,bottom}=region.bounds;
-      const x=Math.round(anchor(left,right,nativeWidth,player.x));
-      const y=Math.round(anchor(top,bottom,nativeHeight,player.y));
+      const {x,y}=adventureCamera({x:(player.x+.5)*TILE,y:(player.y+.84)*TILE},frameSize,
+        {width:map.width*TILE,height:map.height*TILE});
       viewport.current={x,y};
       const grid={x:Math.floor(x/TILE)-1,y:Math.floor(y/TILE)-1};
       const cols=Math.ceil(nativeWidth/TILE)+4,rows=Math.ceil(nativeHeight/TILE)+4;
@@ -170,7 +171,7 @@ export function AdventureCanvas(props:Props){
     frame=requestAnimationFrame(paint);
     return ()=>{observer.disconnect();cancelAnimationFrame(frame);};
   },[]);
-  return <canvas className="adventure-canvas" ref={canvas} width={480} height={288}
+  return <canvas className="adventure-canvas" ref={canvas} width={312} height={184}
     aria-label={props.region.name+' exploration map'} role="img"
     onClick={event=>{
       const element=event.currentTarget,box=element.getBoundingClientRect();

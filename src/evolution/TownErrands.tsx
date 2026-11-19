@@ -49,9 +49,10 @@ export function TownNoticeBoard({world,journal,offers,objective,canDeliver,messa
 }
 
 export function ErrandTracker({world,journal,objective,directions,boardLabel,
-  abandonLabel,onBoard,onAbandon}:{
+  abandonLabel,readyAction,onBoard,onAbandon}:{
   world:World;journal:MortalJournal;objective?:ErrandObjective;
   directions?:string;boardLabel?:string;abandonLabel?:string;
+  readyAction?:{label:string;run:()=>void};
   onBoard:()=>void;onAbandon:()=>void;
 }){
   const active=journal.active;
@@ -63,6 +64,9 @@ export function ErrandTracker({world,journal,objective,directions,boardLabel,
       <p>{objective?.text}</p>
       {directions&&<span className="adventure-errand-direction">{directions}</span>}
       {active.carrying&&<small>Carrying {errandCargo(active.errand)}</small>}
+      {readyAction&&<button className="adventure-board-link" onClick={readyAction.run}>
+        {readyAction.label}
+      </button>}
     </>}
     {!active&&boardLabel&&<button className="adventure-board-link" onClick={onBoard}>
       {boardLabel}

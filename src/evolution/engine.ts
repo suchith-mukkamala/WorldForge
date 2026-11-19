@@ -48,6 +48,7 @@ import {advancePublicHealth,isDiseaseRecord,isPublicHealthState,
 import {validAdventurePlace,type AdventurePlace} from './adventurePlaces';
 import {validMortalJournal,type MortalJournal} from './errandRecords';
 import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
+import {validMortalRoom,type MortalRoom} from './roomSave';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -63,7 +64,7 @@ export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
 export type MortalAppearance={skin:number;hair:number;hairStyle:number;
   outfit:MortalOutfit};
 export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number;
-  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[]};
+  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   appearance?:MortalAppearance;
@@ -999,7 +1000,8 @@ export function isWorld(value:unknown):value is World{
       !Number.isInteger(d.createdYear)||d.createdYear<0||d.createdYear>year||
       d.place!==undefined&&!validAdventurePlace(d.place,width,height)||
       d.journal!==undefined&&!validMortalJournal(d.journal,year*365+(w.dayOfYear??0))||
-      d.surveys!==undefined&&!validSiteSurveys(d.surveys,year))
+      d.surveys!==undefined&&!validSiteSurveys(d.surveys,year)||
+      d.interior!==undefined&&!validMortalRoom(d.interior))
       return false;
   }
   // Optional because v0.2 JSON saves had no diagnostics. New saves are

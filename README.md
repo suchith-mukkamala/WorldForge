@@ -6,6 +6,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.12.0 — Closer Adventures** follows your mortal from a close overhead view outdoors and inside. Walk through a marked doorstep to enter a finished building, or press **E** to interact with what you’re facing. Inside, speak with residents, examine furniture, read shelves, and rest to recover energy while a day passes. Saves restore your position inside the room.
 - **v2.11.0 — Field Journal** brings ancient sites into mortal exploration. Follow a landmark trail or mark a ruin you can reach from your current scene. Survey it to document the site and learn any unfamiliar knowledge it holds. The field journal and the atlas **Places** search remember which sites you surveyed.
 - **v2.10.0 — Atlas zoom** starts with a settlement overview. Select a town pin or use **Places** to jump to a town or an ancient site. Buildings appear at town scale and residents appear when you zoom closer. Select a building on the map or in the town's building list to see its condition or construction progress. **World** fits the entire map in either perspective.
 - **v2.9.0 — Town Errands** gives your mortal local jobs. Read a settlement's notice board to gather food for its pantry or deliver supplies to a town that needs them. Follow map markers to the goods and their destination. Town treasuries pay your reward, which you can spend on meals to recover energy. Your current errand, cargo, and recent jobs are saved with the world.

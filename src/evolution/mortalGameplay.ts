@@ -43,6 +43,9 @@ export function isMortalSolidBuilding(b:Building):boolean{
   return b.stage!=='foundation'&&b.type!=='farm'&&b.type!=='well'&&b.type!=='dock';
 }
 
+export const isOpenBuilding=(building:Building)=>
+  building.stage==='complete'&&building.condition>0;
+
 function solidBuildingAt(w:World,x:number,y:number):Building|undefined{
   for(const settlement of w.settlements){
     const building=settlement.infrastructure?.buildings.find(b=>
@@ -72,7 +75,8 @@ export function mortalBuildingEntrance(w:World,
   candidates.sort((a,b)=>
     Number(road.has(b.y*w.width+b.x))-Number(road.has(a.y*w.width+a.x))||
     range(a,settlement)-range(b,settlement)||a.index-b.index);
-  return candidates[0]??{x:building.x,y:building.y};
+  const door=candidates[0]??building;
+  return {x:door.x,y:door.y};
 }
 
 /** Local, read-only points of interest. No separate fake building state. */
@@ -113,6 +117,7 @@ export function walkMortal(w:World,dx:number,dy:number,
   const id=w.descent?.mode==='mortal'?w.descent.agentId:null;
   const actor=id===null?undefined:w.agents.find(a=>a.id===id);
   if(!actor)return {world:w,moved:false,reason:'Descend into a living mortal first.'};
+  if(w.descent?.interior)return {world:w,moved:false,reason:'Leave the room before walking outside.'};
   if(!Number.isInteger(dx)||!Number.isInteger(dy)||
     Math.abs(dx)>1||Math.abs(dy)>1||!dx&&!dy)
     return {world:w,moved:false,reason:'Invalid movement direction.'};
@@ -126,7 +131,7 @@ export function walkMortal(w:World,dx:number,dy:number,
   if(w.tiles[to].biome==='water'&&!bridged)
     return {world:w,moved:false,reason:'Deep water blocks your path.'};
   if(solidBuildingAt(w,x,y))return {world:w,moved:false,
-    reason:'A building occupies this plot. Walk around to its doorway and press E.'};
+    reason:'The building blocks your path. Walk to the marked doorway.'};
   // Two solid plots cannot be traversed through their shared diagonal
   // corner, even when the destination itself is clear.
   const canPass=(px:number,py:number)=>

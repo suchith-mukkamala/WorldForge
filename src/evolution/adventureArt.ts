@@ -298,7 +298,7 @@ function windowLight(ctx:CanvasRenderingContext2D,x:number,y:number){
   rect(ctx,'#614944',x+2,y+1,1,4);
 }
 export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
-  x:number,y:number,landscape:AdventureLandscape,variant:number){
+  x:number,y:number,landscape:AdventureLandscape,variant:number,doorSide?:Point){
   const arch=ARCHITECTURE[b.culture],ink='#3c353a',trim=arch.trim;
   const roof=landscape==='coast'&&b.culture==='human'?'#4f8a89':arch.roof;
   const log=b.culture==='human'||b.culture==='elf';
@@ -362,9 +362,15 @@ export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
     rect(ctx,'#49465690',right-6,y+9,1,6);
   }
   const mid=Math.round((left+right)/2);
-  rect(ctx,ink,mid-3,y+12,6,10);
-  rect(ctx,log?'#82604a':'#54515b',mid-2,y+13,4,8);
-  rect(ctx,'#fbd797',mid+1,y+17,1,1);
+  if(!doorSide||doorSide.y>0){
+    rect(ctx,ink,mid-3,y+12,6,10);
+    rect(ctx,log?'#82604a':'#54515b',mid-2,y+13,4,8);
+    rect(ctx,'#fbd797',mid+1,y+17,1,1);
+  }else if(doorSide.x){
+    const jamb=doorSide.x>0?right-3:left;
+    rect(ctx,ink,jamb,y+12,3,9);
+    rect(ctx,trim,jamb,y+11,3,1);
+  }else if(shelter)windowLight(ctx,mid-2,y+12);
   if(!shelter){
     windowLight(ctx,left+3,y+10);
     if(large)windowLight(ctx,right-8,y+10);
@@ -410,6 +416,17 @@ export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
     rect(ctx,'#c69763',right-3,y+16,5,5);
     rect(ctx,'#826347',right-3,y+18,5,1);
   }
+}
+
+export function paintDoorstep(ctx:CanvasRenderingContext2D,x:number,y:number,side:Point){
+  // side points out from the building. Anchor the raised step on the edge
+  // of the walkable tile that touches the actual entrance.
+  const horizontal=side.y!==0;
+  const px=x+(horizontal?7:side.x>0?1:19),py=y+(horizontal?side.y>0?2:5:10);
+  const w=horizontal?10:4,h=horizontal?4:8;
+  rect(ctx,'#433f38',px-1,py-1,w+2,h+2);
+  rect(ctx,'#ad936c',px,py,w,h);
+  rect(ctx,'#f0d6a1',px,py,w,1);
 }
 
 export function paintAdventureSign(ctx:CanvasRenderingContext2D,x:number,y:number,

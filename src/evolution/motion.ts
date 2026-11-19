@@ -1,6 +1,13 @@
 /** v1.2 visual interpolation. None of these values belong in a World save. */
 export type Facing='north'|'south'|'east'|'west';
 export type Point={x:number;y:number};
+export const samePoint=(a:Point,b:Point)=>a.x===b.x&&a.y===b.y;
+const direction:Record<Facing,Point>={
+  north:{x:0,y:-1},south:{x:0,y:1},east:{x:1,y:0},west:{x:-1,y:0},
+};
+export const inFrontOf=(point:Point,facing:Facing):Point=>({
+  x:point.x+direction[facing].x,y:point.y+direction[facing].y,
+});
 export type Motion={from:Point;to:Point;start:number;duration:number;
   facing:Facing};
 export type SpritePose='idle'|'walk'|'work'|'talk'|'study'|'rest'|'explore';
