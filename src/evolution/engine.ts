@@ -50,6 +50,7 @@ import {validMortalJournal,type MortalJournal} from './errandRecords';
 import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
 import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
+import {generateRegionalTopography,settlementGeography} from './regionalGeography';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -58,6 +59,7 @@ export type WorldSettings={
   resourceLevel:number;wandering:number;interbreeding:boolean;
   layout?:WorldLayout;
   livingBiomes?:boolean;
+  regionalGeography?:boolean;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
@@ -207,6 +209,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     wandering:clamp(Number.isFinite(input.wandering)?input.wandering!:1,.5,1.8),
     interbreeding:input.interbreeding!==false,
     ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
+    ...(typeof input.regionalGeography==='boolean'?{regionalGeography:input.regionalGeography}:{}),
     ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
 export function population(world:Pick<World,'agents'>):Record<Species,number>{
@@ -265,7 +268,8 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   });
   const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
-    tiles,topography:generateTopography(width,height,tiles,settings.seed),
+    tiles,topography:(settings.regionalGeography?generateRegionalTopography:generateTopography)(
+      width,height,tiles,settings.seed),
     terrainPhysics:{version:1},
     agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
@@ -686,17 +690,31 @@ export function stepWorld(previous:World):World{
         if(b.species===a.species&&adult(b))nearby.push(b);
     }
     if(nearby.length<4)continue;
+    let site={x:a.x,y:a.y};
+    if(world.settings.regionalGeography){
+      let best=settlementGeography(world,offset(world.width,a.x,a.y)).score;
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+        const x=a.x+dx,y=a.y+dy;
+        if((!dx&&!dy)||!within(world.width,world.height,x,y))continue;
+        const index=offset(world.width,x,y),tile=world.tiles[index];
+        if(settlementCoverage[index]||tile.biome==='water'||
+          biomeSuitability(a.ancestry,tile.biome)<.55)continue;
+        const score=settlementGeography(world,index).score-Math.hypot(dx,dy)*.10;
+        if(score<=best||nearby.filter(resident=>distance(resident,{x,y})<=4).length<4)continue;
+        best=score;site={x,y};
+      }
+    }
     const id=world.nextSettlementId++;
     const names=settlementNames[a.species];
     const n=world.settlements.filter(s=>s.species===a.species).length;
     const name=names[n%names.length]+(n>=names.length?' '+(1+Math.floor(n/names.length)):'');
-    const founded:Settlement={id,species:a.species,name,x:a.x,y:a.y,
+    const founded:Settlement={id,species:a.species,name,...site,
       founded:world.year,population:nearby.length,stores:20,emptyYears:0};
     world.settlements.push(founded);
     markNeighborhood(settlementCoverage,world.width,world.height,founded,7);
     registerSettlement(world,founded,a.id);
     log(world,'settlement',info.name+' founded '+name+' in the '+
-      BIOME_INFO[world.tiles[offset(world.width,a.x,a.y)].biome].name.toLowerCase()+'.');
+      BIOME_INFO[world.tiles[offset(world.width,site.x,site.y)].biome].name.toLowerCase()+'.');
   }
   world.settlements=world.settlements.filter(s=>{
     const residents=residentsNear(residentCounts,world.width,world.height,s,5);
@@ -789,7 +807,7 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
     if(tile.biome!==brush.biome)paintWoodland(world,index);
     const topography=generateTopography(world.width,world.height,
       world.tiles,world.settings.seed);
-    if(world.woodland!==undefined){
+    if(world.woodland!==undefined||world.settings.regionalGeography){
       // Canopy changes over time without raising or lowering the ground.
       // Only refresh the painted tile and any shore affected by this edit.
       const heights=topographyForWorld(previous).heights.slice();
@@ -820,6 +838,7 @@ export function isWorld(value:unknown):value is World{
     !Number.isSafeInteger(settings.seed)||settings.seed<1||settings.seed>2147483647||
     settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
     settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
+    settings.regionalGeography!==undefined&&typeof settings.regionalGeography!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||
     settings.wandering<.5||settings.wandering>1.8||

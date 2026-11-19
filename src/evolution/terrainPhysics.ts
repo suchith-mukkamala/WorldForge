@@ -3,7 +3,7 @@
  * not silently make a previously valid journey impossible.
  */
 import type {World} from './engine';
-import {hydrologyForWorld} from './hydrology';
+import {hydrologyForWorld,riverBanks} from './hydrology';
 import {topographyForWorld} from './topography';
 
 export type TerrainPhysics={version:1};
@@ -53,10 +53,11 @@ export function terrainFarmFactor(w:World,index:number):number{
   if(!hasPhysicalTerrain(w))return 1;
   const height=topographyForWorld(w).heights[index];
   const rugged=terrainRuggedness(w,index);
-  const creek=hydrologyForWorld(w).channel[index];
+  const drainage=hydrologyForWorld(w);
   const altitudePenalty=Math.max(0,height-125)/350;
   const slopePenalty=Math.min(.38,rugged/180);
-  const irrigation=creek>0?.13:0;
+  const irrigation=w.settings.regionalGeography?
+    riverBanks(drainage,w.width,w.height)[index]*.23:drainage.channel[index]>0?.13:0;
   return Math.max(.48,Math.min(1.18,1-altitudePenalty-slopePenalty+irrigation));
 }
 

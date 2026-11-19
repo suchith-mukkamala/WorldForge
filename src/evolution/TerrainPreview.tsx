@@ -1,32 +1,28 @@
 import {useEffect,useRef} from 'react';
-import type {Biome} from './engine';
-import {coastalDepth,OCEAN_TONES} from './oceanDepth';
-import {terrainHash} from './biomeGeneration';
+import {atlasTerrainColors,atlasRivers,type AtlasLand} from './atlasTerrain';
+import {hydrologyForWorld} from './hydrology';
 
-const terrain:Record<Exclude<Biome,'water'>,readonly [string,string,string]> = {
-  plains:['#78a066','#89b275','#6f935f'],
-  forest:['#33634e','#44745b','#315e4b'],
-  mountain:['#8e9895','#a5aaa0','#73867e'],
-  cave:['#686f74','#80858a','#5f6972'],
-  wasteland:['#a27c6d','#b69278','#916d65'],
-  volcanic:['#ad685f','#ba7b65','#915b60'],
-};
-
-export function TerrainPreview({biomes,width,height,seed,label}:{
-  biomes:readonly Biome[];width:number;height:number;seed:number;label:string;
-}){
+const CELL=3;
+export function TerrainPreview({world,label}:{world:AtlasLand;label:string}){
   const ref=useRef<HTMLCanvasElement>(null);
+  const {width,height}=world;
   useEffect(()=>{
     const ctx=ref.current?.getContext('2d');
     if(!ctx)return;
-    const depths=coastalDepth(width,height,i=>biomes[i]==='water');
-    for(let i=0;i<biomes.length;i++){
-      const x=i%width,y=Math.floor(i/width),biome=biomes[i],hash=terrainHash(x,y,seed);
-      const shade=Math.min(2,Math.floor(hash*3));
-      ctx.fillStyle=biome==='water'?OCEAN_TONES[depths[i]]:terrain[biome][shade];
-      ctx.fillRect(x,y,1,1);
+    const colors=atlasTerrainColors(world);
+    for(let i=0;i<colors.length;i++){
+      ctx.fillStyle=colors[i];
+      ctx.fillRect(i%width*CELL,Math.floor(i/width)*CELL,CELL,CELL);
     }
-  },[biomes,width,height,seed]);
-  return <canvas ref={ref} width={width} height={height} role="img"
+    ctx.strokeStyle='#70aeb4';
+    ctx.lineWidth=.8;
+    ctx.beginPath();
+    for(const {from,to} of atlasRivers(hydrologyForWorld(world),false)){
+      ctx.moveTo((from%width+.5)*CELL,(Math.floor(from/width)+.5)*CELL);
+      ctx.lineTo((to%width+.5)*CELL,(Math.floor(to/width)+.5)*CELL);
+    }
+    ctx.stroke();
+  },[world,width]);
+  return <canvas ref={ref} width={width*CELL} height={height*CELL} role="img"
     aria-label={label}/>;
 }

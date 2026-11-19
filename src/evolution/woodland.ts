@@ -1,6 +1,6 @@
 import type {Biome,World} from './engine';
 import {terrainHumidity,terrainTemperature} from './biomeGeneration';
-import {hydrologyForWorld} from './hydrology';
+import {hydrologyForWorld,riverBanks} from './hydrology';
 import {topographyForWorld,type Topography} from './topography';
 import {roadTiles} from './transport';
 
@@ -61,21 +61,24 @@ export function paintWoodland(w:World,index:number):void{
   w.woodland=w.woodland.slice(0,index)+cover+w.woodland.slice(index+1);
 }
 
-const suitabilityCache=new WeakMap<Topography,{seed:number;scores:Float32Array}>();
+const suitabilityCache=new WeakMap<Topography,{seed:number;regional:boolean;scores:Float32Array}>();
 function woodlandSuitability(w:World,topography:Topography):Float32Array{
   const seed=w.settings.seed,cached=suitabilityCache.get(topography);
-  if(cached?.seed===seed)return cached.scores;
-  const {width,height}=w,{channel,pondDepth}=hydrologyForWorld(w);
+  const regional=!!w.settings.regionalGeography;
+  if(cached?.seed===seed&&cached.regional===regional)return cached.scores;
+  const {width,height}=w,drainage=hydrologyForWorld(w);
+  const {channel,pondDepth}=drainage;
+  const banks=regional?riverBanks(drainage,width,height):null;
   const scale=Math.max(6,Math.min(width,height)),scores=new Float32Array(w.tiles.length);
   for(let i=0;i<scores.length;i++){
     const x=i%width,y=Math.floor(i/width);
     const humidity=terrainHumidity(x,y,scale,seed);
     const temperature=terrainTemperature(x,y,scale,(y+.5)/height,seed);
-    const wetGround=Math.max(channel[i]*.035,Math.min(.09,pondDepth[i]*.012));
+    const wetGround=Math.max(channel[i]*.035,Math.min(.09,pondDepth[i]*.012),.24*(banks?.[i]??0));
     const altitude=Math.max(0,topography.heights[i]-105);
     scores[i]=.52+humidity*.58+wetGround-Math.abs(temperature-.53)*.25-altitude*.0031;
   }
-  suitabilityCache.set(topography,{seed,scores});
+  suitabilityCache.set(topography,{seed,regional,scores});
   return scores;
 }
 

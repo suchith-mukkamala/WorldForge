@@ -1,10 +1,12 @@
 import {useMemo,useState} from 'react';
-import {SPECIES,SPECIES_INFO,WORLD_SIZES,
+import {DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,WORLD_SIZES,
   normalizeSettings,type WorldSettings} from './engine';
 import {freshWorldSeed} from './worldSeeds';
 import {DEFAULT_WORLD_LAYOUT,generateSeedTerrain,landmassCount,WORLD_LAYOUTS,
   WORLD_LAYOUT_NAMES,type WorldLayout} from './worldGeography';
 import {TerrainPreview} from './TerrainPreview';
+import {generateRegionalTopography} from './regionalGeography';
+import {initialWoodland} from './woodland';
 
 const PRESETS=[
   {id:'balanced',name:'FOUR KINGDOMS',description:'Every people starts with a foothold',
@@ -29,15 +31,21 @@ export function WorldCreator({
     ...current,seed:freshWorldSeed(current.seed),
     layout:current.layout??DEFAULT_WORLD_LAYOUT,
     livingBiomes:current.livingBiomes??true,
+    regionalGeography:true,
   }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
+  const {seed,layout,livingBiomes}=draft;
   const map=useMemo(()=>{
-    const terrain=generateSeedTerrain(width,height,draft.seed,draft.layout);
-    return {...terrain,count:landmassCount(width,height,terrain.biomes)};
-  },[width,height,draft.seed,draft.layout]);
+    const terrain=generateSeedTerrain(width,height,seed,layout);
+    const tiles=terrain.biomes.map(biome=>({biome,food:0}));
+    const landscape={width,height,tiles,settings:{...DEFAULT_SETTINGS,seed,layout,regionalGeography:true},
+      topography:generateRegionalTopography(width,height,tiles,seed)};
+    const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined};
+    return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
+  },[width,height,seed,layout,livingBiomes]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -49,8 +57,7 @@ export function WorldCreator({
     </header>
     <section className="world-preview-card" aria-label="World preview">
       <figure>
-        <TerrainPreview biomes={map.biomes} width={width} height={height}
-          seed={draft.seed} label={WORLD_LAYOUT_NAMES[map.layout]+' terrain preview'}/>
+        <TerrainPreview world={map.preview} label={WORLD_LAYOUT_NAMES[map.layout]+' terrain preview'}/>
         <figcaption><strong>{WORLD_LAYOUT_NAMES[map.layout]}</strong>
           <span>{landmasses} · Seed {draft.seed}</span></figcaption>
       </figure>

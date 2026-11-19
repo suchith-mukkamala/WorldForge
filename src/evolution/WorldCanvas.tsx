@@ -3,15 +3,16 @@ import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
-import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,
-  paintHydrologyStream,spriteKey,
+import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
   paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {buildTerrainDetailAtlas,paintTerrainDetail,
-  paintTerrainDetailFromAtlas,terrainDetailAt,woodlandPalette} from './terrainDetails';
+  paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
 import {woodlandCover,woodlandHabitat} from './woodland';
+import {ATLAS_SEA,atlasRivers,atlasTerrainColors,occupiedScenery,
+  paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
@@ -23,7 +24,6 @@ import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
-import {coastalDepth,OCEAN_TONES} from './oceanDepth';
 import {wornPathTiles} from './trailNetwork';
 import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
@@ -32,7 +32,6 @@ import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
 export type MapOverlay='terrain'|'resources'|'deposits'|'elevation'|'watersheds'|'trade';
-const canopyColors=woodlandPalette(BIOME_INFO.plains.color,BIOME_INFO.forest.color);
 const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
   '#465766','#50545f','#3d605f','#505e54'];
 /** Only these zoom boundaries add scenic objects; fractional steps within a
@@ -62,6 +61,7 @@ export function WorldCanvas({
     ruins:World['ruins'];deposits:World['deposits'];
     ancientSites:World['ancientSites'];
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
+    street:boolean;regional:boolean;
     width:number;height:number;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
@@ -100,6 +100,7 @@ export function WorldCanvas({
     const sceneryTier=sceneryZoomTier(zoom);
     const showBuildings=sceneryTier===2;
     const showResidents=atlasLevel(zoom)==='street';
+    const regional=!!world.settings.regionalGeography;
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
@@ -108,12 +109,19 @@ export function WorldCanvas({
       stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
       stamp.sceneryTier!==sceneryTier||stamp.overlay!==overlay||
+      stamp.street!==showResidents||stamp.regional!==regional||
       stamp.seed!==world.settings.seed||stamp.width!==canvas.width||
       stamp.height!==canvas.height;
     if(sceneryChanged){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
-    if(overlay==='terrain'&&!terrainAtlasRef.current){
+    const landscape=overlay==='terrain'||overlay==='trade'?atlasTerrainColors(world):null;
+    if(landscape){
+      ctx.fillStyle=ATLAS_SEA;
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+    const occupied=overlay==='terrain'&&showBuildings?occupiedScenery(world):null;
+    if(occupied&&!terrainAtlasRef.current){
       const atlas=document.createElement('canvas');
       if(buildTerrainDetailAtlas(atlas))terrainAtlasRef.current=atlas;
     }
@@ -122,22 +130,15 @@ export function WorldCanvas({
     const drainage=overlay==='terrain'||overlay==='watersheds'?
       hydrologyForWorld(world):null;
     const multiShore=isMultiIslandLayout(world.settings.layout);
-    const ocean=overlay==='trade'||multiShore&&overlay==='terrain'?
-      coastalDepth(W,H,i=>world.tiles[i].biome==='water'):null;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
       if(!multiShore&&!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
       const px=x*CELL,py=y*CELL;
       const index=y*W+x,h=heights[index];
-      if(ocean&&tile.biome==='water'){
-        ctx.fillStyle=OCEAN_TONES[ocean[index]];
+      if(landscape){
+        ctx.fillStyle=landscape[index];
         ctx.fillRect(px,py,CELL,CELL);
-        if(overlay==='terrain'&&ocean[index]<=3&&(x*7+y*5)%6===0){
-          ctx.fillStyle='#a2d0cb60';ctx.fillRect(px+1,py+2,3,1);
-        }
-        continue;
-      }
-      if(overlay==='watersheds'&&drainage){
+      }else if(overlay==='watersheds'&&drainage){
         ctx.fillStyle=tile.biome==='water'?'#285d7a':
           BASIN_COLORS[(drainage.basin[index]>>>0)%BASIN_COLORS.length];
         ctx.fillRect(px,py,CELL,CELL);
@@ -146,18 +147,18 @@ export function WorldCanvas({
           ctx.fillStyle='#4b8a98';ctx.fillRect(px+1,py+1,4,4);
         }
       }
-      const cover=woodland!==undefined&&woodlandHabitat(tile.biome)?
+      const cover=occupied&&woodlandHabitat(tile.biome)?
         woodlandCover(woodland,index):undefined;
-      if(overlay!=='watersheds'&&overlay!=='elevation'){
-        const color=cover===undefined?biome.color:canopyColors[Math.round(cover*63)];
-        paintTerrain(ctx,tile.biome,color,x,y,world.settings.seed,cover);
+      if(!landscape&&overlay!=='watersheds'&&overlay!=='elevation'){
+        paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
       }
-      if(overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
+      if(!landscape&&overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
         south:y<H-1?heights[index+W]:h,
         west:x>0?heights[index-1]:h,
         east:x<W-1?heights[index+1]:h},
         tile.biome,overlay==='elevation'?'elevation':'terrain');
-      if(overlay==='terrain'){
+      if(occupied&&!occupied.has(index)&&
+        showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover)){
         const water=tile.biome==='water';
         const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
@@ -174,11 +175,13 @@ export function WorldCanvas({
         ctx.fillRect(px,py,CELL,CELL);
       }
     }
-    if(drainage)for(let i=0;i<W*H;i++){
-      const tier=drainage.channel[i],next=drainage.flowTo[i];
-      if(!tier||next<0)continue;
-      paintHydrologyStream(ctx,i%W,Math.floor(i/W),next%W,
-        Math.floor(next/W),tier,overlay==='watersheds');
+    if(drainage){
+      const center=(i:number)=>({x:(i%W+.5)*CELL,y:(Math.floor(i/W)+.5)*CELL});
+      for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
+        const a=center(from),end=center(to);
+        const b=world.tiles[to].biome==='water'?{x:(a.x+end.x)/2,y:(a.y+end.y)/2}:end;
+        paintRiverSegment(ctx,a,b,tier,overlay==='watersheds');
+      }
     }
     if(overlay==='deposits'){
       for(const d of world.deposits??[]){
@@ -279,7 +282,7 @@ export function WorldCanvas({
       topography:world.topography,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
-      woodland,sceneryTier,overlay,seed:world.settings.seed,
+      woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
       width:canvas.width,height:canvas.height};
     }
     else if(stamp)stamp.tiles=world.tiles;
@@ -515,6 +518,7 @@ export function WorldCanvas({
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,world.woodland,
+    world.settings.regionalGeography,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
     world.topography,world.dayOfYear,world.ancientSites,world.trails]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{

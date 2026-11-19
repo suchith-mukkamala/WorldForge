@@ -6,6 +6,7 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.14.0 — Landscapes and Rivers** gives the world atlas broad terrain colors, quieter seas and connected 2.5D slopes. Zoom into a settlement to reveal trees, rocks and shoreline details. New worlds have highland streams that cut valleys and irrigate their banks, and nearby settlers favor fertile valleys, shallow crossings and sheltered harbors. Existing saves also get the new map rendering.
 - **v2.13.0 — Living Biomes and Trade** blends woodland and grassland through scattered trees and mixed edges. As years pass, nearby canopy, moisture and elevation can change tree cover and local timber supplies. New worlds use living biomes by default. To enable them in an existing world, open **Map options**. Use **Trade** to follow active caravans and ships in either map view, and select a settlement to see its specialty, food production and shortages.
 
 - **v2.12.0 — Closer Adventures** follows your mortal from a close overhead view outdoors and inside. Walk through a marked doorstep to enter a finished building, or press **E** to interact with what you’re facing. Inside, speak with residents, examine furniture, read shelves, and rest to recover energy while a day passes. Saves restore your position inside the room.

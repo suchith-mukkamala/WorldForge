@@ -8,8 +8,9 @@ function buildingStatus(building:Building){
   return Math.round(building.progress)+'% built';
 }
 
-export function AtlasTownCard({town,building,onOpen,onBuilding}:{
-  town:Settlement;building?:Building;onOpen:()=>void;onBuilding:(building:Building)=>void;
+export function AtlasTownCard({town,building,landform,onOpen,onBuilding}:{
+  town:Settlement;building?:Building;landform?:string;onOpen:()=>void;
+  onBuilding:(building:Building)=>void;
 }){
   const buildings=town.infrastructure?.buildings??[];
   const complete=buildings.filter(b=>b.stage==='complete').length;
@@ -21,7 +22,7 @@ export function AtlasTownCard({town,building,onOpen,onBuilding}:{
     </div>:null}
     <strong>{town.name}</strong>
     <span>{SPECIES_INFO[town.species].name} · {settlementStage(town)} ·
-      {' '}{town.population} residents</span>
+      {' '}{town.population} residents{landform?' · '+landform:''}</span>
     <button type="button" onClick={onOpen}>Town profile ↗</button>
     {buildings.length>0?<details className="atlas-building-list">
       <summary>Buildings · {complete} complete</summary>

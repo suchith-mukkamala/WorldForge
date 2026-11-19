@@ -9,8 +9,10 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
 import {MapLayerLegend} from './MapLayerLegend';
 import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
+import {settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
-import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
+import {createDepthProjector} from './depthProjection';
+import {depthGroundHeight} from './depthTerrain';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -71,7 +73,8 @@ function initialWorld():World{
     }catch{/* Restricted storage: continue with an in-memory world. */}
   }
   // First-time visitors get their own world; existing local saves always win.
-  return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,livingBiomes:true,
+  return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
+    livingBiomes:true,regionalGeography:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
@@ -237,8 +240,7 @@ export function WorldforgeApp(){
     const w=current.width,h=current.height;
     let fx=(x+.5)/w,fy=(y+.5)/h;
     if(mapView==='depth'){
-      const elevation=interpolatedGroundHeight(
-        topographyForWorld(current).heights,w,h,x,y);
+      const elevation=depthGroundHeight(current,x,y);
       const point=projection.projectSmooth(x,y,elevation);
       fx=point.x/projection.size.width;fy=point.y/projection.size.height;
     }
@@ -1300,6 +1302,7 @@ export function WorldforgeApp(){
                 {world.descent?'Resume adventure':'Start an adventure'} ↗</button>
             </div>:<>
               {settlement&&<AtlasTownCard town={settlement} building={building}
+                landform={settlementGeography(world,settlement.y*world.width+settlement.x).landform}
                 onOpen={()=>openSettlement(settlement.id)}
                 onBuilding={plot=>locateAtlasPoint({x:plot.x,y:plot.y},ATLAS_TOWN_ZOOM)}/>}
               {ancientSite&&<div className="evo-selected-settlement">
