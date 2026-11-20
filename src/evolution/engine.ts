@@ -35,6 +35,8 @@ import {advanceCulture,cloneCulture,validCulture,
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
 import {WORLD_LAYOUTS,type WorldLayout} from './worldGeography';
 import {generateWorldLandscape} from './worldLandscape';
+import {addRiverLandmarks} from './riverDiscoveries';
+import {deltaStart} from './riverArchitecture';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,topographyForWorld,validTopography,type Topography} from './topography';
 import {advanceEarthworks,validEarthworks,type Earthwork} from './earthworks';
@@ -66,6 +68,7 @@ export type WorldSettings={
   livingBiomes?:boolean;
   regionalGeography?:boolean;
   regionalBiomes?:boolean;
+  riverlands?:boolean;
   landforms?:LandformProfile;
   terrainCells?:boolean;
 };
@@ -222,6 +225,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
     ...(typeof input.regionalGeography==='boolean'?{regionalGeography:input.regionalGeography}:{}),
     ...(typeof input.regionalBiomes==='boolean'?{regionalBiomes:input.regionalBiomes}:{}),
+    ...(typeof input.riverlands==='boolean'?{riverlands:input.riverlands}:{}),
     ...(input.landforms&&Object.hasOwn(LANDFORM_NAMES,input.landforms)?
       {landforms:input.landforms,regionalGeography:true}:{}),
     ...(typeof input.terrainCells==='boolean'?{terrainCells:input.terrainCells}:{}),
@@ -296,10 +300,13 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   if(settings.terrainCells)advanceTerrainCells(world);
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
+  if(settings.riverlands)addRiverLandmarks(world,geography.features);
   const occupied=new Set<number>();
   for(const s of SPECIES){
     const info=SPECIES_INFO[s];
-    const target=geography.homes[s];
+    const home=geography.homes[s];
+    const target=s==='human'?deltaStart(world,home,SPECIES.filter(kind=>kind!==s)
+      .map(kind=>geography.homes[kind]))??home:home;
     // Nearest favored starting biome in O(tiles) rather than sorting huge worlds.
     let closest=target,closestD=Infinity;
     for(let index=0;index<tiles.length;index++){
@@ -857,6 +864,7 @@ export function isWorld(value:unknown):value is World{
     settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
     settings.regionalGeography!==undefined&&typeof settings.regionalGeography!=='boolean'||
     settings.regionalBiomes!==undefined&&typeof settings.regionalBiomes!=='boolean'||
+    settings.riverlands!==undefined&&typeof settings.riverlands!=='boolean'||
     settings.landforms!==undefined&&!Object.hasOwn(LANDFORM_NAMES,settings.landforms)||
     settings.terrainCells!==undefined&&typeof settings.terrainCells!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||

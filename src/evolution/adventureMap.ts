@@ -1,6 +1,6 @@
 import type {Agent,Biome,Settlement,World} from './engine';
 import {adventurePlaceKey,type AdventurePlace,type AdventureRoute,type TownStop,
-  type WildStop} from './adventurePlaces';
+  type RiverTrail,type WildStop} from './adventurePlaces';
 import {isMortalSolidBuilding,mortalTileCapacity,walkMortal,
   walkMortalWithAssist} from './mortalGameplay';
 import {RouteFrontier} from './routeFrontier';
@@ -10,6 +10,10 @@ import {bridgeTiles,roadTiles} from './transport';
 import type {Building} from './construction';
 import type {Point} from './motion';
 import {ancientSiteName} from './knowledge';
+import {riverCourses,type RiverCourse} from './riverCourses';
+import {springFlood,waterSeason} from './riverSeasons';
+import {boardwalkSite} from './riverArchitecture';
+import {isRiverDiscovery} from './riverDiscoveries';
 
 export type AdventureLandscape='meadow'|'woodland'|'coast'|'highland'|'ash'|
   'taiga'|'wetlands'|'savanna';
@@ -31,6 +35,7 @@ export type AdventureRegion={
   gates:AdventureGate[];
   settlement?:Settlement;
   ends?:[string,string];
+  river?:RiverCourse;
 };
 export type AdventureMap={
   width:number;height:number;
@@ -109,6 +114,7 @@ function addLandmarkTrails(world:World,map:AdventureMap){
   for(const site of world.ancientSites??[])blocked.add(tile(map.width,site));
   const candidates=[];
   for(const site of world.ancientSites??[]){
+    if(isRiverDiscovery(site.kind))continue;
     const index=tile(map.width,site),town=map.towns[map.owners[index]-1];
     if(!town||town.area.has(index)||!map.open[index]||map.buildings.has(index)||
       world.tiles[index].biome==='water')continue;
@@ -137,6 +143,8 @@ function addLandmarkTrails(world:World,map:AdventureMap){
 function buildAdventureMap(world:World):AdventureMap{
   const {width,height}=world,fullBounds=worldBounds(width,height);
   const roads=roadTiles(world),bridges=bridgeTiles(world);
+  for(const town of world.settlements)for(const i of town.infrastructure?.roads??[])
+    if(boardwalkSite(world,i))roads.add(i);
   const buildings=new Map<number,{building:Building;settlementId:number}>();
   const open=Uint8Array.from(world.tiles,(t,i)=>Number(t.biome!=='water'||bridges.has(i)));
   for(const settlement of world.settlements){
@@ -245,17 +253,19 @@ function buildAdventureMap(world:World):AdventureMap{
 // Mortal steps retain these references. Rebuild after terrain, construction,
 // or transport changes, never for each sprite frame or player step.
 const maps=new WeakMap<World['tiles'],{
-  settlements:World['settlements'];transport:World['transport'];
+  settlements:World['settlements'];transport:World['transport'];topography:World['topography'];
   sites:World['ancientSites'];
-  layout:World['settings']['layout'];map:AdventureMap}>();
+  layout:World['settings']['layout'];riverlands:World['settings']['riverlands'];map:AdventureMap}>();
 export function adventureMapFor(world:World):AdventureMap{
   const cached=maps.get(world.tiles);
   if(cached?.settlements===world.settlements&&cached?.transport===world.transport&&
-    cached?.layout===world.settings.layout&&cached.sites===world.ancientSites)
+    cached?.layout===world.settings.layout&&cached.riverlands===world.settings.riverlands&&
+    cached.sites===world.ancientSites&&cached.topography===world.topography)
     return cached.map;
   const map=buildAdventureMap(world);
   maps.set(world.tiles,{settlements:world.settlements,transport:world.transport,
-    layout:world.settings.layout,sites:world.ancientSites,map});
+    layout:world.settings.layout,riverlands:world.settings.riverlands,
+    sites:world.ancientSites,topography:world.topography,map});
   return map;
 }
 
@@ -309,6 +319,63 @@ function stopGate(width:number,route:Route,first:boolean):AdventureGate{
   return route.landmark?{...sign,landmark:true}:sign;
 }
 
+function riverRegion(world:World,map:AdventureMap,place:RiverTrail):AdventureRegion|undefined{
+  const course=riverCourses(world).find(r=>r.mouth===place.mouth);
+  if(!course)return;
+  const {width,height}=map,area=new Set<number>(),trail=new Set<number>();
+  const full=worldBounds(width,height);
+  const bankWidth=world.settings.riverlands?2:1;
+  for(const i of course.path){
+    const p=point(width,i);
+    if(map.open[i]){area.add(i);trail.add(i);}
+    for(let dy=-bankWidth;dy<=bankWidth;dy++)for(let dx=-bankWidth;dx<=bankWidth;dx++){
+      const q={x:p.x+dx,y:p.y+dy},n=tile(width,q);
+      if(inBounds(q,full)&&map.open[n])area.add(n);
+    }
+  }
+  // Keep connected dry approaches on both sides of the channel.
+  const first=course.path.find(i=>area.has(i));
+  if(first===undefined)return;
+  const connected=new Set([first]),queue=[first];
+  for(let cursor=0;cursor<queue.length;cursor++){
+    const p=point(width,queue[cursor]);
+    for(const d of directions){
+      const q={x:p.x+d.x,y:p.y+d.y},i=tile(width,q);
+      if(!inBounds(q,full)||!area.has(i)||connected.has(i))continue;
+      connected.add(i);queue.push(i);
+    }
+  }
+  const gates:AdventureGate[]=[];
+  for(const town of map.towns){
+    const exit=course.path.find(i=>connected.has(i)&&town.area.has(i));
+    if(exit===undefined)continue;
+    gates.push(gate(width,exit,town.anchor,town.place,town.settlement.name));
+  }
+  const last=[...course.path].reverse().find(i=>connected.has(i))??first;
+  for(const [i,label] of [[first,'Headwaters'],[last,'Downstream shore']] as const){
+    if(gates.some(g=>tile(width,g.point)===i))continue;
+    const p=point(width,i);
+    gates.push(gate(width,i,i,{kind:'wild',...p},label));
+  }
+  return {place,name:course.name+' Trail',landscape:landscapeAt(world,point(width,first)),
+    focus:point(width,first),bounds:areaBounds(width,connected),area:connected,
+    trail,gates,river:course,ends:['Headwaters',course.stops.at(-1)!.label]};
+}
+
+function riverGates(world:World,map:AdventureMap,area:ReadonlySet<number>):AdventureGate[]{
+  if(!world.settings.riverlands)return [];
+  const gates:AdventureGate[]=[];
+  for(const river of riverCourses(world)){
+    const place={kind:'river',mouth:river.mouth} as const;
+    const region=regionFor(world,map,place);
+    const entry=river.path.find(i=>area.has(i)&&region?.area.has(i));
+    if(entry===undefined)continue;
+    const downstream=river.path[river.path.indexOf(entry)+1]??entry;
+    gates.push(gate(map.width,entry,downstream,place,river.name+' Trail'));
+  }
+  return gates;
+}
+
 function wildRoute(map:AdventureMap,place:WildStop,area:ReadonlySet<number>):Route|undefined{
   const anchor=tile(map.width,place),town=map.towns[map.owners[anchor]-1];
   if(!town)return undefined;
@@ -353,7 +420,7 @@ function regionFor(world:World,map:AdventureMap,place:AdventurePlace):AdventureR
     const town=map.towns.find(t=>t.place.id===place.id);
     if(!town)return undefined;
     const {settlement,area}=town;
-    const gates=[...(map.ferries.get(place.id)??[])];
+    const gates=[...(map.ferries.get(place.id)??[]),...riverGates(world,map,area)];
     for(const route of map.routes.values()){
       if(route.place.from.kind==='town'&&route.place.from.id===place.id)
         gates.push(stopGate(width,route,true));
@@ -373,7 +440,9 @@ function regionFor(world:World,map:AdventureMap,place:AdventurePlace):AdventureR
     const route=landmark??wildRoute(map,place,area);
     region={place,name:landmark?.fromName??'Wilderness',landscape:landscapeAt(world,place),focus:place,
       bounds:areaBounds(width,area),area,trail:new Set(),
-      gates:route?[stopGate(width,route,true)]:[]};
+      gates:[...(route?[stopGate(width,route,true)]:[]),...riverGates(world,map,area)]};
+  }else if(place.kind==='river'){
+    region=riverRegion(world,map,place);
   }else{
     let route=map.routes.get(key);
     if(place.from.kind==='wild'){
@@ -412,6 +481,19 @@ export function adventureArrival(world:World,species:Agent['species'],
   }
 }
 
+export function riverTrailArrival(world:World,mouth:number,available:(index:number)=>boolean):
+    {point:Point;place:RiverTrail}|undefined{
+  const map=adventureMapFor(world),place={kind:'river',mouth} as const;
+  const region=regionFor(world,map,place);
+  const course=region?.river;
+  if(!region||!course)return;
+  const head=point(world.width,course.path[0]);
+  const dry=[...region.area].filter(i=>!springFlood(world,i)&&available(i));
+  dry.sort((a,b)=>adventureDistance(head,point(world.width,a))-
+    adventureDistance(head,point(world.width,b))||a-b);
+  if(dry.length)return {point:point(world.width,dry[0]),place};
+}
+
 const within=(world:World,region:AdventureRegion)=>(x:number,y:number)=>
   x>=0&&y>=0&&x<world.width&&y<world.height&&region.area.has(y*world.width+x);
 const setPlace=(world:World,place:AdventurePlace):World=>{
@@ -422,8 +504,25 @@ const setPlace=(world:World,place:AdventurePlace):World=>{
 };
 
 export function walkAdventure(world:World,region:AdventureRegion,dx:number,dy:number,assist=true){
+  const boundary=within(world,region);
+  const actor=world.settings.riverlands&&region.trail.size&&waterSeason(world)==='Bloom'&&
+    world.descent?.mode==='mortal'&&!world.descent.interior&&
+    world.agents.find(a=>a.id===world.descent?.agentId);
+  let walkable=boundary;
+  if(actor){
+    const map=adventureMapFor(world);
+    const flooded=(x:number,y:number)=>{
+      const i=y*world.width+x;
+      return (region.river||region.trail.has(i))&&springFlood(world,i)&&
+        !map.roads.has(i)&&!map.bridges.has(i);
+    };
+    const x=actor.x+dx,y=actor.y+dy;
+    if(boundary(x,y)&&flooded(x,y))
+      return {world,moved:false,reason:'Spring floodwater covers the trail here. Try higher ground.'};
+    walkable=(x,y)=>boundary(x,y)&&!flooded(x,y);
+  }
   const walk=assist?walkMortalWithAssist:walkMortal;
-  const result=walk(world,dx,dy,within(world,region));
+  const result=walk(world,dx,dy,walkable);
   return result.moved?{...result,world:setPlace(result.world,region.place)}:result;
 }
 
@@ -438,7 +537,7 @@ export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
       'Walk to the signpost to travel.'};
   const dx=exit.point.x-actor.x,dy=exit.point.y-actor.y;
   if(dx||dy){
-    const walk=walkMortal(world,dx,dy,within(world,region));
+    const walk=walkAdventure(world,region,dx,dy,false);
     if(!walk.moved)return walk;
     world=walk.world;
   }

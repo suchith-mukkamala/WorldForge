@@ -26,7 +26,7 @@ function faceColor(color:string,light:number,tone:number):string{
   const key=color+':'+light+':'+tone;
   const cached=colorCache.get(key);
   if(cached)return cached;
-  const base=parseInt(color.slice(1),16),factor=light*(.91+.06*tone);
+  const base=parseInt(color.slice(1),16),factor=light*(.94+.04*tone);
   const channel=(shift:number)=>Math.min(255,Math.round((base>>shift&255)*factor));
   const result='rgb('+channel(16)+','+channel(8)+','+channel(0)+')';
   colorCache.set(key,result);
@@ -64,9 +64,9 @@ export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
   return {left,top,right,bottom};
 }
 
-const STAMP_DENSITY=2;
-const STAMP_SIZE=112;
-export const BLOCK_ANCHOR={x:STAMP_SIZE/2,y:STAMP_SIZE-30};
+const STAMP_DENSITY=3;
+const STAMP_SIZE=56*STAMP_DENSITY;
+export const BLOCK_ANCHOR={x:STAMP_SIZE/2,y:STAMP_SIZE-15*STAMP_DENSITY};
 const propCache=new Map<string,{image:HTMLCanvasElement;x:number;y:number;w:number;h:number}>();
 const artKey=(model:BlockModel,view:BlockView,unit:number)=>
   [model.key,view.key,unit].join('|');

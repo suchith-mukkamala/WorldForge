@@ -2,11 +2,13 @@ export type TownStop={kind:'town';id:number};
 export type WildStop={kind:'wild';x:number;y:number};
 export type AdventureStop=TownStop|WildStop;
 export type AdventureRoute={kind:'route';from:AdventureStop;to:TownStop};
-export type AdventurePlace=AdventureStop|AdventureRoute;
+export type RiverTrail={kind:'river';mouth:number};
+export type AdventurePlace=AdventureStop|AdventureRoute|RiverTrail;
 
 export function adventurePlaceKey(place:AdventurePlace):string{
   if(place.kind==='town')return 'town:'+place.id;
   if(place.kind==='wild')return 'wild:'+place.x+':'+place.y;
+  if(place.kind==='river')return 'river:'+place.mouth;
   return adventurePlaceKey(place.from)+'>'+adventurePlaceKey(place.to);
 }
 
@@ -21,6 +23,9 @@ export function validAdventurePlace(value:unknown,width:number,height:number):bo
     typeof p.x==='number'&&typeof p.y==='number'&&Number.isInteger(p.x)&&
     Number.isInteger(p.y)&&p.x>=0&&p.x<width&&p.y>=0&&p.y<height;
   if(town(value)||wild(value))return true;
+  if(!!value&&typeof value==='object'&&'kind' in value&&value.kind==='river')
+    return 'mouth' in value&&typeof value.mouth==='number'&&Number.isInteger(value.mouth)&&
+      value.mouth>=0&&value.mouth<width*height;
   return !!value&&typeof value==='object'&&'kind' in value&&value.kind==='route'&&
     'from' in value&&'to' in value&&town(value.to)&&
     (wild(value.from)||town(value.from)&&value.from.id<value.to.id);

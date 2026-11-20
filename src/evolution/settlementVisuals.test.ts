@@ -60,10 +60,10 @@ describe('v2.4.4 — readable settlements and close-up mortals',()=>{
     expect(depthRenderDensity(4,size)).toBe(4);
     expect(depthRenderDensity(6,size)).toBe(6);
     expect(depthRenderDensity(8,{width:2000,height:2000})).toBe(2);
-    expect(depthSceneryDensity(1,size)).toBe(1);
+    expect(depthSceneryDensity(1,size)).toBe(2);
     expect(depthSceneryDensity(4,size)).toBe(4);
     expect(depthSceneryDensity(6,{width:2000,height:2000})).toBe(1);
-    expect(depthSceneryDensity(4,{width:1000,height:1000})).toBe(2);
+    expect(depthSceneryDensity(4,{width:1000,height:1000})).toBe(3);
     expect(DEPTH_PERSON_SIZE).toEqual({width:2,height:3});
   });
 

@@ -26,6 +26,8 @@ import {abandonErrand,abandonErrandLabel,acceptErrand,availableErrands,buyMeal,
   type ErrandResult} from './mortalErrands';
 import {coinLabel} from './errandRecords';
 import {reachableLandmarks,surveyLandmark} from './mortalSurveys';
+import {isRiverDiscovery} from './riverDiscoveries';
+import {waterSeason} from './riverSeasons';
 import type {AncientSite} from './knowledge';
 import {directionBetween,samePoint as equal,type Facing,type Point} from './motion';
 
@@ -58,6 +60,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const [boardPinned,setBoardPinned]=useState(false);
   const [errandMessage,setErrandMessage]=useState('');
   const [landmarkPin,setLandmarkPin]=useState<number|null>(null);
+  const [markRiver,setMarkRiver]=useState(false);
   const map=adventureMapFor(world),region=adventureRegion(world,map,actor);
   const scene=adventurePlaceKey(region.place);
   const interiorSite=occupiedMortalRoom(world);
@@ -84,11 +87,18 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const pinned=gates.find(g=>g.key===waypoint);
   const landmarks=interior?[]:reachableLandmarks(world,map,region);
   const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
-  const unsurveyed=landmarks.filter(site=>!surveyed.has(site.id))
+  const unsurveyed=landmarks.filter(site=>!surveyed.has(site.id)&&
+    (!isRiverDiscovery(site.kind)||adventureDistance(actor,site)<=3))
     .sort((a,b)=>adventureDistance(actor,a)-adventureDistance(actor,b)||a.id-b.id);
   const markedLandmark=unsurveyed.find(site=>site.id===landmarkPin);
   const landmark=markedLandmark??unsurveyed[0];
   const closeLandmark=unsurveyed.find(site=>adventureDistance(actor,site)<=1);
+  const toPoint=(i:number)=>({x:i%world.width,y:Math.floor(i/world.width)});
+  const river=region.river;
+  const along=river?.path.reduce((nearest,index,step)=>adventureDistance(actor,toPoint(index))<
+    adventureDistance(actor,toPoint(river.path[nearest]))?step:nearest,0)??0;
+  const nextStop=river?.stops.find(stop=>river.path.indexOf(stop.index)>along&&region.area.has(stop.index));
+  const nextBank=nextStop&&toPoint(nextStop.index);
 
   const commit=(next:World)=>{
     current.current=next;
@@ -224,7 +234,8 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     setMessage(result.message);
   };
   const gateAction=(g:AdventureGate):Interaction=>({
-    label:(g.ferry?'Sail to ':g.destination.kind==='route'?'Take trail to ':'Enter ')+g.label,
+    label:(g.ferry?'Sail to ':g.destination.kind==='river'?'Follow ':
+      g.destination.kind==='route'?'Take trail to ':'Enter ')+g.label,
     run:()=>travel(g),point:g.point,
   });
   const buildingAction=(site:MortalBuilding):Interaction=>{
@@ -439,7 +450,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
                 board={board} landmarks={landmarks} gather={objective?.action==='gather'?goalPoint:undefined}
                 marked={focusedBuilding?.entrance??focusedPerson??markedDoor?.entrance??
                   (boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
-                  goalPoint??primary?.point??null}
+                  goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
                 onSelect={selectTile}/>
               {showBoard?<TownNoticeBoard world={world} journal={journal}
                 offers={availableErrands(world,region)} objective={objective}
@@ -477,6 +488,15 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
               ' tiles '+directionTo(actor,board)):undefined}
             abandonLabel={activeErrand&&abandonErrandLabel(world,region,actor,activeErrand)}
             onBoard={selectBoard} onAbandon={()=>performAction(abandonErrand,true)}/>}
+          {!interior&&river&&<section className="adventure-exits" aria-label="River trail progress">
+            <h2>Downstream</h2>
+            {nextStop&&nextBank?<button type="button" aria-pressed={markRiver}
+              onClick={()=>setMarkRiver(on=>!on)}>
+              {nextStop.label} · {adventureDistance(actor,nextBank)} tiles {directionTo(actor,nextBank)}
+            </button>:<p>You reached the downstream shore.</p>}
+            {world.settings.riverlands&&waterSeason(world)==='Bloom'&&
+              <p>Spring floods can cover low trails. Look for higher banks or boardwalks.</p>}
+          </section>}
           {!interior&&<section className="adventure-exits">
             <h2>{region.place.kind==='route'?'Trail ends':
               gates.some(({gate})=>gate.ferry)?'Trails & ferries':'Trails'}</h2>

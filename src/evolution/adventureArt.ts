@@ -5,6 +5,11 @@ import {DESCENT_BLOCK_VIEW,paintBlockScenery} from './blockScenery';
 import {biomeTreeAt,isTreeKind,type TreeKind} from './biomeTrees';
 import {terrainDetailAt} from './terrainDetails';
 import {topographyForWorld} from './topography';
+import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
+import {firstTerrainSquare,shoreColor} from './terrainCellArt';
+import {springFlood} from './riverSeasons';
+import {boardwalkSite,type RegionalBuildingStyle} from './riverArchitecture';
+import type {VisualSeason} from './sceneAtmosphere';
 import {pixelTerrainHash} from './depthWorldArt';
 import {adventureDistance,type AdventureLandscape,type AdventureRegion} from './adventureMap';
 import type {Point} from './motion';
@@ -74,6 +79,7 @@ type ArtMap={
 export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
   region:AdventureRegion,map:ArtMap,origin:Point,columns:number,rows:number){
   const {width,height}=world;
+  const surface=surfaceGrid(world),square=T/VISUAL_TERRAIN_SIDE;
   rect(ctx,'#142624',0,0,ctx.canvas.width,ctx.canvas.height);
   const pathAt=(i:number)=>region.trail.has(i)||map.roads.has(i)||map.bridges.has(i);
   for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){
@@ -101,11 +107,7 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
         [[px+T-3,py,3,T],i+1,x<width-1],[[px,py,3,T],i-1,x>0],
       ];
       for(const [shape,neighbor,exists] of edges){
-        if(exists&&world.tiles[neighbor].biome==='water'){
-          rect(ctx,'#d0bf88',...shape);
-          if(shape[2]===3)rect(ctx,'#ede0b5',shape[0]+1,py+3,1,T-7);
-          else rect(ctx,'#ede0b5',px+3,shape[1]+1,T-7,1);
-        }else if(exists&&biome!==world.tiles[neighbor].biome){
+        if(exists&&world.tiles[neighbor].biome!=='water'&&biome!==world.tiles[neighbor].biome){
           const [nx,ny,w]=shape;
           const tint=ground[world.tiles[neighbor].biome][0]+'99';
           const ripple=4+noise%7;
@@ -119,8 +121,13 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
         }
       }
     }
-    const bridge=map.bridges.has(i);
-    if(pathAt(i)){
+    const first=firstTerrainSquare(width,surface.columns,i);
+    for(let sy=0;sy<VISUAL_TERRAIN_SIDE;sy++)for(let sx=0;sx<VISUAL_TERRAIN_SIDE;sx++){
+      const color=shoreColor(surface.shore[first+sy*surface.columns+sx]);
+      if(color)rect(ctx,color,px+sx*square,py+sy*square,square,square);
+    }
+    const bridge=map.bridges.has(i)||map.roads.has(i)&&boardwalkSite(world,i);
+    if(pathAt(i)&&(!springFlood(world,i)||map.roads.has(i)||bridge)){
       const [edge,fill,edgeLight]=paving[region.landscape];
       const north=y>0&&pathAt(i-width),south=y<height-1&&pathAt(i+width);
       const west=x>0&&pathAt(i-1),east=x<width-1&&pathAt(i+1);
@@ -228,16 +235,16 @@ export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
   }
 }
 export function paintAdventureProp(ctx:CanvasRenderingContext2D,prop:AdventureProp,
-  x:number,y:number,variant:number){
+  x:number,y:number,variant:number,season?:VisualSeason){
   const kind=prop==='rocks'?'boulder':prop;
   const large=isTreeKind(kind)||kind==='boulder';
   const anchor={x:x+(kind==='lantern'?5:12),y:y+16};
-  paintBlockScenery(ctx,blockProp(kind,variant),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
+  paintBlockScenery(ctx,blockProp(kind,variant,season),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
 }
 
 export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
-  x:number,y:number,landscape:AdventureLandscape,variant:number,doorSide?:Point){
-  const model=blockBuilding(b,variant,{door:doorSide,coastal:landscape==='coast'});
+  x:number,y:number,landscape:AdventureLandscape,variant:number,doorSide?:Point,regional?:RegionalBuildingStyle){
+  const model=blockBuilding(b,variant,{door:doorSide,coastal:landscape==='coast',regional});
   const size=b.type==='communal'?1.6:b.type==='shelter'?1.97:1.82;
   paintBlockScenery(ctx,model,{x:x+12,y:y+13},DESCENT_BLOCK_VIEW,size);
 }

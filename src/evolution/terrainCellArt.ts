@@ -1,7 +1,7 @@
-import {terrainRenderGrid,TERRAIN_CELL_SIDE,type TerrainCell,type TerrainGrid} from './terrainCells';
-import type {World} from './engine';
+import type {TerrainCell} from './terrainCells';
+import {Shore,surfaceGrid,VISUAL_TERRAIN_SIDE,type SurfaceGrid,type SurfaceWorld} from './surfaceGrid';
 
-const SIDE=TERRAIN_CELL_SIDE;
+const SIDE=VISUAL_TERRAIN_SIDE;
 const colors=new Map<string,Uint32Array>();
 const materialColors={stone:'#85929b',soil:'#658564',sand:'#bd9f72'};
 export function terrainCellColor(cell:TerrainCell):string{
@@ -34,14 +34,20 @@ export function terrainSwatches(color:string,water:boolean):Uint32Array{
     const tint=materials[i>>2],weight=water?0:i>>2===1?.055:.14;
     const mix=(shift:number)=>Math.round((base>>>shift&255)*(1-weight)+(tint>>>shift&255)*weight);
     const mixed=(255<<24|mix(16)<<16|mix(8)<<8|mix(0))>>>0;
-    palette[i]=shadeTerrainPixel(mixed,1+((i&3)-1.5)*(water?.024:.048));
+    palette[i]=shadeTerrainPixel(mixed,1+((i&3)-1.5)*(water?.016:.026));
   }
   palette.set(['#67a6a4','#509798','#43798f'].map(terrainPixel),12);
   colors.set(key,palette);
   return palette;
 }
 
-export function cellPixel(grid:TerrainGrid,index:number,palette:Uint32Array,grain:number):number{
+const shoreColors=['','#b39771','#c9b087','#448398','#407d93',
+  '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4'];
+export const shoreColor=(type:number)=>shoreColors[type];
+const shoreline=shoreColors.map(color=>color?terrainPixel(color):0);
+export function cellPixel(grid:SurfaceGrid,index:number,palette:Uint32Array,grain:number):number{
+  const edge=grid.shore[index];
+  if(edge!==Shore.ground)return shoreline[edge];
   const water=grid.water[index];
   if(water)return palette[water>=12?14:water>=4?13:12];
   const hash=Math.imul(index^grain,0x45d9f3b);
@@ -53,9 +59,9 @@ export const firstTerrainSquare=(width:number,columns:number,index:number)=>
 
 /** Paint the full overhead grid in one nearest-neighbor image, so the
  * face size and texture stay identical when the camera moves. */
-export function paintTerrainMosaic(ctx:CanvasRenderingContext2D,w:World,unit:number,
+export function paintTerrainMosaic(ctx:CanvasRenderingContext2D,w:SurfaceWorld,unit:number,
   tileColor:(tile:number)=>{color:string;grain:number;water:boolean}|undefined,sea:string):void{
-  const grid=terrainRenderGrid(w),{columns,rows}=grid;
+  const grid=surfaceGrid(w),{columns,rows}=grid;
   const texture=document.createElement('canvas');
   texture.width=columns;texture.height=rows;
   const painter=texture.getContext('2d');

@@ -7,6 +7,9 @@ import {DepthCanvas} from './DepthCanvas';
 import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
+import {RiverGuide} from './RiverGuide';
+import {riverCourses} from './riverCourses';
+import {visibleAtlasSite} from './riverDiscoveries';
 import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
 import {enableTerrainCells,terrainCellsIn} from './terrainCells';
@@ -75,7 +78,7 @@ function initialWorld():World{
   }
   // First-time visitors get their own world; existing local saves always win.
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
-    livingBiomes:true,regionalGeography:true,regionalBiomes:true,
+    livingBiomes:true,regionalGeography:true,regionalBiomes:true,riverlands:true,
     landforms:DEFAULT_LANDFORMS,terrainCells:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
@@ -196,6 +199,12 @@ export function WorldforgeApp(){
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
+  const [showRivers,setShowRivers]=useState(false);
+  const [riverMouth,setRiverMouth]=useState<number|null>(null);
+  const [descentRiver,setDescentRiver]=useState<number|null>(null);
+  const rivers=showRivers||descentRiver!==null?riverCourses(world):[];
+  const chartedRiver=rivers.find(r=>r.mouth===riverMouth)??rivers[0];
+  const riverArrival=descentRiver===null?undefined:rivers.find(r=>r.mouth===descentRiver);
   const [mapView,setMapView]=useState<'overhead'|'depth'>(()=>{
     try{return readWorldPerspective(
       typeof window==='undefined'?null:window.localStorage);}
@@ -692,7 +701,7 @@ export function WorldforgeApp(){
   const building=closeup&&displayed&&!agent?settlement?.infrastructure?.buildings.find(
     b=>b.x===displayed.x&&b.y===displayed.y):undefined;
   const ancientSite=displayed?world.ancientSites?.find(s=>
-    s.x===displayed.x&&s.y===displayed.y):undefined;
+    s.x===displayed.x&&s.y===displayed.y&&visibleAtlasSite(world,s)):undefined;
   const mapAspect=mapView==='depth'?projection.size.width/projection.size.height:
     world.width/world.height;
   const mapHeights=!closeup&&mapView==='depth'&&world.settlements.length?
@@ -860,7 +869,7 @@ export function WorldforgeApp(){
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
-    setTab(next);setNotice('');
+    setDescentRiver(null);setTab(next);setNotice('');
   };
   const enterMortalView=()=>{
     const before=currentWorld.current;
@@ -876,7 +885,7 @@ export function WorldforgeApp(){
       setStartingDescent(true);
       const startingWorld=settledStart?await growSettlements(before):before;
       if(currentWorld.current!==before||tabRef.current!=='descent')return;
-      const result=createMortal(startingWorld,options);
+      const result=createMortal(startingWorld,options,descentRiver??undefined);
       setPlaying(false);setTab('world');setNotice('');
       changeMortalWorld(result.world);
     }catch(error){setNotice(error instanceof Error?error.message:
@@ -944,7 +953,7 @@ export function WorldforgeApp(){
           {' '}{savedDate.day}</small>}</div>
     </header>
     {tab==='descent'?<DivineDescentCreator world={world} error={notice}
-      onCreate={createDescent} starting={startingDescent}
+      onCreate={createDescent} starting={startingDescent} arrivalName={riverArrival?.name}
       onResume={enterMortalView}
       onReturn={leaveMortalView}/>:
     tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
@@ -1056,6 +1065,9 @@ export function WorldforgeApp(){
             </div>
             <div className="evo-map-actions">
               <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}/>
+              <button type="button" aria-expanded={showRivers} onClick={()=>{
+                setShowRivers(value=>!value);setOverlay('terrain');setBrush({kind:'inspect'});
+              }}>Rivers</button>
               <button type="button" onClick={fitAtlas} aria-label="Fit world view">World</button>
               <button type="button" className="atlas-trade-toggle" aria-pressed={overlay==='trade'}
                 onClick={()=>{
@@ -1227,15 +1239,18 @@ export function WorldforgeApp(){
           </div>}
           </details>
           {overlay!=='terrain'&&<MapLayerLegend overlay={overlay}/>}
+          {showRivers&&<RiverGuide world={world} course={chartedRiver} onCourse={setRiverMouth}
+            onLocate={index=>locateAtlasPoint({x:index%world.width,y:Math.floor(index/world.width)},ATLAS_TOWN_ZOOM)}
+            onStart={mouth=>{navigate('descent');setDescentRiver(mouth);}}/>}
           <div className="evo-map-scroll atlas-viewport" ref={mapScrollRef}>
             <div className="atlas-sheet" ref={mapSheetRef}
               style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*mapAspect+'))'}}>
               {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
-                overlay={overlay} zoom={zoom} speed={speed} fillWidth
+                overlay={overlay} zoom={zoom} speed={speed} fillWidth river={showRivers?chartedRiver:undefined}
                 followId={followId} personId={selectedAgentId} onFollowPosition={centerCamera}
                 selected={displayed} onSelect={chooseTile} onEdit={brushAt}
                 onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
-                <DepthCanvas world={world} brush={brush} overlay={overlay}
+                <DepthCanvas world={world} brush={brush} overlay={overlay} river={showRivers?chartedRiver:undefined}
                   zoom={zoom} speed={speed} fillWidth selected={displayed} onSelect={chooseTile}
                   onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
                   camera={{yaw:orbitYaw,pitch:activeCameraPitch}}

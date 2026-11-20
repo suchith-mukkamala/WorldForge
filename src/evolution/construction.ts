@@ -10,9 +10,10 @@ import {hasHarbor} from './shipping';
 import {terrainBuildPenalty,terrainFarmFactor} from './terrainPhysics';
 import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
 import {wornPathTiles} from './trailNetwork';
+import {boardwalkSite,nearbyDelta,nearbyFord,terraceSite,terrainDistance} from './riverArchitecture';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
-  'workshop','market','dock','communal','granary'] as const;
+  'workshop','market','dock','communal','granary','watermill'] as const;
 export type BuildingType=typeof BUILDING_TYPES[number];
 export type BuildingStage='foundation'|'frame'|'finishing'|'complete'|
   'abandoned'|'ruin';
@@ -50,6 +51,7 @@ export const COSTS:Record<BuildingType,{materials:MaterialStock;labor:number}>={
   dock:{materials:{wood:14,stone:5,clay:4},labor:18},
   communal:{materials:{wood:11,stone:9,clay:9},labor:21},
   granary:{materials:{wood:13,stone:6,clay:7},labor:18},
+  watermill:{materials:{wood:14,stone:11,clay:5},labor:22},
 };
 export const BUILDING_LABELS:Record<BuildingType,string>={
   shelter:'Shelter',house:'Residence',farm:'Farm',storage:'Storehouse',
@@ -57,6 +59,7 @@ export const BUILDING_LABELS:Record<BuildingType,string>={
   market:'Marketplace',
   dock:'Harbor dock',
   granary:'Raised granary',
+  watermill:'Watermill',
 };
 export const ARCHITECTURE:Record<Species,{name:string;wall:string;
   roof:string;trim:string}>={
@@ -161,6 +164,7 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
   const storesGrain=s.infrastructure!.land.some(i=>
     ['wetland','savanna','taiga'].includes(w.tiles[i].biome));
   const harvestReady=buildings.some(b=>b.type==='farm'&&complete(b));
+  const ford=nearbyFord(w,s),delta=nearbyDelta(w,s);
   const unmet:Record<BuildingType,number>={
     shelter:count('shelter')+count('house')===0?18:0,
     house:homeNeed?Math.min(22,6+homeNeed*2.1):0,
@@ -170,14 +174,16 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
     storage:count('storage')<Math.max(1,Math.ceil(s.population/55))?8:0,
     well:count('well')<Math.max(1,Math.ceil(s.population/35))?10:0,
     workshop:adultCount>=5&&count('workshop')<Math.max(1,Math.ceil(adultCount/40))?9:0,
-    market:adultCount>=8&&(s.population>=18||
+    market:adultCount>=8&&(ford!==undefined||s.population>=18||
       (s.economy?.imports??0)+(s.economy?.exports??0)>=3)&&
-      count('market')<Math.max(1,Math.ceil(s.population/65))?8.5:0,
-    dock:adultCount>=5&&hasHarbor(w,s)&&
-      count('dock')<Math.max(1,Math.ceil(s.population/120))?9.2:0,
+      count('market')<Math.max(1,Math.ceil(s.population/65))?(ford!==undefined?18.5:8.5):0,
+    dock:adultCount>=(delta!==undefined?3:5)&&hasHarbor(w,s)&&
+      count('dock')<Math.max(1,Math.ceil(s.population/120))?(delta!==undefined?25:9.2):0,
     communal:residents.length>=6&&count('communal')<
       Math.max(1,Math.ceil(s.population/45))?8+Math.max(-2,Math.min(2,votes)):0,
     granary:storesGrain&&adultCount>=4&&harvestReady&&count('granary')===0?24:0,
+    watermill:ford!==undefined&&adultCount>=5&&harvestReady&&count('watermill')===0&&
+      chooseLocation(w,s,'watermill')?25:0,
   };
   // Worker guilds can advocate for public needs, never directly place sites.
   for(const g of w.institutions?.guilds??[]){
@@ -211,27 +217,36 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
   const buildings=[...infra.buildings,...neighbors.flatMap(other=>
     other.infrastructure?.buildings??[])];
   const roads=new Set(infra.roads);
+  const ford=type==='market'||type==='watermill'?nearbyFord(w,s):undefined;
+  const crossing=ford===undefined?undefined:{x:ford%w.width,y:Math.floor(ford/w.width)};
+  const delta=type==='dock'?nearbyDelta(w,s):undefined;
+  const shore=delta===undefined?undefined:{x:delta%w.width,y:Math.floor(delta/w.width)};
   let best=-Infinity,target:null|{x:number;y:number}=null;
   for(const id of infra.land){
     const x=id%w.width,y=Math.floor(id/w.width),tile=w.tiles[id];
     if(tile.biome==='water')continue;
     if(!buildingSiteClear({x,y},type,buildings,s))continue;
+    if(type==='watermill'&&(!crossing||terrainDistance(w.width,id,crossing)>2||id===ford))continue;
     if(type==='dock'&&![-1,0,1].some(dx=>[-1,0,1].some(dy=>
       (dx||dy)&&inWorld(w,x+dx,y+dy)&&
       w.tiles[position(w,x+dx,y+dy)].biome==='water')))continue;
     const near=distance({x,y},s),hazard=tile.biome==='volcanic'?4:
       tile.biome==='wasteland'?2:0;
     const nearbyRoad=[id-1,id+1,id-w.width,id+w.width].some(n=>roads.has(n));
+    const terrace=type==='farm'&&terraceSite(w,id);
     const productive=type==='farm'?
-      (tile.biome==='plains'?11:tile.biome==='wetland'?10:
+      (terrace?13:tile.biome==='plains'?11:tile.biome==='wetland'?10:
         tile.biome==='savanna'?9:tile.biome==='forest'?8:-5):
       type==='well'?([id-1,id+1,id-w.width,id+w.width]
         .some(n=>w.tiles[n]?.biome==='water')?9:1):
       type==='workshop'?(['mountain','cave'].includes(tile.biome)?7:2):
+      crossing&&type==='market'?Math.max(0,12-3*terrainDistance(w.width,id,crossing)):
+      shore?Math.max(0,12-3*terrainDistance(w.width,id,shore)):
+      w.settings.riverlands&&(type==='house'||type==='shelter')&&boardwalkSite(w,id)?8:
       type==='granary'?(tile.biome==='wetland'?9:Math.max(0,7-near)):
       type==='storage'?Math.max(0,7-near):Math.max(0,6-near);
     const score=productive-near*.8-hazard+(nearbyRoad?4:0)-
-      terrainBuildPenalty(w,id)*(type==='farm'?1.4:.7)+
+      terrainBuildPenalty(w,id)*(terrace?.72:type==='farm'?1.4:.7)+
       // Stable tie breaker: site choice is independent of rendering.
       ((s.id*97+x*17+y*43)%31)*.01;
     if(score>best){best=score;target={x,y};}
@@ -250,6 +265,7 @@ function beginProject(w:World,s:Settlement,residents:Agent[]):void{
   if(!type)return;
   // Severe food shortages draw available labor toward survival, not luxuries.
   if(s.economy?.shortages.includes('food')&&
+    !(type==='dock'&&nearbyDelta(w,s)!==undefined)&&
     !['farm','shelter','house','well'].includes(type)&&s.economy.food<4)return;
   const at=chooseLocation(w,s,type);
   if(!at)return;
@@ -466,6 +482,7 @@ function updateRoutes(w:World,moved:number[]):void{
 function applyBenefits(w:World,s:Settlement):void{
   const finished=s.infrastructure?.buildings.filter(complete)??[];
   for(const farm of finished.filter(b=>b.type==='farm')){
+    const terrace=terraceSite(w,position(w,farm.x,farm.y));
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
       const x=farm.x+dx,y=farm.y+dy;
       if(!inWorld(w,x,y))continue;
@@ -475,7 +492,7 @@ function applyBenefits(w:World,s:Settlement):void{
       // Cultivation speeds replenishment of harvested tiles without creating
       // food above the land's ecological carrying capacity.
       t.food=round(Math.min(original*w.settings.resourceLevel,
-        t.food+.16*terrainFarmFactor(w,position(w,x,y))));
+        t.food+.16*terrainFarmFactor(w,position(w,x,y),terrace)));
     }
   }
 }

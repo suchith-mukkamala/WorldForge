@@ -9,6 +9,7 @@ import {appendLifeMoment} from './identity';
 import {lifeStage} from './development';
 import {residentIndex} from './density';
 import {terrainHash} from './biomeGeneration';
+import {NATURAL_LANDMARKS,RIVER_DISCOVERIES} from './riverDiscoveries';
 
 export const TOPICS=[
   'agriculture','herbalism','stonecraft','navigation','irrigation',
@@ -23,7 +24,8 @@ export type KnowledgeDiscovery={topic:Topic;year:number;personId:number;
 export type KnowledgeState={firsts:KnowledgeDiscovery[]};
 // Archive and vault remain valid so worlds saved before v1.4 still load.
 const LEGACY_ANCIENT_KINDS=['temple','library','crypt','ruin','archive','vault'] as const;
-export const ANCIENT_KINDS=[...LEGACY_ANCIENT_KINDS,'standing-stones','watchtower'] as const;
+export const ANCIENT_KINDS=[...LEGACY_ANCIENT_KINDS,'standing-stones','watchtower',
+  ...NATURAL_LANDMARKS,...RIVER_DISCOVERIES] as const;
 export type AncientKind=typeof ANCIENT_KINDS[number];
 export type AncientSite={id:number;kind:AncientKind;x:number;y:number;
   topic:Topic;danger:number;visitors:number[];visits?:number;

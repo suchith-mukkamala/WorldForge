@@ -17,16 +17,16 @@ const OUTFITS:readonly {id:MortalOutfit;label:string}[]=[
 ];
 const DEFAULT_LOOK:MortalAppearance={skin:0,hair:0,hairStyle:0,outfit:'wanderer'};
 
-export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,starting=false}:{
+export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,starting=false,arrivalName}:{
   world:World;onCreate:(options:MortalCreation,settledStart:boolean)=>void;
-  onResume:()=>void;onReturn:()=>void;error?:string;starting?:boolean;
+  onResume:()=>void;onReturn:()=>void;error?:string;starting?:boolean;arrivalName?:string;
 }){
   const [name,setName]=useState('');
   const [species,setSpecies]=useState<Species>('human');
   const [background,setBackground]=useState<DescentBackground>('scout');
   const [look,setLook]=useState<MortalAppearance>(DEFAULT_LOOK);
   const [settledStart,setSettledStart]=useState(world.year===0);
-  const canGrow=!world.settlements.length&&world.agents.length>0&&world.year<9999;
+  const canGrow=!arrivalName&&!world.settlements.length&&world.agents.length>0&&world.year<9999;
   const mortalId=world.descent?.agentId;
   const current=mortalId===undefined?undefined:
     world.agents.find(a=>a.id===mortalId);
@@ -50,7 +50,8 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,sta
   return <main className="evo-descent-page">
     <header className="evo-descent-heading">
       <h1>{current?'Your adventure':'Begin an adventure'}</h1>
-      <p>Explore settlements, follow trails, and meet the people who live there.</p>
+      <p>{arrivalName?'Start on the banks of the '+arrivalName+'.':
+        'Explore settlements, follow trails, and meet the people who live there.'}</p>
     </header>
     <div className="evo-descent-layout">
       <section className="evo-descent-portrait" aria-label="Mortal appearance preview">

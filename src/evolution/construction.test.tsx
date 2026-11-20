@@ -30,11 +30,12 @@ function activeCommunity(seed=44){
 }
 
 describe('Evolution Lab v0.7 — living settlements and construction',()=>{
-  it('tracks ten building types, material costs and four distinct architectures',()=>{
-    expect(BUILDING_TYPES).toHaveLength(10);
+  it('tracks eleven building types, material costs and four distinct architectures',()=>{
+    expect(BUILDING_TYPES).toHaveLength(11);
     expect(BUILDING_TYPES).toContain('market');
     expect(BUILDING_TYPES).toContain('dock');
     expect(BUILDING_TYPES).toContain('granary');
+    expect(BUILDING_TYPES).toContain('watermill');
     for(const t of BUILDING_TYPES){
       expect(COSTS[t].labor).toBeGreaterThan(0);
       expect(Object.values(COSTS[t].materials).reduce((a,b)=>a+b,0))

@@ -46,6 +46,9 @@ export const INTERIOR_TEMPLATES:Record<BuildingType,InteriorTemplate>={
   granary:{name:'Raised granary',floor:'#9b8059',wall:'#887553',props:[
     thing('hay',2,2),thing('hay',3,2),thing('crate',6,2),thing('barrel',9,2),
     thing('barrel',10,2),thing('crate',2,5),thing('crate',10,5),thing('table',6,4)]},
+  watermill:{name:'Watermill',floor:'#907d64',wall:'#6f7b72',props:[
+    thing('tools',2,2),thing('barrel',3,2),thing('table',6,4),
+    thing('hay',9,2),thing('crate',10,2),thing('bench',10,6)]},
 };
 
 export function findMortalBuilding(world:World,reference:RoomReference):MortalBuilding|null{

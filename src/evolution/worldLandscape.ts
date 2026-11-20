@@ -4,9 +4,10 @@ import {generateHydrology,riverBanks} from './hydrology';
 import {generateRegionalTopography} from './regionalGeography';
 import {generateTopography} from './topography';
 import {generateSeedTerrain} from './worldGeography';
+import {sculptLandforms} from './riverLandforms';
 
 type LandscapeSettings=Pick<WorldSettings,'seed'|'layout'|'regionalGeography'|
-  'landforms'|'regionalBiomes'>;
+  'landforms'|'regionalBiomes'|'riverlands'>;
 
 function regionalBiomes(width:number,height:number,biomes:readonly Biome[],
   elevations:readonly number[],seed:number):Biome[]{
@@ -43,6 +44,8 @@ export function generateWorldLandscape(width:number,height:number,settings:Lands
   const topography=regionalGeography?
     generateRegionalTopography(width,height,tiles,seed,landforms):
     generateTopography(width,height,tiles,seed);
-  return {...terrain,topography,biomes:settings.regionalBiomes?
+  const features=settings.riverlands?sculptLandforms(width,height,seed,
+    terrain.biomes,topography.heights,terrain.homes):[];
+  return {...terrain,topography,features,biomes:settings.regionalBiomes?
     regionalBiomes(width,height,terrain.biomes,topography.heights,seed):terrain.biomes};
 }

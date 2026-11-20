@@ -55,7 +55,7 @@ describe('Worldforge integration and first-time user experience',()=>{
     expect(markup).toContain('Toggle species on the graph');
     expect(markup).toContain('POPULATION');
   });
-  it('renders the interactive canvas with keyboard-accessible selection labels',()=>{
+  it('renders a sharp atlas canvas with keyboard-accessible selection labels',()=>{
     const world=createWorld({seed:143});
     const markup=renderToStaticMarkup(<WorldCanvas world={world}
       brush={{kind:'inspect'}} overlay="terrain" selected={null} zoom={1}
@@ -63,8 +63,8 @@ describe('Worldforge integration and first-time user experience',()=>{
     expect(markup).toContain('role="grid"');
     expect(markup).toContain('tabindex="0"');
     expect(markup).toContain('Arrow keys');
-    expect(markup).toContain('width="960"');
-    expect(markup).toContain('height="624"');
+    expect(markup).toContain('width="2560"');
+    expect(markup).toContain('height="1664"');
   });
   it('accepts saved worlds but rejects malformed JSON and oversize inputs',()=>{
     const world=createWorld({seed:143});

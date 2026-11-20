@@ -51,13 +51,13 @@ export function terrainRuggedness(w:World,index:number):number{
 /** Cultivation reacts to actual slopes, altitude and derived surface runoff.
  * Creeks irrigate land; they never magically become ship-navigable water.
  */
-export function terrainFarmFactor(w:World,index:number):number{
+export function terrainFarmFactor(w:World,index:number,terraced=false):number{
   if(!hasPhysicalTerrain(w))return 1;
   const height=topographyForWorld(w).heights[index];
   const rugged=terrainRuggedness(w,index);
   const drainage=hydrologyForWorld(w);
   const altitudePenalty=Math.max(0,height-125)/350;
-  const slopePenalty=Math.min(.38,rugged/180);
+  const slopePenalty=Math.min(.38,rugged/180)*(terraced?.45:1);
   const irrigation=w.settings.regionalGeography?
     riverBanks(drainage,w.width,w.height)[index]*.23:drainage.channel[index]>0?.13:0;
   const fertility=terrainCellSummary(w,index)?.fertility??1;
