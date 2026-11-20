@@ -9,7 +9,7 @@ import {actionPose,canAnimate,motionFrame,samePoint,type Facing,type Motion,
   type Point,type SpritePose} from './motion';
 import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {paintPerson} from './pixelArt';
-import {isOpenBuilding,isMortalSolidBuilding,mortalMovementDelay} from './mortalGameplay';
+import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
 import {blockLandmark,blockSettlement} from './blockModels';
@@ -49,7 +49,7 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
           paintStructureApproach(ctx,{x:px+TILE/2,y:py+TILE/2},door,TILE,ground)});
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
           paintAdventureStructure(ctx,model,px,py,unit)});
-        if(door&&isOpenBuilding(site.building)&&isMortalSolidBuilding(site.building)){
+        if(door&&isOpenBuilding(site.building)){
           const entry={x:x+door.x,y:y+door.y};
           if(region.area.has(entry.y*world.width+entry.x))
             scenery.push({...entry,depth:entry.y*TILE+12,opacity:1,draw:(ctx,px,py)=>
