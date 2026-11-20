@@ -5,6 +5,7 @@ import {settlementStage} from './construction';
 import {ancientSiteName,type AncientSite} from './knowledge';
 import type {Point} from './motion';
 import {atlasLabelSides} from './atlasMap';
+import {visibleAtlasSite} from './riverDiscoveries';
 
 export function AtlasPlacePicker({world,onTown,onSite}:{
   world:World;onTown:(id:number)=>void;onSite:(x:number,y:number)=>void;
@@ -37,7 +38,7 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
   const matches=(text:string)=>text.toLocaleLowerCase().includes(filter);
   const towns=open?world.settlements.filter(town=>matches(town.name))
     .sort((a,b)=>a.name.localeCompare(b.name)): [];
-  const sites=open?(world.ancientSites??[]).filter(site=>matches(ancientSiteName(site))): [];
+  const sites=open?(world.ancientSites??[]).filter(site=>visibleAtlasSite(world,site)&&matches(ancientSiteName(site))): [];
   const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
   const chooseTown=(id:number)=>{close();onTown(id);};
   const chooseSite=(site:AncientSite)=>{close();onSite(site.x,site.y);};
@@ -62,7 +63,7 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
           </li>)}
         </ul></>}
         {!world.settlements.length&&!filter&&<p>Settlements appear as the world grows.</p>}
-        {sites.length>0&&<><h3>Ancient sites</h3><ul>
+        {sites.length>0&&<><h3>Landmarks</h3><ul>
           {sites.map(site=><li key={site.id}>
             <button type="button" onClick={()=>chooseSite(site)}>
               <span aria-hidden="true">✧</span>

@@ -6,6 +6,8 @@ import type {Biome,World} from './engine';
 import {settlementStage} from './construction';
 import {wornPathTiles} from './trailNetwork';
 import {woodlandPalette} from './terrainDetails';
+import {boardwalkSite} from './riverArchitecture';
+import {springFlood} from './riverSeasons';
 type Point={x:number;y:number};
 type Projector={project:(x:number,y:number,elevation:number)=>Point};
 const shades:Record<Biome,readonly string[]>={
@@ -87,7 +89,7 @@ export function paintDepthSurfaceDetail(ctx:CanvasRenderingContext2D,
  * expand, while leaving buildings and terrain elevation legible.
  */
 export function paintDepthRoads(ctx:CanvasRenderingContext2D,
-  world:Pick<World,'width'|'height'|'settlements'|'transport'|'trails'>,
+  world:World,
   heights:readonly number[],projector:Projector):number{
   const roads=new Set<number>();
   const maintained=new Set<number>();
@@ -114,10 +116,11 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
     const p=projector.project(x,y,heights[i]);
     const px=Math.round(p.x),py=Math.round(p.y);
     const paved=maintained.has(i);
-    const civic=townStreets.has(i);
+    const civic=townStreets.has(i),walk=paved&&boardwalkSite(world,i);
+    if(!paved&&springFlood(world,i))continue;
     ctx.fillStyle='rgba(21,28,39,.48)';
     ctx.fillRect(px-4,py-1,9,3);
-    ctx.fillStyle=civic?'#a7ada9':paved?'#d4ba8d':'#96856e';
+    ctx.fillStyle=walk?'#ad8961':civic?'#a7ada9':paved?'#d4ba8d':'#96856e';
     ctx.fillRect(px-4,py-1,8,2);
     ctx.fillStyle=civic?'#dbd3b5':paved?'#f3d9a1':'#bbad85';
     ctx.fillRect(px-2,py-2,4,1);
@@ -139,7 +142,7 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
       }
       const q=projector.project(neighbor%world.width,
         Math.floor(neighbor/world.width),heights[neighbor]);
-      ctx.strokeStyle=civic?'#949c97':paved?'#bda178':'#877862';
+      ctx.strokeStyle=walk?'#c2a176':civic?'#949c97':paved?'#bda178':'#877862';
       ctx.lineWidth=direction>=4?1.3:2;
       ctx.beginPath();ctx.moveTo(p.x,p.y);
       ctx.lineTo((p.x+q.x)/2,(p.y+q.y)/2);ctx.stroke();

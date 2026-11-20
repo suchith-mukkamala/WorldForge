@@ -11,6 +11,8 @@ import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalBuildingEntrance,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
+import {waterSeason} from './riverSeasons';
+import {regionalBuildingStyle} from './riverArchitecture';
 import {mortalWorldPoint} from './spatialDetails';
 import type {AncientSite} from './knowledge';
 
@@ -39,7 +41,8 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         const door=town&&isOpenBuilding(site.building)?mortalBuildingEntrance(world,town,site.building):undefined;
         const side=door&&!samePoint(door,site.building)?{x:door.x-x,y:door.y-y}:undefined;
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-          paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant,side)});
+          paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant,side,
+            regionalBuildingStyle(world,site.building))});
         if(side&&door&&region.area.has(door.y*world.width+door.x))
           scenery.push({...door,depth:door.y*TILE+12,opacity:1,draw:(ctx,px,py)=>
             paintDoorstep(ctx,px,py,side)});
@@ -50,7 +53,7 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         paintAdventureLandmark(ctx,ruin.kind,px,py,(ruin.visits??ruin.visitors.length)>0)});
       const prop=!ruin&&adventureProp(world,map,region,x,y);
       if(prop)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-        paintAdventureProp(ctx,prop,px,py,variant)});
+        paintAdventureProp(ctx,prop,px,py,variant,waterSeason(world))});
     }
   }
   return scenery;
@@ -60,7 +63,7 @@ export function AdventureCanvas(props:Props){
   const canvas=useRef<HTMLCanvasElement>(null);
   const latest=useRef(props);
   latest.current=props;
-  const viewport=useRef({x:0,y:0});
+  const viewport=useRef({x:0,y:0,width:312,height:184});
   useEffect(()=>{
     const element=canvas.current,ctx=element?.getContext('2d',{alpha:false});
     if(!element||!ctx)return;
@@ -73,12 +76,13 @@ export function AdventureCanvas(props:Props){
     let origin={x:Infinity,y:Infinity};
     let foreground:Scenery[]=[];
     let people:Agent[]=[];
-    let frameSize={width:312,height:184};
+    let frameSize={width:312,height:184},density=1;
     let frame=0;
     const resize=()=>{
       const {width,height}=element.getBoundingClientRect();
       if(width<=0||height<=0)return;
       frameSize=adventureFrameSize(width,height);
+      density=Math.min(5,Math.max(2,Math.ceil(width/frameSize.width*window.devicePixelRatio)));
     };
     const observer=new ResizeObserver(resize);
     observer.observe(element);
@@ -102,24 +106,28 @@ export function AdventureCanvas(props:Props){
       }
       const player=motionFrame(actorMotion,now);
       const {width:nativeWidth,height:nativeHeight}=frameSize;
-      if(element.width!==nativeWidth||element.height!==nativeHeight){
-        element.width=nativeWidth;element.height=nativeHeight;
+      if(element.width!==nativeWidth*density||element.height!==nativeHeight*density){
+        element.width=nativeWidth*density;element.height=nativeHeight*density;
+        ctx.setTransform(density,0,0,density,0,0);
         ctx.imageSmoothingEnabled=false;
         origin={x:Infinity,y:Infinity};
       }
       const {x,y}=adventureCamera({x:(player.x+.5)*TILE,y:(player.y+.84)*TILE},frameSize,
         {width:map.width*TILE,height:map.height*TILE});
-      viewport.current={x,y};
+      viewport.current={x,y,width:nativeWidth,height:nativeHeight};
       const grid={x:Math.floor(x/TILE)-1,y:Math.floor(y/TILE)-1};
       const cols=Math.ceil(nativeWidth/TILE)+4,rows=Math.ceil(nativeHeight/TILE)+4;
-      const restage=!samePoint(grid,origin)||previous?.map!==map||previous?.region!==region;
+      const restage=!samePoint(grid,origin)||previous?.map!==map||previous?.region!==region||
+        previous&&(waterSeason(previous.world)!==waterSeason(world)||
+          previous.world.terrainCells!==world.terrainCells);
       if(restage){
         origin=grid;
-        background.width=cols*TILE;background.height=rows*TILE;
+        background.width=cols*TILE*density;background.height=rows*TILE*density;
+        ground.setTransform(density,0,0,density,0,0);
         paintAdventureGround(ground,world,region,map,origin,cols,rows);
         foreground=sceneScenery(view,origin,cols,rows);
       }
-      ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y);
+      ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y,cols*TILE,rows*TILE);
       if(restage||previous?.world.agents!==world.agents){
         people=world.agents.filter(a=>a.id!==actor.id&&a.x>=origin.x&&
           a.x<origin.x+cols&&a.y>=origin.y&&a.y<origin.y+rows&&
@@ -176,8 +184,8 @@ export function AdventureCanvas(props:Props){
     onClick={event=>{
       const element=event.currentTarget,box=element.getBoundingClientRect();
       props.onSelect({
-        x:Math.floor((viewport.current.x+(event.clientX-box.left)*element.width/box.width)/TILE),
-        y:Math.floor((viewport.current.y+(event.clientY-box.top)*element.height/box.height)/TILE),
+        x:Math.floor((viewport.current.x+(event.clientX-box.left)*viewport.current.width/box.width)/TILE),
+        y:Math.floor((viewport.current.y+(event.clientY-box.top)*viewport.current.height/box.height)/TILE),
       });
     }}/>;
 }

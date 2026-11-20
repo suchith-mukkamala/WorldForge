@@ -17,6 +17,11 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,overheadTerrainColor
 import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {paintTerrainMosaic} from './terrainCellArt';
+import {springFlood,waterSeason} from './riverSeasons';
+import {boardwalkSite,regionalBuildingStyle} from './riverArchitecture';
+import type {RiverCourse} from './riverCourses';
+import {paintRiverCourse} from './riverCourseArt';
+import {visibleAtlasSite} from './riverDiscoveries';
 import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
@@ -46,10 +51,10 @@ const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
 export const sceneryZoomTier=(zoom:number)=>zoom>=ATLAS_TOWN_ZOOM?2:zoom>=2?1:0;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
-  world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
+  world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,river,
   followId=null,personId=null,fillWidth=false,onFollowPosition,onDiagnostics,
 }:{
-  world:World;brush:Brush;overlay:MapOverlay;
+  world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
   zoom?:number;speed?:number;followId?:number|null;personId?:number|null;fillWidth?:boolean;
@@ -59,7 +64,12 @@ export function WorldCanvas({
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const mapWidth=world.width*CELL,mapHeight=world.height*CELL;
   const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
-  const density=atlasLevel(zoom)!=='world'&&mapWidth*mapHeight*4<=10_000_000?2:1;
+  // Integer multiples of the eight-square lattice make every top-down square
+  // the same size on the backing surface as well as in world coordinates.
+  const cellPixels=8*Math.max(1,Math.min(zoom>=5?5:zoom>=2?3:2,
+    Math.floor(Math.sqrt(12_000_000/(world.width*world.height))/8)));
+  const density=cellPixels/CELL;
+  const season=waterSeason(world);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
@@ -73,7 +83,7 @@ export function WorldCanvas({
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     street:boolean;regional:boolean;
     terrainCells:World['terrainCells'];
-    width:number;height:number;
+    width:number;height:number;season:string;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
   const prior=useRef<{year:number;day:number;seed:number;
@@ -115,7 +125,7 @@ export function WorldCanvas({
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
-      stamp.terrainCells!==terrainCells||
+      stamp.terrainCells!==terrainCells||stamp.season!==season||
       stamp.woodland!==woodland||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
@@ -189,7 +199,7 @@ export function WorldCanvas({
         const prop=upland&&h>=175?'snowstone':terrainBlockProp(detail.motif);
         if(prop){
           const tree=isTreeKind(prop);
-          paintBlockScenery(ctx,blockProp(prop,detail.variant),{x:px+CELL/2,y:py+CELL/2},
+          paintBlockScenery(ctx,blockProp(prop,detail.variant,season),{x:px+CELL/2,y:py+CELL/2},
             OVERHEAD_BLOCK_VIEW,tree?(showBuildings?.78:.39):showBuildings?.56:.28);
         }else if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y,!showBuildings);
         else if(showBuildings)paintTerrainDetail(ctx,detail,x,y);
@@ -201,7 +211,7 @@ export function WorldCanvas({
         ctx.fillRect(px,py,CELL,CELL);
       }
     }
-    if(drainage){
+    if(drainage&&overlay==='watersheds'){
       const center=(i:number)=>({x:(i%W+.5)*CELL,y:(Math.floor(i/W)+.5)*CELL});
       for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
         const a=center(from),end=center(to);
@@ -227,16 +237,27 @@ export function WorldCanvas({
         for(const id of s.infrastructure?.roads??[]){
           if(!worn.has(id))continue;
           const x=id%W,y=Math.floor(id/W);
-          ctx.fillStyle='rgba(239,207,151,.65)';
+          const walk=boardwalkSite(world,id);
+          if(!walk&&springFlood(world,id))continue;
+          ctx.fillStyle=walk?'#9c7956':'rgba(239,207,151,.65)';
           ctx.fillRect(x*CELL+1,y*CELL+2,CELL-2,2);
+          if(walk){
+            ctx.fillStyle='#dac197';
+            ctx.fillRect(x*CELL+1,y*CELL+2,1,2);ctx.fillRect(x*CELL+4,y*CELL+2,1,2);
+          }
         }
       }
     }
     if(sceneryTier>0&&overlay==='terrain')for(const road of world.transport?.roads??[]){
       if(road.condition<=25)continue;
       const x=road.index%W,y=Math.floor(road.index/W);
-      ctx.fillStyle='rgba(229,185,111,.85)';
+      const walk=boardwalkSite(world,road.index);
+      ctx.fillStyle=walk?'#ae8b63':'rgba(229,185,111,.85)';
       ctx.fillRect(x*CELL,y*CELL+2,CELL,3);
+      if(walk){
+        ctx.fillStyle='#d9bd8c';
+        for(let beam=0;beam<CELL;beam+=2)ctx.fillRect(x*CELL+beam,y*CELL+2,1,3);
+      }
       if(showBuildings){
         ctx.fillStyle='#725f53';ctx.fillRect(x*CELL+2,y*CELL+3,2,1);
       }
@@ -253,6 +274,7 @@ export function WorldCanvas({
       for(const ruin of world.ruins??[])
         paintBlockScenery(ctx,blockLandmark('ruin'),center(ruin.x,ruin.y),OVERHEAD_BLOCK_VIEW,1.08);
       for(const site of world.ancientSites??[]){
+        if(!visibleAtlasSite(world,site))continue;
         const model=blockLandmark(site.kind,(site.visits??site.visitors.length)>0);
         paintBlockScenery(ctx,model,center(site.x,site.y),OVERHEAD_BLOCK_VIEW,1.08);
       }
@@ -267,7 +289,8 @@ export function WorldCanvas({
       const buildings=world.settlements.flatMap(s=>s.infrastructure?.buildings??[]);
       buildings.sort((a,b)=>a.y-b.y);
       for(const b of buildings){
-        const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,world.settings.seed));
+        const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,world.settings.seed),
+          {regional:regionalBuildingStyle(world,b)});
         const art=blockBuildingArt(buildingArtRef.current,model,OVERHEAD_BLOCK_VIEW,1.2);
         if(!art)continue;
         const scale=blockStampScale(buildingVisualScale(b.type));
@@ -284,7 +307,7 @@ export function WorldCanvas({
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
       terrainCells,
-      width:canvas.width,height:canvas.height};
+      width:canvas.width,height:canvas.height,season};
     }
     else if(stamp)stamp.tiles=world.tiles;
     const current=new Map(world.agents.map(a=>[a.id,
@@ -364,6 +387,9 @@ export function WorldCanvas({
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0,mapWidth,mapHeight);
       if(overlay==='terrain')visible.drawImage(atmosphere,0,0);
+      if(river&&overlay==='terrain')paintRiverCourse(visible,river,index=>({
+        x:(index%W+.5)*CELL,y:(Math.floor(index/W)+.5)*CELL,
+      }),mapWidth/(canvas.clientWidth||mapWidth));
       if(overlay==='trade'){
         visible.fillStyle='rgba(12,29,33,.26)';
         visible.fillRect(0,0,mapWidth,mapHeight);
@@ -521,7 +547,7 @@ export function WorldCanvas({
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,world.woodland,
     world.settings.regionalGeography,
-    terrainCells,density,mapWidth,mapHeight,
+    terrainCells,season,density,mapWidth,mapHeight,river,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
     world.topography,world.dayOfYear,world.ancientSites,world.trails]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
@@ -551,7 +577,7 @@ export function WorldCanvas({
     }else onSelect(x,y);
   };
   return <canvas ref={canvasRef} className="evo-world-canvas"
-    width={mapWidth*density} height={mapHeight*density}
+    width={world.width*cellPixels} height={world.height*cellPixels}
     style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
     aria-label={'Interactive fantasy map: '+world.width+' by '+world.height+

@@ -25,8 +25,8 @@ export function depthRenderDensity(zoom:number,size:{width:number;height:number}
  * A smaller memory budget than the moving layer avoids doubling the GPU
  * cost of the entire continent, and the cache only rebuilds on scene edits. */
 export function depthSceneryDensity(zoom:number,size:{width:number;height:number}):number{
-  const requested=zoom>=4?4:zoom>=2?2:1;
-  const safe=Math.floor(Math.sqrt(6_000_000/
+  const requested=zoom>=6?6:zoom>=4?4:zoom>=2?3:2;
+  const safe=Math.floor(Math.sqrt(12_000_000/
     Math.max(1,size.width*size.height)));
   return Math.max(1,Math.min(requested,safe));
 }

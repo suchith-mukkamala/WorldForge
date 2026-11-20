@@ -2,13 +2,14 @@ import type {World} from './engine';
 import type {createDepthProjector} from './depthProjection';
 import {DEPTH_RISE} from './depthProjection';
 import {pickTerrainFace,type DepthPicking} from './depthTerrain';
-import {TERRAIN_CELL_SIDE,TERRAIN_ELEVATION_UNITS,terrainRenderGrid} from './terrainCells';
+import {TERRAIN_ELEVATION_UNITS} from './terrainCells';
+import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {cellPixel,firstTerrainSquare,shadeTerrainPixel,terrainPixel,
   terrainSwatches} from './terrainCellArt';
 import {SEA_LEVEL} from './topography';
 
 type Projector=ReturnType<typeof createDepthProjector>;
-const SIDE=TERRAIN_CELL_SIDE;
+const SIDE=VISUAL_TERRAIN_SIDE;
 const wallColors=new WeakMap<Uint32Array,{east:Uint32Array;south:Uint32Array}>();
 function terrainWalls(palette:Uint32Array){
   const cached=wallColors.get(palette);
@@ -27,7 +28,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D,hit:DepthPicking,w:
   const {width,height}=hit,image=ctx.createImageData(width,height);
   const pixels=new Uint32Array(image.data.buffer);
   pixels.fill(terrainPixel(sea));
-  const grid=terrainRenderGrid(w),{columns,rows,ground,water}=grid;
+  const grid=surfaceGrid(w),{columns,rows,ground,water,shore}=grid;
   const {frontX,frontY}=projector;
   const step=1/SIDE;
   const origin=projector.projectSmooth(-.5,-.5,0);
@@ -62,12 +63,16 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D,hit:DepthPicking,w:
       if(frontX&&zX<z){
         e.x=horizontal[1].x;e.y=horizontal[1].y+(z-zX)*rise;
         f.x=horizontal[0].x;f.y=horizontal[0].y+(z-zX)*rise;
-        pickTerrainFace(hit,horizontal,index, pixels,cellPixel(grid,i,walls.east,paint.grain));
+        const color=shore[i]===Shore.ground?cellPixel(grid,i,walls.east,paint.grain):
+          shadeTerrainPixel(cellPixel(grid,i,palette,paint.grain),.71);
+        pickTerrainFace(hit,horizontal,index,pixels,color);
       }
       if(frontY&&zY<z){
         e.x=vertical[1].x;e.y=vertical[1].y+(z-zY)*rise;
         f.x=vertical[0].x;f.y=vertical[0].y+(z-zY)*rise;
-        pickTerrainFace(hit,vertical,index, pixels,cellPixel(grid,i,walls.south,paint.grain));
+        const color=shore[i]===Shore.ground?cellPixel(grid,i,walls.south,paint.grain):
+          shadeTerrainPixel(cellPixel(grid,i,palette,paint.grain),.83);
+        pickTerrainFace(hit,vertical,index,pixels,color);
       }
       pickTerrainFace(hit,top,index,pixels,cellPixel(grid,i,palette,paint.grain));
     }

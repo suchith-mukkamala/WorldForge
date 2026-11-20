@@ -67,11 +67,12 @@ function unpackCells(packed:string,count:number):Uint8Array|null{
 
 type TerrainBase={seed:number;regional:boolean;columns:number;rows:number;
   ground:Uint16Array;material:Uint8Array;cover:Uint8Array;reservoir:Uint8Array;
-  runoff:{index:number;tier:number}[];rainSpots:number[]};
+  lakeLevels?:Uint16Array;runoff:{index:number;tier:number}[];rainSpots:number[]};
+export type TerrainSource=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'terrainCells'>;
 const bases=new WeakMap<Topography,TerrainBase>();
 const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
 
-function baseTerrain(w:World):TerrainBase{
+function baseTerrain(w:TerrainSource):TerrainBase{
   const topography=topographyForWorld(w);
   const {width,height,tiles}=w,{seed}=w.settings,regional=!!w.settings.regionalGeography;
   const cached=bases.get(topography);
@@ -81,6 +82,8 @@ function baseTerrain(w:World):TerrainBase{
   const cover=new Uint8Array(count),reservoir=new Uint8Array(count);
   const runoff:TerrainBase['runoff']=[],rainSpots:number[]=[];
   const drainage=hydrologyForWorld(w),heights=topography.heights;
+  const lakeLevels=tiles.some((t,i)=>t.biome==='water'&&heights[i]>SEA_LEVEL)?
+    new Uint16Array(count):undefined;
   const beds=new Uint8Array(count);
   const lowPoint=new Uint32Array(tiles.length);
   for(let tile=0;tile<tiles.length;tile++){
@@ -102,12 +105,14 @@ function baseTerrain(w:World):TerrainBase{
           (shore&&biome!=='wetland'&&grain<.68)||biome==='wasteland'||
           biome==='savanna'&&grain<.51?SAND:SOIL;
       reservoir[index]=+water;
+      const level=water&&lakeLevels?Math.max(SEA,heights[tile]*UNITS):SEA;
+      if(water&&lakeLevels)lakeLevels[index]=level;
       material[index]=layer;
       cover[index]=layer===ROCK?0:Math.round(3+grain*9);
       const slope=(col+.5-SIDE/2)/SIDE*slopeX+(row+.5-SIDE/2)/SIDE*slopeY;
       const altitude=heights[tile]+(water?0:slope)+(grain-.5)*3;
       ground[index]=Math.round(clamp(altitude*UNITS,
-        water?4:SEA+cover[index],water?SEA-2:255*UNITS));
+        water?4:SEA+cover[index],water?level-2:255*UNITS));
       if(ground[index]<basin){basin=ground[index];lowPoint[tile]=index;}
     }
   }
@@ -143,7 +148,7 @@ function baseTerrain(w:World):TerrainBase{
     if(material[i]===SOIL)material[i]=SAND;
     ground[i]=Math.max(SEA+cover[i],ground[i]-4-beds[i]*2);
   }
-  const base={seed,regional,columns,rows,ground,material,cover,reservoir,runoff,rainSpots};
+  const base={seed,regional,columns,rows,ground,material,cover,reservoir,lakeLevels,runoff,rainSpots};
   bases.set(topography,base);
   return base;
 }
@@ -152,7 +157,7 @@ type Surface={base:TerrainBase;cells:Uint8Array;summaries:(TerrainCellSummary|un
 const surfaces=new WeakMap<TerrainCells,Surface>();
 const decoded=new WeakMap<TerrainCells,Uint8Array>();
 
-function terrainSurface(w:World):Surface|undefined{
+function terrainSurface(w:TerrainSource):Surface|undefined{
   if(!w.terrainCells)return;
   const base=baseTerrain(w),saved=surfaces.get(w.terrainCells);
   if(saved?.base===base)return saved;
@@ -169,7 +174,7 @@ const renderGrids=new WeakMap<TerrainBase|Surface,TerrainGrid>();
 
 /** The atlas uses one complete square grid, including worlds with no
  * simulated cell state. The draw buffers are derived and never saved. */
-export function terrainRenderGrid(w:World):TerrainGrid{
+export function terrainRenderGrid(w:TerrainSource):TerrainGrid{
   const surface=terrainSurface(w),base=surface?.base??baseTerrain(w),key=surface??base;
   const existing=renderGrids.get(key);
   if(existing)return existing;
@@ -202,7 +207,8 @@ function saveCells(w:World,cells:Uint8Array):void{
  * water receives runoff at sea level. Two buffers bound how far water can
  * travel in one pass and keep each source from transferring the same water twice. */
 export function routeTerrainWater(columns:number,rows:number,ground:Uint16Array,
-  depth:Uint8Array,reservoir:Uint8Array,passes=8):{water:Uint8Array;flow:Uint8Array}{
+  depth:Uint8Array,reservoir:Uint8Array,passes=8,lakeLevels?:Uint16Array):
+    {water:Uint8Array;flow:Uint8Array}{
   const count=columns*rows,flow=new Uint8Array(count);
   let water=depth.slice(),next=new Uint8Array(count);
   for(let pass=0;pass<passes;pass++){
@@ -216,7 +222,7 @@ export function routeTerrainWater(columns:number,rows:number,ground:Uint16Array,
         if((!dx&&!dy)||x+dx<0||x+dx>=columns||y+dy<0||y+dy>=rows)continue;
         const other=i+dy*columns+dx;
         if(!reservoir[other]&&next[other]>=MAX_DEPTH)continue;
-        const difference=head-(reservoir[other]?SEA:ground[other]+water[other]);
+        const difference=head-(reservoir[other]?(lakeLevels?.[other]??SEA):ground[other]+water[other]);
         const grade=difference*(dx&&dy?.7071:1);
         if(difference>=2&&grade>bestGrade){receiver=other;bestGrade=grade;drop=difference;}
       }
@@ -253,7 +259,7 @@ export function advanceTerrainCells(w:World):void{
     if(terrainHash(index,w.year,base.seed+1373)<.65)
       depth[index]=Math.min(MAX_DEPTH,depth[index]+3);
   }
-  const {water,flow}=routeTerrainWater(base.columns,base.rows,ground,depth,base.reservoir);
+  const {water,flow}=routeTerrainWater(base.columns,base.rows,ground,depth,base.reservoir,8,base.lakeLevels);
   for(let i=0;i<erosion.length;i++){
     const resistance=base.material[i]===SAND?6:14;
     if(!base.reservoir[i]&&erosion[i]<base.cover[i]&&flow[i]>=resistance)erosion[i]++;
@@ -290,7 +296,7 @@ export function terrainCellsIn(w:World,tile:number):TerrainCell[]|undefined{
     const eroded=Math.min(base.cover[index],cells[index]&15);
     const remaining=base.cover[index]-eroded;
     const ground=base.ground[index]-eroded;
-    const water=base.reservoir[index]?SEA-ground:cells[index]>>>4;
+    const water=base.reservoir[index]?(base.lakeLevels?.[index]??SEA)-ground:cells[index]>>>4;
     return {height:ground/UNITS,material:MATERIALS[remaining?base.material[index]:ROCK],
       coverDepth:remaining/UNITS,waterDepth:water/UNITS,eroded:eroded/UNITS};
   });

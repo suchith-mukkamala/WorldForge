@@ -2,6 +2,7 @@ import {useState} from 'react';
 import type {World} from './engine';
 import {SPECIES_INFO} from './engine';
 import {TOPICS,TOPIC_INFO,knows} from './knowledge';
+import {visibleAtlasSite} from './riverDiscoveries';
 
 export function KnowledgeCodex({world,onFindOnMap,onOpenPerson}:{world:World;
   onFindOnMap:(x:number,y:number)=>void;onOpenPerson:(id:number)=>void}){
@@ -11,7 +12,8 @@ export function KnowledgeCodex({world,onFindOnMap,onOpenPerson}:{world:World;
   const learned=world.agents.filter(a=>(a.knowledge?.length??0)>0).length;
   const archived=world.settlements.filter(s=>(s.archives?.length??0)>0).length;
   const underway=world.agents.filter(a=>a.mind?.expedition);
-  const sites=(world.ancientSites??[]).filter(s=>filter==='all'||
+  const knownSites=(world.ancientSites??[]).filter(s=>visibleAtlasSite(world,s));
+  const sites=knownSites.filter(s=>filter==='all'||
     filter==='unexplored'&&(s.visits??s.visitors.length)===0||
     filter==='collapsed'&&s.origin==='collapsed');
   const artifacts=world.agents.flatMap(a=>(a.artifacts??[]).map(v=>({a,v})));
@@ -26,7 +28,7 @@ export function KnowledgeCodex({world,onFindOnMap,onOpenPerson}:{world:World;
         <span><b>{firsts.size}/{TOPICS.length}</b><small>DISCOVERED IDEAS</small></span>
         <span><b>{underway.length}</b><small>ON EXPEDITIONS</small></span>
         <span><b>{world.expeditions?.length??0}</b><small>RECORDED JOURNEYS</small></span>
-        <span><b>{world.ancientSites?.length??0}</b><small>KNOWN TO YOU</small></span>
+        <span><b>{knownSites.length}</b><small>KNOWN TO YOU</small></span>
       </div>
     </header>
     <div className="evo-expedition-switch" aria-label="Knowledge and expeditions views">
@@ -102,7 +104,7 @@ export function KnowledgeCodex({world,onFindOnMap,onOpenPerson}:{world:World;
         <div className="evo-expedition-log">
           {underway.slice(0,18).map(a=>{
             const plan=a.mind!.expedition!;
-            const site=world.ancientSites?.find(s=>s.id===plan.siteId);
+            const site=knownSites.find(s=>s.id===plan.siteId);
             return <button key={a.id} onClick={()=>onOpenPerson(a.id)}>
               <b>Explorer #{a.id}</b><span>{plan.stage} ·
                 {' '}{site?.name??site?.kind??'unknown destination'} ·

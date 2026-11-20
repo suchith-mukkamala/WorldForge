@@ -3,6 +3,7 @@ import {terrainHash,terrainNoise} from './biomeGeneration';
 import {generateHydrology,hydrologyForWorld,riverBanks,type Hydrology} from './hydrology';
 import {SEA_LEVEL,TOPOGRAPHY_VERSION,topographyForWorld,type Topography} from './topography';
 import {terrainRuggedness} from './terrainPhysics';
+import {nearbyDelta} from './riverArchitecture';
 
 const uplift:Record<Biome,number>={
   plains:0,forest:0,mountain:1,cave:.82,wasteland:.22,volcanic:1,water:0,
@@ -102,7 +103,7 @@ export function generateRegionalTopography(width:number,height:number,
 }
 
 const seaCache=new WeakMap<Hydrology,Set<number>>();
-function oceanBasins(w:World,drainage:Hydrology):Set<number>{
+export function oceanBasins(w:World,drainage:Hydrology):Set<number>{
   const cached=seaCache.get(drainage);
   if(cached)return cached;
   const {width,height,tiles}=w,basins=new Set<number>();
@@ -115,7 +116,8 @@ function oceanBasins(w:World,drainage:Hydrology):Set<number>{
   return basins;
 }
 
-function shallowCrossing(w:World,index:number,downstream:number,heights:readonly number[]):boolean{
+export function shallowCrossing(w:World,index:number,downstream:number,heights:readonly number[]):boolean{
+  if(downstream<0)return false;
   const x=index%w.width,y=Math.floor(index/w.width);
   const dx=downstream%w.width-x,dy=Math.floor(downstream/w.width)-y;
   for(const side of [-1,1]){
@@ -151,8 +153,9 @@ export function settlementGeography(w:World,index:number):{score:number;landform
   }
   const sheltered=coastal&&seaTiles>=3&&seaTiles/area<.43&&heights[index]<=SEA_LEVEL+30;
   const valley=banks[index]>.26&&heights[index]<118&&rugged<=17;
-  const landform=sheltered?'Sheltered harbor':crossing?'River crossing':valley?'Fertile valley':undefined;
-  const score=(sheltered?.54:0)+(crossing?.37:0)+(valley?.26:0)+banks[index]*.29-
+  const delta=coastal&&nearbyDelta(w,{x,y},3)!==undefined;
+  const landform=delta?'Fishing delta':sheltered?'Sheltered harbor':crossing?'River crossing':valley?'Fertile valley':undefined;
+  const score=(delta?.55:0)+(sheltered?.54:0)+(crossing?.37:0)+(valley?.26:0)+banks[index]*.29-
     Math.min(.55,rugged*.012)-Math.max(0,heights[index]-130)*.003;
   return {score,landform};
 }

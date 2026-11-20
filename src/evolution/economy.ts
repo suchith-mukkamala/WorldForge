@@ -7,6 +7,7 @@ import {traitProfile} from './family';
 import {knows} from './knowledge';
 import {MATERIALS,prepareInfrastructure,type Material,type Ore} from './construction';
 import {terrainFarmFactor,terrainStepEffort} from './terrainPhysics';
+import {nearbyDelta,terraceSite} from './riverArchitecture';
 import {bridgeTiles,caravanPace,considerTradeBridge,findTradeRoute} from './transport';
 import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
 import {accordBetween} from './institutions';
@@ -218,22 +219,31 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
 function farmAndFeed(w:World,s:Settlement,residents:Agent[]):void{
   const e=s.economy!,farms=s.infrastructure?.buildings.filter(b=>
     b.type==='farm'&&b.stage==='complete')??[];
+  const milled=buildings(s,'watermill')>0;
+  const fishingDock=nearbyDelta(w,s)!==undefined?s.infrastructure?.buildings.find(b=>
+    b.type==='dock'&&b.stage==='complete'&&nearbyDelta(w,b,4)!==undefined):undefined;
   let produced=0;
   for(const a of residents){
     if(a.work?.job!=='farmer'||a.work.settlementId!==s.id)continue;
     const farm=farms.find(b=>distance(a,b)<=3);
     if(!farm)continue;
-    const tile=w.tiles[farm.y*w.width+farm.x];
+    const index=farm.y*w.width+farm.x,tile=w.tiles[index];
     const fertile=tile.biome==='plains'||tile.biome==='wetland'?1.2:
       tile.biome==='savanna'?1.04:tile.biome==='forest'?1:
       ['wasteland','volcanic'].includes(tile.biome)?.55:.8;
     const technique=knows(a,'agriculture')?1.24:.55;
     const irrigation=knows(a,'irrigation')?1.25:1;
     produced+=Math.min(4.6,(1.25+(a.development?.skills.foraging??0)*.018)*
-      fertile*terrainFarmFactor(w,farm.y*w.width+farm.x)*
+      fertile*terrainFarmFactor(w,index,terraceSite(w,index))*
       w.settings.resourceLevel*technique*irrigation*
-      (e.specialty==='agriculture'?1.2:1));
+      (e.specialty==='agriculture'?1.2:1)*(milled?1.18:1));
     a.energy=rounded(Math.max(1,a.energy-.4));
+  }
+  if(fishingDock)for(const a of residents){
+    if(distance(a,fishingDock)>2||a.energy<42||a.age<traitProfile(a.ancestry).maturity||
+      a.work?.tradeId||a.development?.career!=='forager'&&a.work?.job!=='trader')continue;
+    produced+=.8+(a.development?.skills.foraging??0)*.01;
+    a.energy=rounded(Math.max(1,a.energy-.25));
   }
   produced=rounded(Math.min(produced,Math.max(0,capacity(s,'food')-e.food)));
   e.food=rounded(e.food+produced);e.produced=produced;

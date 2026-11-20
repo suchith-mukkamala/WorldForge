@@ -66,7 +66,7 @@ function foragePatch(world:World,region:AdventureRegion,board:Point):Point|undef
 function townBeyond(gate:AdventureGate,townId:number|undefined):number|undefined{
   const place=gate.destination;
   if(place.kind==='town')return place.id;
-  if(place.kind==='wild')return;
+  if(place.kind!=='route')return;
   if(place.to.id!==townId)return place.to.id;
   return place.from.kind==='town'?place.from.id:undefined;
 }

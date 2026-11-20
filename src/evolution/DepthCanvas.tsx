@@ -11,6 +11,11 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain';
 import {paintDepthCells} from './depthCellTerrain';
+import {waterSeason} from './riverSeasons';
+import {regionalBuildingStyle} from './riverArchitecture';
+import type {RiverCourse} from './riverCourses';
+import {paintRiverCourse} from './riverCourseArt';
+import {visibleAtlasSite} from './riverDiscoveries';
 import {paintTradeRoutes} from './tradeRoutes';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
@@ -104,8 +109,8 @@ function renderTerrain(w:World,overlay:MapOverlay,
   projector:Projector,blockView:SceneryView,
   sceneryDensity:number,showBuildings:boolean,street:boolean){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights,seed=w.settings.seed;
-  const drainage=overlay==='watersheds'||overlay==='terrain'?
-    hydrologyForWorld(w):null;
+  const drainage=overlay==='watersheds'?hydrologyForWorld(w):null;
+  const season=waterSeason(w);
   const multiShore=isMultiIslandLayout(w.settings.layout);
   const tiled=overlay==='terrain'||overlay==='trade';
   const ocean=tiled?coastalDepth(W,H,i=>w.tiles[i].biome==='water'):null;
@@ -185,7 +190,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
         const prop=upland&&height>=175?'snowstone':terrainBlockProp(detail.motif);
         const tree=isTreeKind(prop);
         if(prop&&(tree||showBuildings)){
-          paintBlockScenery(ctx,blockProp(prop,detail.variant),p,blockView,
+          paintBlockScenery(ctx,blockProp(prop,detail.variant,season),p,blockView,
             tree?(showBuildings?1.05:.73):.74);
         }else{
           paintDepthSurfaceDetail(ctx,biome,p,x,y,seed);
@@ -199,6 +204,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
   if(showBuildings){
     if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
     for(const site of w.ancientSites??[]){
+      if(!visibleAtlasSite(w,site))continue;
       const p=projector.project(site.x,site.y,heights[site.y*W+site.x]);
       paintBlockScenery(ctx,blockLandmark(site.kind,(site.visits??site.visitors.length)>0),
         p,blockView,1.1);
@@ -239,7 +245,8 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
   }
   const candidates=visibleDistrictBuildings(projected,detail).flatMap(entry=>{
     const {building:b,p}=entry;
-    const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,w.settings.seed));
+    const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,w.settings.seed),
+      {regional:regionalBuildingStyle(w,b)});
     const art=blockBuildingArt(cache,model,blockView,1.2);
     if(!art)return [];
     const scale=blockStampScale(buildingVisualScale(b.type));
@@ -291,10 +298,10 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   }
 }
 
-export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
+export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,
   followId=null,personId=null,fillWidth=false,onFollowPosition}:{
-  world:World;brush:Brush;overlay:MapOverlay;
+  world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
   relief?:number;camera?:DepthCamera;followId?:number|null;personId?:number|null;fillWidth?:boolean;
@@ -317,7 +324,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     terrainCells:World['terrainCells'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
-    detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;
+    detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;season:string;
     siteKey:string;occupiedKey:string;street:boolean;regional:boolean}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
@@ -334,6 +341,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
   const density=depthRenderDensity(zoom,size);
   const sceneryDensity=depthSceneryDensity(zoom,size);
+  const season=waterSeason(world);
   useEffect(()=>{
     const canvas=canvasRef.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
@@ -364,7 +372,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const occupiedKey=showBuildings&&overlay==='terrain'?structureKey:'';
     const regional=!!world.settings.regionalGeography;
     const siteKey=showBuildings?[
-      ...(world.ancientSites??[]).map(site=>
+      ...(world.ancientSites??[]).filter(site=>visibleAtlasSite(world,site)).map(site=>
         [site.id,site.x,site.y,site.kind,!!(site.visits??site.visitors.length)].join(':')),
       ...(world.ruins??[]).map(ruin=>[ruin.id,ruin.x,ruin.y,'collapsed'].join(':')),
     ].join('|'):'';
@@ -373,7 +381,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||!reusePicking||landChanged||stamp.topography!==world.topography||
       stamp.woodland!==woodland||
-      stamp.terrainCells!==terrainCells||
+      stamp.terrainCells!==terrainCells||stamp.season!==season||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
       stamp.detail!==zoomDetailTier||stamp.showBuildings!==showBuildings||
@@ -390,7 +398,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     stampRef.current={tiles:world.tiles,topography:world.topography,woodland,
       terrainCells,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
-      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,
+      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,
       sceneryDensity,showBuildings,siteKey,occupiedKey,street:showResidents,regional};
     // Only painted residents need animation coordinates. Tracking every agent
     // previously allocated thousands of points on every simulation commit,
@@ -460,6 +468,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
           projector.project(index%world.width,Math.floor(index/world.width),heights[index]),
           size.width/(canvas.clientWidth||size.width));
       }
+      if(river&&overlay==='terrain'){
+        const elevations=topographyForWorld(world).heights;
+        paintRiverCourse(ctx,river,index=>projector.projectSmooth(index%world.width,
+          Math.floor(index/world.width),elevations[index]),size.width/(canvas.clientWidth||size.width));
+      }
       const interpolated=new Map<number,Point>(),walking=new Set<number>();
       const strides=new Map<number,0|1|2|3>();
       for(const [id,target] of positions){
@@ -488,7 +501,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
   },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
-    terrainCells,camera.yaw,camera.pitch,followId,personId,
+    terrainCells,season,river,camera.yaw,camera.pitch,followId,personId,
     showBuildings,showResidents,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);

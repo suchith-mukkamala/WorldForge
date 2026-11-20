@@ -35,6 +35,7 @@ export function WorldCreator({
     livingBiomes:current.livingBiomes??true,
     regionalGeography:true,
     regionalBiomes:current.regionalBiomes??true,
+    riverlands:current.riverlands??true,
     landforms:current.landforms??DEFAULT_LANDFORMS,
     terrainCells:current.terrainCells??true,
   }));
@@ -42,15 +43,15 @@ export function WorldCreator({
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
-  const {seed,layout,livingBiomes,landforms,regionalBiomes}=draft;
+  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands}=draft;
   const map=useMemo(()=>{
-    const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes};
+    const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes,riverlands};
     const terrain=generateWorldLandscape(width,height,settings);
     const tiles=terrain.biomes.map(biome=>({biome,food:0}));
     const landscape={width,height,tiles,settings,topography:terrain.topography};
     const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined};
     return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
-  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes]);
+  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes,riverlands]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -147,7 +148,7 @@ export function WorldCreator({
                 </button>
                 <button type="button" onClick={()=>setDraft(settings=>({...settings,
                   seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms,
-                  regionalBiomes:current.regionalBiomes??false}))}
+                  regionalBiomes:current.regionalBiomes??false,riverlands:current.riverlands??false}))}
                   title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>
               <small className="evo-seed-hint">A fresh seed is chosen for each new world.
@@ -177,6 +178,13 @@ export function WorldCreator({
                 onChange={e=>update('regionalBiomes',e.target.checked)}/>
               <span><b>REGIONAL BIOMES</b>
                 <small>Include taiga, wetlands and savanna where the climate suits them.</small>
+              </span>
+            </label>
+            <label className="evo-hybrid-toggle" htmlFor="evo-riverlands">
+              <input id="evo-riverlands" type="checkbox" checked={draft.riverlands}
+                onChange={e=>update('riverlands',e.target.checked)}/>
+              <span><b>RIVERLANDS</b>
+                <small>Add glacial lakes, canyons, calderas, barrier islands, and seasonal floods.</small>
               </span>
             </label>
             <label className="evo-hybrid-toggle" htmlFor="evo-living-biomes">
