@@ -28,7 +28,7 @@ describe('v1.9.4 — deterministic vegetation and rocky scenery',()=>{
     expect(terrainDetailAt('mountain',5,8,19,220).motif).toBe('snowstone');
     expect(['boulder','scree']).toContain(
       terrainDetailAt('mountain',5,8,19,135).motif);
-    expect(['oak','pine','fern']).toContain(
+    expect(['oak','pine','birch','fern']).toContain(
       terrainDetailAt('forest',5,8,19,135).motif);
     expect(['crystal','stalagmite']).toContain(
       terrainDetailAt('cave',5,8,19,150).motif);

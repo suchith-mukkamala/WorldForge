@@ -3,6 +3,7 @@ import {createWorld,isWorld,population,WORLD_SIZES} from './engine';
 import {generateSeedTerrain,geographyForSeed,landmassCount} from './worldGeography';
 import {compactWorld,readSavedWorld} from './storage';
 import {coastalDepth} from './oceanDepth';
+import {generateWorldLandscape} from './worldLandscape';
 
 describe('seeded world geography',()=>{
   const [width,height]=WORLD_SIZES.small;
@@ -48,6 +49,26 @@ describe('seeded world geography',()=>{
     expect(classic.agents).toEqual(legacy.agents);
     expect(classic.rngState).toBe(legacy.rngState);
     expect(readSavedWorld(compactWorld(legacy))).toEqual(legacy);
+  });
+
+  it('previews, generates and saves regional habitats and their landmarks',()=>{
+    const settings={seed:321721,size:'small',layout:'continents',landforms:'varied',
+      regionalGeography:true,regionalBiomes:true,livingBiomes:true,terrainCells:true} as const;
+    const preview=generateWorldLandscape(width,height,settings),world=createWorld(settings);
+    const legacy=generateWorldLandscape(width,height,{...settings,regionalBiomes:false});
+    expect(world.tiles.map(tile=>tile.biome)).toEqual(preview.biomes);
+    expect(world.topography).toEqual(legacy.topography);
+    for(const biome of ['taiga','wetland','savanna']){
+      expect(preview.biomes.filter(b=>b===biome).length).toBeGreaterThan(50);
+      expect(legacy.biomes).not.toContain(biome);
+    }
+    for(const kind of ['watchtower','standing-stones'])
+      expect(world.ancientSites?.some(site=>site.kind===kind)).toBe(true);
+    const restored=readSavedWorld(compactWorld(world));
+    expect(restored?.settings.regionalBiomes).toBe(true);
+    expect(restored?.tiles).toEqual(world.tiles);
+    expect(restored?.ancientSites).toEqual(world.ancientSites);
+    expect(restored?.terrainCells).toEqual(world.terrainCells);
   });
 
   it('shades open water by its real distance from land without wrapping map edges',()=>{

@@ -1,7 +1,7 @@
 /** Evolution Lab v0.7 — deterministic settlement construction.
  * Every change is driven by the world tick, not by map zoom or UI visibility.
  */
-import type {Agent,Settlement,Species,World} from './engine';
+import {BIOME_INFO,type Agent,type Settlement,type Species,type World} from './engine';
 import {traitProfile} from './family';
 import {knows,TOPICS} from './knowledge';
 import {harvestDeposit,type ResourceDeposit,
@@ -12,7 +12,7 @@ import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
 import {wornPathTiles} from './trailNetwork';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
-  'workshop','market','dock','communal'] as const;
+  'workshop','market','dock','communal','granary'] as const;
 export type BuildingType=typeof BUILDING_TYPES[number];
 export type BuildingStage='foundation'|'frame'|'finishing'|'complete'|
   'abandoned'|'ruin';
@@ -49,12 +49,14 @@ export const COSTS:Record<BuildingType,{materials:MaterialStock;labor:number}>={
   market:{materials:{wood:11,stone:8,clay:7},labor:19},
   dock:{materials:{wood:14,stone:5,clay:4},labor:18},
   communal:{materials:{wood:11,stone:9,clay:9},labor:21},
+  granary:{materials:{wood:13,stone:6,clay:7},labor:18},
 };
 export const BUILDING_LABELS:Record<BuildingType,string>={
   shelter:'Shelter',house:'Residence',farm:'Farm',storage:'Storehouse',
   well:'Well',workshop:'Workshop',communal:'Communal hall',
   market:'Marketplace',
   dock:'Harbor dock',
+  granary:'Raised granary',
 };
 export const ARCHITECTURE:Record<Species,{name:string;wall:string;
   roof:string;trim:string}>={
@@ -156,6 +158,9 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
     ((a.development?.values.community??50)-50)*.008,0);
   const farmTarget=Math.max(1,Math.ceil(s.population/20));
   const homeNeed=Math.max(0,unhomed.length);
+  const storesGrain=s.infrastructure!.land.some(i=>
+    ['wetland','savanna','taiga'].includes(w.tiles[i].biome));
+  const harvestReady=buildings.some(b=>b.type==='farm'&&complete(b));
   const unmet:Record<BuildingType,number>={
     shelter:count('shelter')+count('house')===0?18:0,
     house:homeNeed?Math.min(22,6+homeNeed*2.1):0,
@@ -172,6 +177,7 @@ function chooseProject(w:World,s:Settlement,residents:Agent[]):BuildingType|null
       count('dock')<Math.max(1,Math.ceil(s.population/120))?9.2:0,
     communal:residents.length>=6&&count('communal')<
       Math.max(1,Math.ceil(s.population/45))?8+Math.max(-2,Math.min(2,votes)):0,
+    granary:storesGrain&&adultCount>=4&&harvestReady&&count('granary')===0?24:0,
   };
   // Worker guilds can advocate for public needs, never directly place sites.
   for(const g of w.institutions?.guilds??[]){
@@ -217,10 +223,12 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
       tile.biome==='wasteland'?2:0;
     const nearbyRoad=[id-1,id+1,id-w.width,id+w.width].some(n=>roads.has(n));
     const productive=type==='farm'?
-      (tile.biome==='plains'?11:tile.biome==='forest'?8:-5):
+      (tile.biome==='plains'?11:tile.biome==='wetland'?10:
+        tile.biome==='savanna'?9:tile.biome==='forest'?8:-5):
       type==='well'?([id-1,id+1,id-w.width,id+w.width]
         .some(n=>w.tiles[n]?.biome==='water')?9:1):
       type==='workshop'?(['mountain','cave'].includes(tile.biome)?7:2):
+      type==='granary'?(tile.biome==='wetland'?9:Math.max(0,7-near)):
       type==='storage'?Math.max(0,7-near):Math.max(0,6-near);
     const score=productive-near*.8-hazard+(nearbyRoad?4:0)-
       terrainBuildPenalty(w,id)*(type==='farm'?1.4:.7)+
@@ -463,8 +471,7 @@ function applyBenefits(w:World,s:Settlement):void{
       if(!inWorld(w,x,y))continue;
       const t=w.tiles[position(w,x,y)];
       if(t.biome==='water')continue;
-      const original={plains:7.5,forest:9.5,mountain:5,cave:4.5,
-        wasteland:4.7,volcanic:4.1}[t.biome];
+      const original=BIOME_INFO[t.biome].food;
       // Cultivation speeds replenishment of harvested tiles without creating
       // food above the land's ecological carrying capacity.
       t.food=round(Math.min(original*w.settings.resourceLevel,

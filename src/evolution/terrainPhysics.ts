@@ -31,7 +31,8 @@ export function terrainStepEffort(w:World,from:number,to:number):number{
   const heights=topographyForWorld(w).heights;
   const difference=heights[to]-heights[from];
   const steep=Math.abs(difference);
-  return (1+steep/180+Math.max(0,difference)/60)*(terrainCellSummary(w,to)?.footing??1);
+  const soft=w.tiles[to].biome==='wetland'?1.18:1;
+  return (1+steep/180+Math.max(0,difference)/60)*(terrainCellSummary(w,to)?.footing??1)*soft;
 }
 
 /** Highest surrounding drop/rise: a proxy for construction difficulty. */

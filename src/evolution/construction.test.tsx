@@ -10,6 +10,7 @@ import {ARCHITECTURE,BUILDING_TYPES,COSTS,advanceConstruction,
 import {SettlementView} from './SettlementView';
 import {WorldCanvas} from './WorldCanvas';
 import {compactWorld,readSavedWorld} from './storage';
+import {settlementStockRoom} from './economy';
 
 const placeAt=(w:World,x:number,y:number):Settlement=>({
   id:w.nextSettlementId++,species:'human',name:'Test Haven',x,y,founded:w.year,
@@ -29,10 +30,11 @@ function activeCommunity(seed=44){
 }
 
 describe('Evolution Lab v0.7 — living settlements and construction',()=>{
-  it('tracks nine building types, material costs and four distinct architectures',()=>{
-    expect(BUILDING_TYPES).toHaveLength(9);
+  it('tracks ten building types, material costs and four distinct architectures',()=>{
+    expect(BUILDING_TYPES).toHaveLength(10);
     expect(BUILDING_TYPES).toContain('market');
     expect(BUILDING_TYPES).toContain('dock');
+    expect(BUILDING_TYPES).toContain('granary');
     for(const t of BUILDING_TYPES){
       expect(COSTS[t].labor).toBeGreaterThan(0);
       expect(Object.values(COSTS[t].materials).reduce((a,b)=>a+b,0))
@@ -57,6 +59,31 @@ describe('Evolution Lab v0.7 — living settlements and construction',()=>{
     expect(advanced.trails?.every(t=>t.wear>0&&t.wear<=4.5)).toBe(true);
     expect(advanced.ruins).toEqual([]);
     expect(isWorld(advanced)).toBe(true);
+  });
+
+  it('starts a granary beside farms in regional terrain and adds storage when built',()=>{
+    const {w,settlement:s}=activeCommunity();
+    const infra=s.infrastructure!;
+    infra.stock={wood:100,stone:100,clay:100};
+    const plots=infra.land.filter(i=>Math.max(
+      Math.abs(i%w.width-s.x),Math.abs(Math.floor(i/w.width)-s.y))>=2);
+    for(const [offset,type] of (['house','farm'] as const).entries()){
+      const site=plots[offset];
+      infra.buildings.push({id:offset+1,type,x:site%w.width,y:Math.floor(site/w.width),
+        culture:'human',stage:'complete',progress:100,condition:100,
+        started:0,spent:{...COSTS[type].materials},labor:COSTS[type].labor});
+    }
+    infra.nextBuildingId=3;
+    const wetland=plots[2];
+    w.tiles[wetland]={biome:'wetland',food:8};
+    const capacity=settlementStockRoom(s,'food');
+    advanceConstruction(w,[]);
+    const granary=infra.buildings.find(b=>b.type==='granary');
+    expect(granary).toBeDefined();
+    expect(settlementStockRoom(s,'food')).toBe(capacity);
+    Object.assign(granary!,{stage:'complete',progress:100,
+      spent:{...COSTS.granary.materials},labor:COSTS.granary.labor});
+    expect(settlementStockRoom(s,'food')).toBe(capacity+130);
   });
 
   it('lets real citizens propose and gradually build from gathered supplies and labor',()=>{

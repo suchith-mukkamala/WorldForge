@@ -1,6 +1,5 @@
 import {describe,expect,it} from 'vitest';
 import {seededBiome,biomeHome} from './biomeGeneration';
-import {BIOMES} from './engine';
 
 const layout=(seed:number)=>Array.from({length:64*64},(_,i)=>
   seededBiome(i%64,Math.floor(i/64),64,64,seed));
@@ -17,7 +16,7 @@ describe('seeded geography',()=>{
   it('preserves every habitat needed by the four founding races',()=>{
     for(const seed of [73,1234,9441,18001]){
       const biomes=new Set(layout(seed));
-      for(const biome of BIOMES)expect(biomes.has(biome)).toBe(true);
+      expect(biomes).toEqual(new Set(['plains','forest','mountain','cave','wasteland','volcanic','water']));
     }
   });
 });

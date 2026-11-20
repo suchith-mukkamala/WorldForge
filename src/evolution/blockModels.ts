@@ -3,6 +3,7 @@ import type {Species} from './engine';
 import type {AncientKind} from './knowledge';
 import type {Point} from './motion';
 import type {TerrainMotif} from './terrainDetails';
+import type {TreeKind} from './biomeTrees';
 
 export const BLOCK_FACES=[
   {dx:0,dy:0,dz:1,quad:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],light:1.18},
@@ -50,7 +51,7 @@ class BlockGrid {
   }
 }
 
-export type BlockProp='oak'|'pine'|'boulder'|'snowstone'|'basalt'|'crystal'|
+export type BlockProp=TreeKind|'boulder'|'snowstone'|'basalt'|'crystal'|
   'flowers'|'grass'|'reeds'|'fern'|'scrub'|'embers'|'lantern';
 
 export function terrainBlockProp(motif:TerrainMotif):BlockProp|undefined{
@@ -58,6 +59,58 @@ export function terrainBlockProp(motif:TerrainMotif):BlockProp|undefined{
   if(motif==='pebbles'||motif==='scree')return 'boulder';
   if(motif==='stalagmite')return 'crystal';
   return motif;
+}
+
+function regionalTree(grid:BlockGrid,kind:TreeKind,variant:number):void{
+  const tall=variant%2,lean=variant%3-1;
+  if(kind==='birch'){
+    grid.box(-1,-1,0,2,2,11+tall,'#d0c8a7');
+    grid.box(-1,0,2,1,1,1,'#706d65');
+    grid.box(0,-1,4,1,1,1,'#706d65');
+    grid.box(-2,-2,6,4,4,4,'#73a872');
+    grid.box(-1+lean,-2,9,4,4,3,'#8cb47b');
+    grid.box(-1+lean,-1,12,2,2,2+tall,'#aac88a');
+  }else if(kind==='spruce'||kind==='larch'){
+    const spruce=kind==='spruce',tiers=spruce?4:3;
+    const foliage=spruce?['#315954','#3f746e','#5f9181']:
+      ['#77643b','#a88848','#c9a861'];
+    grid.box(-1,-1,0,2,2,spruce?8:12,'#725744');
+    for(let tier=0;tier<tiers;tier++){
+      const radius=tiers-tier,z=(spruce?3:5)+tier*(spruce?3:4)+tall;
+      grid.box(-radius,-radius+1,z,radius*2,radius*2-2,1,foliage[0]);
+      grid.box(-radius+1,-radius,z,radius*2-2,radius*2,1,foliage[1]);
+      grid.box(1-radius,1-radius,z+1,Math.max(2,radius*2-2),Math.max(2,radius*2-2),2,foliage[1]);
+      grid.box(-1,-1,z+2,2,2,spruce?2:1,foliage[2]);
+    }
+    grid.box(-1,0,16+tall,1,1,1,spruce&&variant===2?'#a5bab2':foliage[2]);
+  }else if(kind==='willow'){
+    grid.box(-1,-1,0,2,2,8,'#796543');
+    grid.box(-3,-2,6,6,4,4,'#71925e');
+    grid.box(-4,-3,7,8,6,2,'#7d9e66');
+    grid.box(-2+lean,-2,9,5,4,2,'#a0b578');
+    for(let i=0;i<4;i++){
+      const z=2+(i+variant)%3;
+      grid.box(-4+i*2,2,z,1,1,7-z,'#567c59');
+      grid.box(-3+i*2,-3,z+1,1,1,6-z,'#65895a');
+    }
+    grid.box(3,-1,4,1,2,4,'#63865b');
+  }else if(kind==='acacia'){
+    grid.box(-1,-1,0,2,2,5,'#85674a');
+    grid.box(0,-1,3,2,2,4,'#977953');
+    grid.box(-3,-1,5,4,2,1,'#866c4f');
+    grid.box(-4,-2,6,5,4,2,'#758450');
+    grid.box(0,-3,7,6,6,2,'#849457');
+    grid.box(-3,-1,8,6,3,1,'#9da963');
+    grid.box(1,-2,9,4,4,1,'#a7ae68');
+  }else if(kind==='baobab'){
+    grid.box(-2,-2,0,4,4,7,'#a68e6b');
+    grid.box(-1,-1,7,2,2,3,'#b09771');
+    grid.box(-4,0,6,8,1,2,'#a78e69');
+    grid.box(0,-3,7,1,6,2,'#a78e69');
+    grid.box(-4,-1,8,3,3,2,'#8f9e60');
+    grid.box(2,-2,8,3,3,2,'#9da76f');
+    grid.box(-1,-3,10,3,3,2,'#a7b071');
+  }
 }
 
 export function blockProp(kind:BlockProp,seed:number):BlockModel{
@@ -87,6 +140,10 @@ export function blockProp(kind:BlockProp,seed:number):BlockModel{
         grid.box(2,-3,7,2,3,2,leaves[2]);
         grid.box(2,-2,9,1,2,1,leaves[3]);
       }
+      return;
+    }
+    if(kind==='birch'||kind==='spruce'||kind==='larch'||kind==='willow'||kind==='acacia'||kind==='baobab'){
+      regionalTree(grid,kind,variant);
       return;
     }
     if(kind==='boulder'||kind==='snowstone'||kind==='basalt'||kind==='crystal'){
@@ -143,13 +200,13 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
   const roofRidge=culture==='dwarf'?'#8e9bb1':culture==='elf'?'#70a882':roof;
   return model([type,culture,stage,tier,variant,quarter,roof].join(':'),grid=>{
     const width=type==='communal'?12:type==='shelter'?6:
-      type==='storage'||tier>=2||type==='house'&&variant===2?10:8;
+      type==='storage'||type==='granary'||tier>=2||type==='house'&&variant===2?10:8;
     const depth=type==='communal'||type==='house'&&variant===1?10:type==='shelter'?6:8;
     const x=-width/2,y=-depth/2;
     const wall=tier>=2&&culture==='human'?'#a6a096':style.wall;
     const h=type==='communal'?9:type==='shelter'||type==='storage'?4+tier:5+tier;
     const foundation=type==='farm'?'#795c45':type==='dock'?WOOD:STONE;
-    grid.box(x,y,0,width,depth,1,foundation);
+    if(type!=='granary'||stage!=='complete')grid.box(x,y,0,width,depth,1,foundation);
     if(stage==='foundation'||stage==='abandoned'||stage==='ruin'){
       grid.box(x,y,1,width,1,1,wall);
       grid.box(x,y+1,1,1,depth-1,1,wall);
@@ -204,6 +261,21 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
         grid.box(col,y,6,1,depth,1,stripe);
         grid.box(col,y+1,7,1,depth-2,1,stripe);
       }
+      return;
+    }
+    if(type==='granary'){
+      for(const u of [x,x+width-2])for(const v of [y,y+depth-2]){
+        grid.box(u,v,0,2,2,1,STONE);
+        grid.box(u,v,1,1,1,3,BEAM);
+      }
+      grid.box(x,y,4,width,depth,1,BEAM);
+      grid.box(x+1,y+1,5,width-2,depth-2,4,'#b69863');
+      grid.box(-1,y+depth-2,5,2,1,3,'#5d4b3e');
+      grid.box(-1,y+depth-1,3,2,1,2,PLANK);
+      grid.box(-1,y+depth,0,2,1,3,PLANK);
+      grid.box(x+1,y+depth-2,7,2,1,1,style.trim);
+      grid.box(x+width-3,y+depth-2,7,2,1,1,style.trim);
+      steppedRoof(grid,x,y,9,width,depth,culture,roof,roofRidge);
       return;
     }
     grid.box(x,y,1,width,depth,h,wall);
@@ -270,6 +342,25 @@ export function blockSettlement(stage:SettlementStage,culture:Species):BlockMode
 
 export function blockLandmark(kind:AncientKind,visited=false):BlockModel{
   return model('site:'+kind+':'+visited,grid=>{
+    if(kind==='standing-stones'){
+      grid.box(-4,-4,0,8,8,1,'#72766a');
+      for(const [x,y,height] of [[-3,-3,5],[1,-3,7],[-4,1,6],[2,1,8],[0,3,4]]){
+        grid.box(x,y,1,2,2,height,'#92968b');
+        grid.box(x,y,height+1,1,2,1,'#a7a58d');
+      }
+      grid.box(-1,-1,1,2,2,2,visited?'#c8b672':'#9e9e84');
+      return;
+    }
+    if(kind==='watchtower'){
+      grid.box(-4,-4,0,8,8,2,'#83827b');
+      grid.box(-3,-3,2,6,6,10,'#979592');
+      grid.box(-1,2,2,2,1,4,'#465051');
+      grid.box(-4,-4,11,8,8,2,'#a6aa9f');
+      for(const [x,y] of [[-4,-4],[2,-4],[-4,2],[2,2]])grid.box(x,y,13,2,2,2,'#878f87');
+      grid.box(1,-2,13,2,2,2,'#706450');
+      if(visited)grid.box(1,-2,15,2,2,1,'#d3a969');
+      return;
+    }
     const stone=kind==='library'||kind==='archive'?'#86999e':
       kind==='crypt'||kind==='vault'?'#928b9a':'#969495';
     const cap=visited?'#bcc5a5':'#c1b6a6';

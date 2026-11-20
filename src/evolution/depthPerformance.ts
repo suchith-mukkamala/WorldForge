@@ -10,7 +10,7 @@ export function uncrowdedDistrictBuildings<T extends {building:Building;x:number
   buildings:readonly T[]):T[]{
   const priority=(b:Building)=>b.stage!=='complete'?9:
     b.type==='communal'?8:b.type==='market'||b.type==='workshop'?7:
-    b.type==='well'||b.type==='storage'||b.type==='dock'?6:
+    b.type==='well'||b.type==='storage'||b.type==='granary'||b.type==='dock'?6:
     b.type==='farm'?4:1+buildingTier(b)*.2;
   const occupied=new Map<string,ArtBounds[]>(),kept:T[]=[];
   const cells=(box:ArtBounds)=>{
@@ -51,7 +51,7 @@ export function visibleDistrictBuildings<T extends {building:Building;x:number;y
   const priority=(b:Building)=>{
     if(b.stage==='foundation'||b.stage==='frame'||b.stage==='finishing')return 9;
     if(b.type==='communal'||b.type==='market'||b.type==='workshop')return 7;
-    if(b.type==='well'||b.type==='dock'||b.type==='storage')return 6;
+    if(b.type==='well'||b.type==='dock'||b.type==='storage'||b.type==='granary')return 6;
     if(b.type==='farm')return 4;
     return 1+buildingTier(b);
   };

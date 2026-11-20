@@ -5,11 +5,12 @@ import type {MapOverlay} from './WorldCanvas';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
+import {isTreeKind} from './biomeTrees';
 import {woodlandCover,woodlandHabitat} from './woodland';
-import {ATLAS_SEA,TILE_SHADE,TILE_SHEEN,atlasRivers,atlasTileGrain,highlandColor,occupiedScenery,
+import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
-import {depthTileQuarters,pickTerrainFace,
-  terrainRiverEdge,type DepthPicking} from './depthTerrain';
+import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain';
+import {paintDepthCells} from './depthCellTerrain';
 import {paintTradeRoutes} from './tradeRoutes';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
@@ -37,9 +38,6 @@ import {atlasBuildingAt,atlasBuildingBounds,paintAtlasBuilding,
 import {blockBuilding,blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
 import {BLOCK_ANCHOR,blockBuildingArt,blockStampScale,depthBlockView,
   paintBlockScenery} from './blockScenery';
-import {TERRAIN_CELL_SIDE,type TerrainCell} from './terrainCells';
-import {terrainCellColor,terrainCellPatch} from './terrainCellArt';
-import {useTerrainFocus} from './useTerrainFocus';
 
 const BASINS=['#385e60','#4a6758','#536072','#637056',
   '#42637c','#6c695e','#456f68','#606d77'];
@@ -51,6 +49,9 @@ const PALETTE:Record<Biome,{top:string;right:string;left:string}>={
   wasteland:{top:'#a28182',right:'#624e63',left:'#795c6d'},
   volcanic:{top:'#a46a73',right:'#513e59',left:'#74465d'},
   water:{top:'#367c9b',right:'#1d4b72',left:'#285f83'},
+  taiga:{top:'#57877c',right:'#325451',left:'#3e6e67'},
+  wetland:{top:'#639581',right:'#3d655f',left:'#4e7b6b'},
+  savanna:{top:'#ad9868',right:'#746148',left:'#8e7952'},
 };
 const HEIGHT_COLORS=['#234966','#3b7182','#5d866b','#74936a',
   '#8c9a72','#b19f7c','#9b918b','#bcc1c4','#e8e7d9'];
@@ -79,53 +80,6 @@ function rockFace(ctx:CanvasRenderingContext2D,hit:DepthPicking,
   }
 }
 
-function paintSurface(ctx:CanvasRenderingContext2D,hit:DepthPicking,
-  corners:readonly [Pt,Pt,Pt,Pt],color:string,index:number,grain?:number){
-  polygon(ctx,corners,color);
-  if(grain!==undefined){
-    const quarters=depthTileQuarters(corners),light=grain&3;
-    polygon(ctx,quarters[light],TILE_SHEEN,false);
-    polygon(ctx,quarters[light^3],TILE_SHADE,false);
-  }
-  pickTerrainFace(hit,corners,index);
-}
-
-const CELL_SIDE=TERRAIN_CELL_SIDE;
-const surfaceHeight=(cell:TerrainCell)=>cell.height+cell.waterDepth;
-
-function paintSmallTerrainTile(ctx:CanvasRenderingContext2D,hit:DepthPicking,projector:Projector,
-  world:World,index:number,heights:readonly number[],order:readonly number[],
-  patch:Map<number,TerrainCell[]>,cells:readonly TerrainCell[]):void{
-  const tx=index%world.width,ty=Math.floor(index/world.width);
-  const neighborHeight=(col:number,row:number)=>{
-    const x=tx+Math.floor(col/CELL_SIDE),y=ty+Math.floor(row/CELL_SIDE);
-    if(x<0||x>=world.width||y<0||y>=world.height)return SEA_LEVEL;
-    const tile=y*world.width+x;
-    const neighbor=patch.get(tile)?.[((row+CELL_SIDE)%CELL_SIDE)*CELL_SIDE+(col+CELL_SIDE)%CELL_SIDE];
-    return neighbor?surfaceHeight(neighbor):heights[tile];
-  };
-  for(const offset of order){
-    const col=offset%CELL_SIDE,row=Math.floor(offset/CELL_SIDE);
-    const x=tx-.5+col/CELL_SIDE,y=ty-.5+row/CELL_SIDE,next=1/CELL_SIDE;
-    const cell=cells[offset],height=surfaceHeight(cell);
-    const corners=[projector.projectSmooth(x,y,height),projector.projectSmooth(x+next,y,height),
-      projector.projectSmooth(x+next,y+next,height),projector.projectSmooth(x,y+next,height)];
-    const edge=(a:number,b:number,below:number)=>{
-      const drop=projector.projectSmooth(x,y,below).y-corners[0].y;
-      const shade=cell.waterDepth>0?'#2e657d':cell.material==='sand'?'#786747':
-        cell.material==='soil'?'#395747':'#4b596e';
-      rockFace(ctx,hit,corners[a],corners[b],drop,shade,index,false);
-    };
-    if(projector.frontX>0)edge(1,2,neighborHeight(col+1,row));
-    if(projector.frontX<0)edge(3,0,neighborHeight(col-1,row));
-    if(projector.frontY>0)edge(2,3,neighborHeight(col,row+1));
-    if(projector.frontY<0)edge(0,1,neighborHeight(col,row-1));
-    const color=terrainCellColor(cell);
-    polygon(ctx,corners,color,false);
-    ctx.strokeStyle=color;ctx.lineWidth=.2;ctx.stroke();
-    pickTerrainFace(hit,corners,index);
-  }
-}
 function tileColor(w:World,index:number,overlay:MapOverlay,height:number,
   drainage:ReturnType<typeof hydrologyForWorld>|null):string{
   const tile=w.tiles[index];
@@ -148,7 +102,7 @@ type SceneryView=ReturnType<typeof depthBlockView>;
 function renderTerrain(w:World,overlay:MapOverlay,
   ctx:CanvasRenderingContext2D,hit:DepthPicking,
   projector:Projector,blockView:SceneryView,
-  sceneryDensity:number,showBuildings:boolean,street:boolean,cellFocus:Pt|null){
+  sceneryDensity:number,showBuildings:boolean,street:boolean){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights,seed=w.settings.seed;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
@@ -156,10 +110,6 @@ function renderTerrain(w:World,overlay:MapOverlay,
   const tiled=overlay==='terrain'||overlay==='trade';
   const ocean=tiled?coastalDepth(W,H,i=>w.tiles[i].biome==='water'):null;
   const occupied=overlay==='terrain'?occupiedScenery(w):null;
-  const patch=cellFocus?terrainCellPatch(w,cellFocus):null;
-  const cellOrder=patch?Array.from({length:CELL_SIDE*CELL_SIDE},(_,i)=>i).sort((a,b)=>
-    projector.order(a%CELL_SIDE,Math.floor(a/CELL_SIDE))-
-    projector.order(b%CELL_SIDE,Math.floor(b/CELL_SIDE))):[];
   const waterLinks=new Map<number,{other:number;tier:number;downstream:boolean}[]>();
   if(drainage)for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
     for(const [index,other] of [[from,to],[to,from]]){
@@ -172,36 +122,47 @@ function renderTerrain(w:World,overlay:MapOverlay,
     ctx.canvas.width/sceneryDensity,ctx.canvas.height/sceneryDensity);
   hit.ids.fill(0);
   ctx.imageSmoothingEnabled=false;
-  const ordered=Array.from({length:W*H},(_,i)=>i);
+  const ordered=Array.from({length:W*H},(_,i)=>i).filter(i=>multiShore||
+    visibleCoastTile(i%W,Math.floor(i/W),W,H,w.tiles[i].biome,seed));
   ordered.sort((a,b)=>projector.order(a%W,Math.floor(a/W))-
     projector.order(b%W,Math.floor(b/W))||a%W-b%W);
+  const groundVisible=(index:number,p:Pt)=>{
+    const x=Math.floor(p.x*sceneryDensity),y=Math.floor(p.y*sceneryDensity);
+    const at=hit.ids[y*hit.width+x];
+    return !at||at===index+1;
+  };
+  if(ocean)paintDepthCells(ctx,hit,w,projector,sceneryDensity,ordered,ATLAS_SEA,index=>{
+    const x=index%W,y=Math.floor(index/W),biome=w.tiles[index].biome;
+    const grain=pixelTerrainHash(x,y,seed);
+    const cover=woodlandHabitat(biome)?woodlandCover(w.woodland,index):undefined;
+    const upland=w.settings.landforms?highlandColor(biome,heights[index],grain):undefined;
+    return {color:biome==='water'?OCEAN_TONES[ocean[index]]:
+      upland??surfaceColor(biome,x,y,seed,cover),grain,water:biome==='water'};
+  });
   for(const index of ordered){
       const x=index%W,y=Math.floor(index/W),height=heights[index];
-      if(!multiShore&&!visibleCoastTile(x,y,W,H,w.tiles[index].biome,
-        w.settings.seed))continue;
       const p=projector.project(x,y,height);
       const corners=projector.tileCorners(x,y,height);
       const biome=w.tiles[index].biome,palette=PALETTE[biome];
       const cover=tiled&&woodlandHabitat(biome)?woodlandCover(w.woodland,index):undefined;
       const grain=tiled?pixelTerrainHash(x,y,seed):0;
       const fx=projector.frontX,fy=projector.frontY;
-      const cells=patch?.get(index);
-      if(!cells&&biome!=='water'){
-        const edge=(a:number,b:number,below:number,stone:string)=>{
-          const drop=projector.project(x,y,below).y-p.y;
-          rockFace(ctx,hit,corners[a],corners[b],drop,stone,index,showBuildings);
-        };
-        if(fx>0)edge(1,2,x===W-1?SEA_LEVEL:heights[index+1],palette.right);
-        if(fx<0)edge(3,0,x===0?SEA_LEVEL:heights[index-1],palette.left);
-        if(fy>0)edge(2,3,y===H-1?SEA_LEVEL:heights[index+W],palette.left);
-        if(fy<0)edge(0,1,y===0?SEA_LEVEL:heights[index-W],palette.right);
+      if(!ocean){
+        if(biome!=='water'){
+          const edge=(a:number,b:number,below:number,stone:string)=>{
+            const drop=projector.project(x,y,below).y-p.y;
+            rockFace(ctx,hit,corners[a],corners[b],drop,stone,index,showBuildings);
+          };
+          if(fx>0)edge(1,2,x===W-1?SEA_LEVEL:heights[index+1],palette.right);
+          if(fx<0)edge(3,0,x===0?SEA_LEVEL:heights[index-1],palette.left);
+          if(fy>0)edge(2,3,y===H-1?SEA_LEVEL:heights[index+W],palette.left);
+          if(fy<0)edge(0,1,y===0?SEA_LEVEL:heights[index-W],palette.right);
+        }
+        polygon(ctx,corners,tileColor(w,index,overlay,height,drainage));
+        pickTerrainFace(hit,corners,index);
       }
-      const upland=tiled&&w.settings.landforms?highlandColor(biome,height,grain):undefined;
-      const color=ocean?(biome==='water'?OCEAN_TONES[ocean[index]]:
-        upland??surfaceColor(biome,x,y,seed,cover)):tileColor(w,index,overlay,height,drainage);
-      if(cells&&patch)paintSmallTerrainTile(ctx,hit,projector,w,index,heights,cellOrder,patch,cells);
-      else paintSurface(ctx,hit,corners,color,index,ocean?atlasTileGrain(biome,ocean[index],grain):undefined);
-      if(!cells)for(const {other,tier,downstream} of waterLinks.get(index)??[]){
+      const visible=!ocean||groundVisible(index,p);
+      if(visible)for(const {other,tier,downstream} of waterLinks.get(index)??[]){
         const bank=terrainRiverEdge(heights,projector,W,index,other);
         paintRiverSegment(ctx,p,bank,tier,overlay==='watersheds');
         if(downstream&&(fx&&other%W-x===fx||fy&&Math.floor(other/W)-y===fy)){
@@ -218,10 +179,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
       }
       const scenery=biome==='water'?ocean&&ocean[index]<=2&&grain%8===0:
         showBuildings?showAtlasScenery(biome,x,y,seed,street,cover):grain%8===0;
-      if(occupied&&!occupied.has(index)&&scenery){
+      if(visible&&occupied&&!occupied.has(index)&&scenery){
+        const upland=w.settings.landforms?highlandColor(biome,height,grain):undefined;
         const detail=terrainDetailAt(biome,x,y,seed,height,false,cover);
         const prop=upland&&height>=175?'snowstone':terrainBlockProp(detail.motif);
-        const tree=prop==='oak'||prop==='pine';
+        const tree=isTreeKind(prop);
         if(prop&&(tree||showBuildings)){
           paintBlockScenery(ctx,blockProp(prop,detail.variant),p,blockView,
             tree?(showBuildings?1.05:.73):.74);
@@ -352,7 +314,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     woodland:World['woodland'];
-    cellTile:number;terrainCells:World['terrainCells'];
+    terrainCells:World['terrainCells'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
     detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;
@@ -369,16 +331,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const zoomDetailTier=depthArtDetail(zoom);
   const level=atlasLevel(zoom);
   const showBuildings=level!=='world',showResidents=level==='street';
-  const fineTerrain=overlay==='terrain'&&!!world.terrainCells&&showResidents;
-  const terrainFocus=useTerrainFocus(canvasRef,fineTerrain,world.width,world.height,(x,y)=>{
-    const hit=pickingRef.current;
-    if(hit?.width!==size.width||hit.height!==size.height||x<0||x>=1||y<0||y>=1)return null;
-    const index=hit.ids[Math.floor(y*size.height)*size.width+Math.floor(x*size.width)]-1;
-    return index>=0?{x:index%world.width,y:Math.floor(index/world.width)}:null;
-  },[camera.yaw,camera.pitch,relief].join(':'));
-  const cellFocus=fineTerrain?(terrainFocus??selected):null;
-  const cellTile=cellFocus?cellFocus.y*world.width+cellFocus.x:-1;
-  const terrainCells=cellFocus?world.terrainCells:undefined;
+  const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
   const density=depthRenderDensity(zoom,size);
   const sceneryDensity=depthSceneryDensity(zoom,size);
   useEffect(()=>{
@@ -386,8 +339,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     if(!canvas||!ctx)return;
     const scenery=sceneryRef.current??document.createElement('canvas');
     const previousPicking=pickingRef.current;
-    const reusePicking=previousPicking?.width===size.width&&previousPicking.height===size.height;
-    const picking=reusePicking?previousPicking:{...size,ids:new Uint32Array(size.width*size.height)};
+    const pickScale=overlay==='terrain'||overlay==='trade'?sceneryDensity:1;
+    const pickWidth=size.width*pickScale,pickHeight=size.height*pickScale;
+    const reusePicking=previousPicking?.width===pickWidth&&previousPicking.height===pickHeight;
+    const picking=reusePicking?previousPicking:{width:pickWidth,height:pickHeight,
+      ids:new Uint32Array(pickWidth*pickHeight)};
     sceneryRef.current=scenery;pickingRef.current=picking;
     const atmosphere=atmosphereRef.current??document.createElement('canvas');
     atmosphereRef.current=atmosphere;
@@ -417,7 +373,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
     if(!stamp||!reusePicking||landChanged||stamp.topography!==world.topography||
       stamp.woodland!==woodland||
-      stamp.cellTile!==cellTile||stamp.terrainCells!==terrainCells||
+      stamp.terrainCells!==terrainCells||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
       stamp.detail!==zoomDetailTier||stamp.showBuildings!==showBuildings||
@@ -429,10 +385,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       overlay==='deposits'&&stamp.deposits!==world.deposits){
       backdrop.setTransform(sceneryDensity,0,0,sceneryDensity,0,0);
       renderTerrain(world,overlay,backdrop,picking,projector,blockView,
-        sceneryDensity,showBuildings,showResidents,cellFocus);
+        sceneryDensity,showBuildings,showResidents);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,woodland,
-      cellTile,terrainCells,
+      terrainCells,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
       yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,
       sceneryDensity,showBuildings,siteKey,occupiedKey,street:showResidents,regional};
@@ -532,7 +488,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     frameHandle=requestAnimationFrame(draw);
     return ()=>cancelAnimationFrame(frameHandle);
   },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
-    cellFocus,cellTile,terrainCells,camera.yaw,camera.pitch,followId,personId,
+    terrainCells,camera.yaw,camera.pitch,followId,personId,
     showBuildings,showResidents,onFollowPosition]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
@@ -548,8 +504,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       if(building){onSelect(building.x,building.y);return;}
     }
     const hit=pickingRef.current;
-    if(hit?.width!==size.width||hit.height!==size.height)return;
-    const index=hit.ids[y*hit.width+x]-1;
+    if(!hit)return;
+    const column=Math.floor(px/size.width*hit.width),row=Math.floor(py/size.height*hit.height);
+    const index=hit.ids[row*hit.width+column]-1;
     if(index<0||index>=world.tiles.length)return;
     apply(index%world.width,Math.floor(index/world.width));
   };

@@ -3,6 +3,7 @@
  * Hashing never advances the simulation RNG, even for legacy saved worlds.
  */
 import type {Biome} from './engine';
+import {biomeTreeAt,TREE_KINDS,type TreeKind} from './biomeTrees';
 
 export function woodlandPalette(plains:string,forest:string):string[]{
   const light=parseInt(plains.slice(1),16),dark=parseInt(forest.slice(1),16);
@@ -15,7 +16,7 @@ export function woodlandPalette(plains:string,forest:string):string[]{
   });
 }
 
-export type TerrainMotif='oak'|'pine'|'fern'|'grass'|'flowers'|'pebbles'|
+export type TerrainMotif=TreeKind|'fern'|'grass'|'flowers'|'pebbles'|
   'reeds'|'boulder'|'scree'|'snowstone'|'crystal'|'stalagmite'|
   'scrub'|'basalt'|'embers'|'ripples'|'shorefoam'|'none';
 export type TerrainDetail={motif:TerrainMotif;variant:0|1|2|3};
@@ -24,7 +25,7 @@ export type TerrainDetail={motif:TerrainMotif;variant:0|1|2|3};
  * tile. Its pixels come from the original painter, so both paths are identical.
  */
 const ATLAS_MOTIFS:readonly Exclude<TerrainMotif,'none'>[]=[
-  'oak','pine','fern','grass','flowers','pebbles','reeds','boulder',
+  ...TREE_KINDS,'fern','grass','flowers','pebbles','reeds','boulder',
   'scree','snowstone','crystal','stalagmite','scrub','basalt','embers',
   'ripples','shorefoam',
 ];
@@ -70,11 +71,11 @@ export function terrainDetailAt(biome:Biome,x:number,y:number,
   let motif:TerrainMotif='none';
   if(cover!==undefined&&(biome==='forest'||biome==='plains')){
     motif=(n&1023)/1024<cover*.9?
-      elevation>=140||n%3===0?'pine':'oak':
+      biomeTreeAt(biome,variant,elevation):
       shore&&n%4<2?'reeds':cover>.32&&n%3===0?'fern':
         n%5===0?'flowers':n%3===0?'grass':'none';
   }else if(biome==='forest'){
-    motif=n%9===0?'fern':elevation>=140||n%3===0?'pine':'oak';
+    motif=n%9===0?'fern':biomeTreeAt(biome,variant,elevation);
   }else if(biome==='plains'){
     motif=shore&&n%4<2?'reeds':n%8===0?'pebbles':
       n%5===0?'flowers':n%3===0?'grass':'none';
@@ -86,6 +87,12 @@ export function terrainDetailAt(biome:Biome,x:number,y:number,
     motif=n%4===0?'embers':'basalt';
   }else if(biome==='wasteland'){
     motif=n%3===0?'scrub':n%3===1?'pebbles':'none';
+  }else if(biome==='taiga'||biome==='wetland'||biome==='savanna'){
+    const forested=biome==='taiga'?.76:biome==='wetland'?.36:.22;
+    const density=cover===undefined?forested:forested*.45+cover*.6;
+    motif=(n&1023)/1024<density?biomeTreeAt(biome,variant,elevation):
+      biome==='taiga'?(n%2?'fern':'boulder'):
+        biome==='wetland'?'reeds':n%3?'grass':'scrub';
   }else if(biome==='water'){
     motif=shore&&n%3!==0?'shorefoam':n%4!==0?'ripples':'none';
   }
@@ -108,6 +115,14 @@ export function paintTerrainDetail(ctx:CanvasRenderingContext2D,
     case 'pine':
       p('#284a45',1,4,5,1);p('#2c715c',2,2,3,3);
       p('#6eaf87',3,0,1,3);p('#8dc6a0',2+v%2,2,1,1);break;
+    case 'spruce':case 'larch':
+      p('#6b543a',3,3,1,3);
+      p(detail.motif==='spruce'?'#407770':'#aa874f',2,2,3,3);
+      p(detail.motif==='spruce'?'#75a094':'#d2b665',3,0,1,3);break;
+    case 'birch':case 'willow':case 'acacia':case 'baobab':
+      p(detail.motif==='birch'?'#d2caae':'#886e4b',2,3,2,3);
+      p(detail.motif==='willow'?'#6d9366':'#8b9e57',0,2,6,2);
+      p('#aebd7e',1,1,4,1);break;
     case 'fern':
       p('#2d7759',1,4,5,1);p('#7eaf79',2,2,1,3);
       p('#5c9d6d',3,1,2,2);break;

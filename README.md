@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.17.0 — Biome Atlas** uses one four-by-four terrain grid across the entire map in both atlas views. Zoom and pan anywhere to inspect the same size of ground squares. New worlds add taiga spruce and larch, wetland willows, and savanna acacias and baobabs. Explore standing stones and a weathered watchtower in **Places**. Settlements farming in the new biomes can build raised granaries to store more food.
+
 - **v2.16.0 — Block Landscapes** adds sharper mountain ridges, river valleys and stepped highlands. Choose **Varied highlands**, **Alpine ranges** or **Rolling hills** under **New World → Relief**. Trees, roofs, walls, fields, rocks and landmarks are built from little cubes in both atlas views and outdoor Descend scenes. Orbit the raised atlas to see different faces of the same structures. Existing worlds keep their saved terrain and gain the new scenery.
 
 - **v2.15.0 — Material Terrain** divides terrain into four-by-four groups of small squares with their own elevations and layers of soil, sand or stone. Water runs downhill, pools and erodes sediment. Soft ground affects travel, and damp soil helps crops and woodland. Select a tile to inspect its cells and choose **Zoom to terrain cells** to see the steps around it. New worlds start with terrain cells enabled. Existing saves can enable them under **Map options**.

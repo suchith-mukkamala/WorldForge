@@ -13,6 +13,7 @@ import {personName} from './identity';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt,type TerrainDetail} from './terrainDetails';
+import {isTreeKind} from './biomeTrees';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {settlementSanitation} from './publicHealth';
 
@@ -29,8 +30,10 @@ const num=(n:number)=>n.toLocaleString('en-US');
 function TerrainScenery({detail,x,y}:{detail:TerrainDetail;x:number;y:number}){
   const v=detail.variant,kind=detail.motif;
   if(kind==='none')return null;
-  const castsShadow=['oak','pine','boulder','scree','snowstone','stalagmite',
+  const castsShadow=isTreeKind(kind)||['boulder','scree','snowstone','stalagmite',
     'basalt','embers'].includes(kind);
+  const conifer=kind==='pine'||kind==='spruce'||kind==='larch';
+  const needles=kind==='larch'?'#b49556':kind==='spruce'?'#4a8075':'#559e75';
   return <g data-terrain-motif={kind}>
     {castsShadow&&<rect x={x+5} y={y+22} width={18} height={3}
       fill="#132d35" opacity={.42}/>}
@@ -42,13 +45,21 @@ function TerrainScenery({detail,x,y}:{detail:TerrainDetail;x:number;y:number}){
       <rect x={x+9+v%2} y={y+2} width={9} height={6} fill="#86be88"/>
       <rect x={x+5} y={y+13} width={5} height={3} fill="#6baa74"/>
     </>}
-    {kind==='pine'&&<>
+    {conifer&&<>
       <rect x={x+11} y={y+15} width={4} height={10} fill="#6c5144"/>
-      <path d={`M${x+13} ${y+1}l-8 11h4l-6 8h20l-6-8h4z`}
-        fill="#205746" stroke="#183b3b" strokeWidth={1}/>
-      <path d={`M${x+13} ${y+3}l-5 8h5l-6 7h6`}
-        fill="#559e75"/>
-      <rect x={x+11} y={y+5+v} width={3} height={3} fill="#8bc5a0"/>
+      <rect x={x+4} y={y+14} width={18} height={6} fill={needles}/>
+      <rect x={x+7} y={y+8} width={12} height={8} fill={needles}/>
+      <rect x={x+10} y={y+3} width={6} height={6} fill={needles}/>
+      <rect x={x+11} y={y+5+v} width={3} height={3} fill="#b0bf8d"/>
+    </>}
+    {(kind==='birch'||kind==='willow'||kind==='acacia'||kind==='baobab')&&<>
+      <rect x={x+(kind==='baobab'?9:11)} y={y+9} width={kind==='baobab'?8:4} height={15}
+        fill={kind==='birch'?'#d4cbb0':'#8c7453'}/>
+      <rect x={x+(kind==='birch'?8:3)} y={y+6} width={kind==='birch'?12:21}
+        height={kind==='acacia'?5:8} fill={kind==='willow'?'#6d9366':'#8b9e57'}/>
+      <rect x={x+9+v%2} y={y+3} width={10} height={5} fill="#aebd7e"/>
+      {kind==='willow'&&[5,10,17,21].map(i=><rect key={i} x={x+i}
+        y={y+12} width={2} height={6+i%3} fill="#547c5b"/>)}
     </>}
     {kind==='fern'&&<>
       <path d={`M${x+12} ${y+23}V${y+9}M${x+12} ${y+15}l-7-5m7 8l8-7m-8 10l-6-4m6 0l6-4`}
@@ -175,6 +186,10 @@ function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
               <path d={`M${x+4} ${y+12}h18l-3 5h-12Z`} fill="#f5c96d"/>
               <path d={`M${x+9} ${y+12}l-1 5m8-5l1 5`} stroke="#a95e54"
                 strokeWidth={2}/>
+            </>:b.type==='granary'?<>
+              <rect x={x+5} y={y+16} width={16} height={3} fill="#c7a36b"/>
+              <rect x={x+6} y={y+19} width={3} height={4} fill="#50443d"/>
+              <rect x={x+17} y={y+19} width={3} height={4} fill="#50443d"/>
             </>:b.type==='communal'?<path d={`M${x+13} ${y+4}V${y-1}l7 3l-7 2`}
               stroke={style.trim} fill={style.roof} strokeWidth={1}/>
               :b.type==='workshop'?<>

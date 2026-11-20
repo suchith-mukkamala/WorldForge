@@ -13,7 +13,7 @@ type Geography=Pick<World,'width'|'height'|'tiles'|'settings'> &
 
 const base:Record<Biome,number>={
   water:38,plains:87,forest:99,mountain:174,cave:149,
-  wasteland:113,volcanic:185,
+  wasteland:113,volcanic:185,taiga:115,wetland:62,savanna:91,
 };
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 const hash=(x:number,y:number,seed:number)=>{

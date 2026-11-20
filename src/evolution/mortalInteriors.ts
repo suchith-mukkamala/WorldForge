@@ -43,6 +43,9 @@ export const INTERIOR_TEMPLATES:Record<BuildingType,InteriorTemplate>={
   communal:{name:'Communal hall',floor:'#9b8a71',wall:'#a18f80',props:[
     thing('bench',3,3),thing('bench',9,3),thing('table',6,4),
     thing('bench',3,5),thing('bench',9,5),thing('fire',6,2)]},
+  granary:{name:'Raised granary',floor:'#9b8059',wall:'#887553',props:[
+    thing('hay',2,2),thing('hay',3,2),thing('crate',6,2),thing('barrel',9,2),
+    thing('barrel',10,2),thing('crate',2,5),thing('crate',10,5),thing('table',6,4)]},
 };
 
 export function findMortalBuilding(world:World,reference:RoomReference):MortalBuilding|null{

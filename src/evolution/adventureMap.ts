@@ -11,7 +11,8 @@ import type {Building} from './construction';
 import type {Point} from './motion';
 import {ancientSiteName} from './knowledge';
 
-export type AdventureLandscape='meadow'|'woodland'|'coast'|'highland'|'ash';
+export type AdventureLandscape='meadow'|'woodland'|'coast'|'highland'|'ash'|
+  'taiga'|'wetlands'|'savanna';
 type Bounds={left:number;right:number;top:number;bottom:number};
 type Town={place:TownStop;settlement:Settlement;anchor:number;area:Set<number>};
 type Route={place:AdventureRoute;path:number[];fromName:string;toName:string;landmark?:true};
@@ -261,23 +262,28 @@ export function adventureMapFor(world:World):AdventureMap{
 const biomeLandscape:Record<Biome,AdventureLandscape>={
   plains:'meadow',forest:'woodland',mountain:'highland',cave:'highland',
   wasteland:'ash',volcanic:'ash',water:'coast',
+  taiga:'taiga',wetland:'wetlands',savanna:'savanna',
 };
 export const LANDSCAPE_NAME:Record<AdventureLandscape,string>={
   meadow:'Meadowlands',woodland:'Woodland',highland:'Highlands',
   ash:'Ashlands',coast:'Coast',
+  taiga:'Taiga',wetlands:'Wetlands',savanna:'Savanna',
 };
 const ROUTE_NAME:Record<AdventureLandscape,string>={
   meadow:'Meadow Trail',woodland:'Woodland Path',highland:'Highland Pass',
   ash:'Ashland Track',coast:'Coast Road',
+  taiga:'Spruce Trail',wetlands:'Marsh Path',savanna:'Grassland Track',
 };
 
 function landscapeAt(world:World,p:Point):AdventureLandscape{
+  const terrain=biomeLandscape[world.tiles[tile(world.width,p)].biome];
+  if(terrain==='taiga'||terrain==='wetlands'||terrain==='savanna')return terrain;
   const bounds=boundsAround(world,p,2);
   let water=0;
   for(let y=bounds.top;y<=bounds.bottom;y++)for(let x=bounds.left;x<=bounds.right;x++){
     if(world.tiles[y*world.width+x].biome==='water')water++;
   }
-  return water>=5?'coast':biomeLandscape[world.tiles[tile(world.width,p)].biome];
+  return water>=5?'coast':terrain;
 }
 
 function areaBounds(width:number,area:ReadonlySet<number>):Bounds{

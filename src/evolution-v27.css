@@ -21,6 +21,9 @@
 .adventure-shell[data-landscape="highland"] { --landscape: #cbbdd9; }
 .adventure-shell[data-landscape="coast"] { --landscape: #95d1ce; }
 .adventure-shell[data-landscape="ash"] { --landscape: #e4a792; }
+.adventure-shell[data-landscape="taiga"] { --landscape: #a8ccc1; }
+.adventure-shell[data-landscape="wetlands"] { --landscape: #c3d096; }
+.adventure-shell[data-landscape="savanna"] { --landscape: #e0b56e; }
 
 .adventure-topbar {
   min-height: 66px;

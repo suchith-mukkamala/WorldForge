@@ -8,6 +8,7 @@ import {divineFactor} from './divine';
 import {appendLifeMoment} from './identity';
 import {lifeStage} from './development';
 import {residentIndex} from './density';
+import {terrainHash} from './biomeGeneration';
 
 export const TOPICS=[
   'agriculture','herbalism','stonecraft','navigation','irrigation',
@@ -21,7 +22,8 @@ export type KnowledgeDiscovery={topic:Topic;year:number;personId:number;
   source:KnowledgeSource;siteId?:number};
 export type KnowledgeState={firsts:KnowledgeDiscovery[]};
 // Archive and vault remain valid so worlds saved before v1.4 still load.
-export const ANCIENT_KINDS=['temple','library','crypt','ruin','archive','vault'] as const;
+const LEGACY_ANCIENT_KINDS=['temple','library','crypt','ruin','archive','vault'] as const;
+export const ANCIENT_KINDS=[...LEGACY_ANCIENT_KINDS,'standing-stones','watchtower'] as const;
 export type AncientKind=typeof ANCIENT_KINDS[number];
 export type AncientSite={id:number;kind:AncientKind;x:number;y:number;
   topic:Topic;danger:number;visitors:number[];visits?:number;
@@ -69,13 +71,33 @@ export function generateAncientSites(w:Pick<World,'settings'|'width'|'height'|'t
   let seed=(w.settings.seed^0x516bf21d)>>>0;
   const rand=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;
     return (seed>>>0)/4294967296;};
-  const sites:AncientSite[]=[],desired=Math.max(6,Math.floor(w.width*w.height/2100));
+  const sites:AncientSite[]=[];
+  if(w.settings.regionalBiomes){
+    const newSites=[
+      {kind:'watchtower',name:'Weathered watchtower',topic:'navigation',danger:26,
+        habitats:['taiga','mountain','forest','plains']},
+      {kind:'standing-stones',name:'Standing stones',topic:'herbalism',danger:17,
+        habitats:['savanna','wetland','plains','forest']},
+    ] as const;
+    for(const {kind,name,topic,danger,habitats} of newSites){
+      let best=-Infinity,point:{x:number;y:number}|null=null;
+      for(let y=3;y<w.height-3;y++)for(let x=3;x<w.width-3;x++){
+        const biome=w.tiles[y*w.width+x].biome,rank=(habitats as readonly string[]).indexOf(biome);
+        if(rank<0||sites.some(s=>distance(s,{x,y})<9))continue;
+        const score=terrainHash(x,y,w.settings.seed+10837)-rank;
+        if(score>best){best=score;point={x,y};}
+      }
+      if(point)sites.push({id:sites.length+1,kind,name,topic,danger,...point,
+        visitors:[],visits:0,origin:'ancient',recovered:0});
+    }
+  }
+  const desired=sites.length+Math.max(6,Math.floor(w.width*w.height/2100));
   for(let attempt=0;attempt<desired*150&&sites.length<desired;attempt++){
     const x=3+Math.floor(rand()*(w.width-6));
     const y=3+Math.floor(rand()*(w.height-6));
     const biome=w.tiles[y*w.width+x].biome;
     if(biome==='water'||sites.some(p=>distance(p,{x,y})<9))continue;
-    const kind=ANCIENT_KINDS[Math.floor(rand()*ANCIENT_KINDS.length)];
+    const kind=LEGACY_ANCIENT_KINDS[Math.floor(rand()*LEGACY_ANCIENT_KINDS.length)];
     const topic=TOPICS[Math.floor(rand()*TOPICS.length)];
     sites.push({id:sites.length+1,kind,x,y,topic,
       danger:Math.round(10+rand()*72),visitors:[],visits:0,
@@ -135,9 +157,9 @@ function eligible(a:Agent,topic:Topic,w:World):boolean{
   const biome=w.tiles[a.y*w.width+a.x].biome;
   switch(topic){
     case 'agriculture':return (a.work?.job==='farmer'||d.skills.foraging>=3)&&
-      ['plains','forest','wasteland','volcanic'].includes(biome);
+      ['plains','forest','wasteland','volcanic','wetland','savanna'].includes(biome);
     case 'herbalism':return d.skills.foraging>=3&&
-      ['forest','plains'].includes(biome);
+      ['forest','plains','taiga','wetland','savanna'].includes(biome);
     case 'stonecraft':return d.skills.craft>=2||a.work?.job==='miner';
     case 'navigation':return d.knownBiomes.length>=2&&d.skills.navigation>=1;
     case 'irrigation':return knows(a,'agriculture')&&

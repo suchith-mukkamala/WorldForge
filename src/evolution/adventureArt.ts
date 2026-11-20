@@ -2,6 +2,9 @@ import type {Biome,World} from './engine';
 import type {Building} from './construction';
 import {blockBuilding,blockLandmark,blockProp} from './blockModels';
 import {DESCENT_BLOCK_VIEW,paintBlockScenery} from './blockScenery';
+import {biomeTreeAt,isTreeKind,type TreeKind} from './biomeTrees';
+import {terrainDetailAt} from './terrainDetails';
+import {topographyForWorld} from './topography';
 import {pixelTerrainHash} from './depthWorldArt';
 import {adventureDistance,type AdventureLandscape,type AdventureRegion} from './adventureMap';
 import type {Point} from './motion';
@@ -18,6 +21,9 @@ const ground:Record<Biome,readonly [string,string,string]> = {
   wasteland:['#a6836e','#926f65','#ba977e'],
   volcanic:['#855e62','#6b4d59','#aa7772'],
   water:['#408c97','#347b8d','#64b6b5'],
+  taiga:['#63867b','#4d766f','#86a297'],
+  wetland:['#6e9273','#537661','#91af81'],
+  savanna:['#b19c6a','#928257','#c4b278'],
 };
 const paving:Record<AdventureLandscape,readonly [string,string,string]> = {
   meadow:['#917551','#c0a471','#d3b984'],
@@ -25,9 +31,13 @@ const paving:Record<AdventureLandscape,readonly [string,string,string]> = {
   coast:['#927452','#d9b98b','#ead2a4'],
   highland:['#636d6b','#8f9790','#bcc0ad'],
   ash:['#6f5159','#9a756c','#c39380'],
+  taiga:['#5c6864','#9a9e8f','#c2c5ae'],
+  wetlands:['#665d49','#977d58','#c3a272'],
+  savanna:['#81654a','#b59160','#ddba84'],
 };
 const accents:Record<AdventureLandscape,string> = {
   meadow:'#d9ac5e',woodland:'#8eca96',coast:'#83d5cd',highland:'#c9bbdc',ash:'#f19b75',
+  taiga:'#a8ccc1',wetlands:'#c3d096',savanna:'#e0b56e',
 };
 const civicColors=['#e5b978','#e4a296','#a9d4be','#bfb4db','#d7cf84'];
 
@@ -176,7 +186,7 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
   }
 }
 
-export type AdventureProp='tree'|'pine'|'rocks'|'flowers'|'reeds'|'embers'|'lantern';
+export type AdventureProp=TreeKind|'rocks'|'flowers'|'reeds'|'embers'|'lantern';
 export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
   x:number,y:number):AdventureProp|undefined{
   const i=y*world.width+x,biome=world.tiles[i]?.biome;
@@ -189,9 +199,23 @@ export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
     return;
   }
   const seed=pixelTerrainHash(x,y,world.settings.seed)%100;
+  const tree=()=>{
+    const height=topographyForWorld(world).heights[i];
+    const {variant}=terrainDetailAt(biome,x,y,world.settings.seed,height);
+    return biomeTreeAt(biome,variant,height);
+  };
   if(biome==='forest'){
-    if(seed<35)return seed%3===0?'pine':'tree';
+    if(seed<35)return tree();
     if(seed<54)return 'flowers';
+  }else if(biome==='taiga'){
+    if(seed<43)return tree();
+    if(seed<64)return 'rocks';
+  }else if(biome==='wetland'){
+    if(seed<18)return tree();
+    if(seed<53)return 'reeds';
+  }else if(biome==='savanna'){
+    if(seed<22)return tree();
+    if(seed<43)return 'flowers';
   }else if(biome==='mountain'||biome==='cave'){
     if(seed<28)return 'rocks';
     if(seed<38)return 'pine';
@@ -199,14 +223,14 @@ export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
     if(seed<25)return 'rocks';
     if(seed<43)return 'embers';
   }else{
-    if(seed<14)return region.landscape==='coast'?'reeds':'tree';
+    if(seed<14)return region.landscape==='coast'?'reeds':tree();
     if(seed<39)return 'flowers';
   }
 }
 export function paintAdventureProp(ctx:CanvasRenderingContext2D,prop:AdventureProp,
   x:number,y:number,variant:number){
-  const kind=prop==='tree'?'oak':prop==='rocks'?'boulder':prop;
-  const large=kind==='oak'||kind==='pine'||kind==='boulder';
+  const kind=prop==='rocks'?'boulder':prop;
+  const large=isTreeKind(kind)||kind==='boulder';
   const anchor={x:x+(kind==='lantern'?5:12),y:y+16};
   paintBlockScenery(ctx,blockProp(kind,variant),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
 }

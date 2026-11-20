@@ -2,11 +2,12 @@ import {useMemo,useState} from 'react';
 import {DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,WORLD_SIZES,
   normalizeSettings,type WorldSettings} from './engine';
 import {freshWorldSeed} from './worldSeeds';
-import {DEFAULT_WORLD_LAYOUT,generateSeedTerrain,landmassCount,WORLD_LAYOUTS,
+import {DEFAULT_WORLD_LAYOUT,landmassCount,WORLD_LAYOUTS,
   WORLD_LAYOUT_NAMES,type WorldLayout} from './worldGeography';
 import {TerrainPreview} from './TerrainPreview';
-import {DEFAULT_LANDFORMS,generateRegionalTopography,LANDFORM_NAMES,
+import {DEFAULT_LANDFORMS,LANDFORM_NAMES,
   type LandformProfile} from './regionalGeography';
+import {generateWorldLandscape} from './worldLandscape';
 import {initialWoodland} from './woodland';
 
 const PRESETS=[
@@ -33,6 +34,7 @@ export function WorldCreator({
     layout:current.layout??DEFAULT_WORLD_LAYOUT,
     livingBiomes:current.livingBiomes??true,
     regionalGeography:true,
+    regionalBiomes:current.regionalBiomes??true,
     landforms:current.landforms??DEFAULT_LANDFORMS,
     terrainCells:current.terrainCells??true,
   }));
@@ -40,15 +42,15 @@ export function WorldCreator({
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
-  const {seed,layout,livingBiomes,landforms}=draft;
+  const {seed,layout,livingBiomes,landforms,regionalBiomes}=draft;
   const map=useMemo(()=>{
-    const terrain=generateSeedTerrain(width,height,seed,layout);
+    const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes};
+    const terrain=generateWorldLandscape(width,height,settings);
     const tiles=terrain.biomes.map(biome=>({biome,food:0}));
-    const landscape={width,height,tiles,settings:{...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true},
-      topography:generateRegionalTopography(width,height,tiles,seed,landforms)};
+    const landscape={width,height,tiles,settings,topography:terrain.topography};
     const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined};
     return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
-  },[width,height,seed,layout,livingBiomes,landforms]);
+  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -144,7 +146,8 @@ export function WorldCreator({
                   <span aria-hidden="true">⚄</span> RANDOM
                 </button>
                 <button type="button" onClick={()=>setDraft(settings=>({...settings,
-                  seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms}))}
+                  seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms,
+                  regionalBiomes:current.regionalBiomes??false}))}
                   title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>
               <small className="evo-seed-hint">A fresh seed is chosen for each new world.
@@ -167,6 +170,13 @@ export function WorldCreator({
               <span><b>ALLOW CROSS-SPECIES FAMILIES</b>
                 <small>Adults from different peoples can bond. Children inherit
                   blended ancestry, genetic traits and lifespan.</small>
+              </span>
+            </label>
+            <label className="evo-hybrid-toggle" htmlFor="evo-regional-biomes">
+              <input id="evo-regional-biomes" type="checkbox" checked={draft.regionalBiomes}
+                onChange={e=>update('regionalBiomes',e.target.checked)}/>
+              <span><b>REGIONAL BIOMES</b>
+                <small>Include taiga, wetlands and savanna where the climate suits them.</small>
               </span>
             </label>
             <label className="evo-hybrid-toggle" htmlFor="evo-living-biomes">

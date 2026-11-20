@@ -103,8 +103,9 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now(),
   saveQueue=result.catch(()=>{});
   return result;
 }
-const ALPHABET='PFMCVWR'; // plains, forest, mountain, cave, volcanic, wasteland, water
-const TILE_BIOMES:Biome[]=['plains','forest','mountain','cave','volcanic','wasteland','water'];
+const ALPHABET='PFMCVWRTBS';
+const TILE_BIOMES:Biome[]=['plains','forest','mountain','cave','volcanic','wasteland','water',
+  'taiga','wetland','savanna'];
 const packedBiome=(s:string)=>TILE_BIOMES[ALPHABET.indexOf(s)];
 function encodeTiles(tiles:Tile[]):string{
   const chunks:string[]=[];

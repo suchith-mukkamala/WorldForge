@@ -33,7 +33,8 @@ import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
 import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
-import {generateSeedTerrain,WORLD_LAYOUTS,type WorldLayout} from './worldGeography';
+import {WORLD_LAYOUTS,type WorldLayout} from './worldGeography';
+import {generateWorldLandscape} from './worldLandscape';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
 import {generateTopography,topographyForWorld,validTopography,type Topography} from './topography';
 import {advanceEarthworks,validEarthworks,type Earthwork} from './earthworks';
@@ -50,11 +51,13 @@ import {validMortalJournal,type MortalJournal} from './errandRecords';
 import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
 import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
-import {generateRegionalTopography,LANDFORM_NAMES,settlementGeography,
+import {LANDFORM_NAMES,settlementGeography,
   type LandformProfile} from './regionalGeography';
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
 export type Species='human'|'elf'|'dwarf'|'demon';
-export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
+export const BIOMES=['plains','forest','mountain','cave','wasteland','volcanic','water',
+  'taiga','wetland','savanna'] as const;
+export type Biome=typeof BIOMES[number];
 export type WorldSize='small'|'medium'|'large'|'vast';
 export type WorldSettings={
   seed:number;size:WorldSize;starting:Record<Species,number>;
@@ -62,6 +65,7 @@ export type WorldSettings={
   layout?:WorldLayout;
   livingBiomes?:boolean;
   regionalGeography?:boolean;
+  regionalBiomes?:boolean;
   landforms?:LandformProfile;
   terrainCells?:boolean;
 };
@@ -147,18 +151,17 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   institutions?:Institutions;knowledge?:KnowledgeState;ancientSites?:AncientSite[];
   expeditions?:ExpeditionRecord[];culture?:CultureState};
 export const SPECIES:Species[]=['human','elf','dwarf','demon'];
-export const BIOMES:Biome[]=['plains','forest','mountain','cave','wasteland','volcanic','water'];
 export const SPECIES_INFO:Record<Species,{name:string;symbol:string;color:string;
   lifespan:number;maturity:number;fertility:number;wander:number;metabolism:number;
   strength:number;speed:number;
   preferred:Biome[];intro:string}>={
   human:{name:'Humans',symbol:'H',color:'#f2c38c',lifespan:79,maturity:16,
     fertility:.31,wander:.60,metabolism:9.5,strength:1,speed:1,
-    preferred:['plains','forest'],
+    preferred:['plains','forest','savanna','wetland'],
     intro:'Adaptable wanderers · fast generations'},
   elf:{name:'Elves',symbol:'E',color:'#83e7bc',lifespan:245,maturity:36,
     fertility:.072,wander:.18,metabolism:7.5,strength:.92,speed:1.12,
-    preferred:['forest'],
+    preferred:['forest','taiga'],
     intro:'Forest guardians · slow generations'},
   dwarf:{name:'Dwarves',symbol:'D',color:'#aebdff',lifespan:166,maturity:27,
     fertility:.115,wander:.12,metabolism:8.5,strength:1.25,speed:.85,
@@ -179,6 +182,9 @@ export const BIOME_INFO:Record<Biome,{name:string;color:string;food:number;growt
   wasteland:{name:'Wasteland',color:'#74546a',food:4.7,growth:1.05},
   volcanic:{name:'Volcanic',color:'#87475f',food:4.1,growth:.95},
   water:{name:'Water',color:'#1f4866',food:0,growth:0},
+  taiga:{name:'Taiga',color:'#3c655f',food:7.1,growth:1.5},
+  wetland:{name:'Wetlands',color:'#4f7869',food:8.7,growth:2.05},
+  savanna:{name:'Savanna',color:'#8b784e',food:6.6,growth:1.55},
 };
 export const DEFAULT_SETTINGS:WorldSettings={
   seed:104729,size:'medium',starting:{human:26,elf:19,dwarf:16,demon:13},
@@ -215,6 +221,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     interbreeding:input.interbreeding!==false,
     ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
     ...(typeof input.regionalGeography==='boolean'?{regionalGeography:input.regionalGeography}:{}),
+    ...(typeof input.regionalBiomes==='boolean'?{regionalBiomes:input.regionalBiomes}:{}),
     ...(input.landforms&&Object.hasOwn(LANDFORM_NAMES,input.landforms)?
       {landforms:input.landforms,regionalGeography:true}:{}),
     ...(typeof input.terrainCells==='boolean'?{terrainCells:input.terrainCells}:{}),
@@ -269,16 +276,14 @@ function freeNearby(world:World,origin:{x:number;y:number},radius:number,
 export function createWorld(input:Partial<WorldSettings>={}):World{
   const settings=normalizeSettings(input),[width,height]=WORLD_SIZES[settings.size];
   const state={n:prngState(settings.seed)};
-  const geography=generateSeedTerrain(width,height,settings.seed,settings.layout);
+  const geography=generateWorldLandscape(width,height,settings);
   const tiles:Tile[]=geography.biomes.map(biome=>{
     const info=BIOME_INFO[biome];
     return {biome,food:round(info.food*settings.resourceLevel*(.75+.25*random(state)))};
   });
   const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
-    tiles,topography:settings.regionalGeography?
-      generateRegionalTopography(width,height,tiles,settings.seed,settings.landforms):
-      generateTopography(width,height,tiles,settings.seed),
+    tiles,topography:geography.topography,
     terrainPhysics:{version:1},
     agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
@@ -334,7 +339,7 @@ const adult=(a:Agent)=>{
 };
 const favorable=(s:Species,biome:Biome)=>{
   if(s==='human')return biome!=='volcanic'&&biome!=='water';
-  if(s==='elf')return biome==='forest'||biome==='plains';
+  if(s==='elf')return biome==='forest'||biome==='plains'||biome==='taiga'||biome==='wetland';
   if(s==='dwarf')return biome==='mountain'||biome==='cave';
   return biome==='wasteland'||biome==='volcanic'||biome==='mountain';
 };
@@ -851,6 +856,7 @@ export function isWorld(value:unknown):value is World{
     settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
     settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
     settings.regionalGeography!==undefined&&typeof settings.regionalGeography!=='boolean'||
+    settings.regionalBiomes!==undefined&&typeof settings.regionalBiomes!=='boolean'||
     settings.landforms!==undefined&&!Object.hasOwn(LANDFORM_NAMES,settings.landforms)||
     settings.terrainCells!==undefined&&typeof settings.terrainCells!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||

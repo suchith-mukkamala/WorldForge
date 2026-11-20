@@ -16,8 +16,16 @@ const shades:Record<Biome,readonly string[]>={
   volcanic:['#a46a73','#b57d74','#90616d','#aa7068','#9c6876'],
   wasteland:['#a28182','#b19085','#957580','#ae8c82','#9d7c78'],
   water:['#367c9b','#357694','#4385a1','#397b9b','#30738e'],
+  taiga:['#57877c','#608f82','#507d77','#689185','#58837e'],
+  wetland:['#639581','#669a83','#568a75','#6d9a80','#5b907b'],
+  savanna:['#ad9868','#b6a374','#a28d60','#bda97c','#aa9465'],
 };
 const canopyShades=shades.plains.map((plains,i)=>woodlandPalette(plains,shades.forest[i]));
+const regionalCanopy:Partial<Record<Biome,string[][]>>={
+  taiga:shades.taiga.map(color=>woodlandPalette(color,'#325c58')),
+  wetland:shades.wetland.map(color=>woodlandPalette(color,'#426e5d')),
+  savanna:shades.savanna.map(color=>woodlandPalette(color,'#7d864f')),
+};
 export function pixelTerrainHash(x:number,y:number,seed:number):number{
   let n=(Math.imul(x+1,73856093)^Math.imul(y+3,19349663)^seed)>>>0;
   n=Math.imul(n^(n>>>15),0x2c1b3c6d);
@@ -27,7 +35,7 @@ export function pixelTerrainHash(x:number,y:number,seed:number):number{
 export function surfaceColor(biome:Biome,x:number,y:number,seed:number,cover?:number):string{
   const t=shades[biome],hash=pixelTerrainHash(x,y,seed);
   const shade=hash%t.length;
-  return cover===undefined?t[shade]:canopyShades[shade][Math.round(cover*63)];
+  return cover===undefined?t[shade]:(regionalCanopy[biome]??canopyShades)[shade][Math.round(cover*63)];
 }
 /** Small top-surface markings suggest terrain material rather than uniform
  * flat faces. The current painter's fill pixels never alter collision masks. */
@@ -48,8 +56,15 @@ export function paintDepthSurfaceDetail(ctx:CanvasRenderingContext2D,
       if(hash%11===0)put('#efcf9b',1,-3,1,1);
       break;
     case 'forest':
+    case 'taiga':
       put('#244e45',-3,-1,3,1);
       put(hash%3===0?'#b5cc91':'#699c70',1,-3,2,1);
+      break;
+    case 'wetland':
+      put('#77aa99',-2,-1,3,1);
+      break;
+    case 'savanna':
+      put('#c8b27b',1,-2,2,1);
       break;
     case 'mountain':
       put('#e0ded0',-2,-3,3,1);put('#677d8b',1,-1,3,1);
