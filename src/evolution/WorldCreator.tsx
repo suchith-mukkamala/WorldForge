@@ -32,6 +32,7 @@ export function WorldCreator({
     layout:current.layout??DEFAULT_WORLD_LAYOUT,
     livingBiomes:current.livingBiomes??true,
     regionalGeography:true,
+    terrainCells:current.terrainCells??true,
   }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
@@ -164,6 +165,13 @@ export function WorldCreator({
                 onChange={e=>update('livingBiomes',e.target.checked)}/>
               <span><b>LET BIOMES CHANGE OVER TIME</b>
                 <small>Forests can spread into grassland or thin into meadows as years pass.</small>
+              </span>
+            </label>
+            <label className="evo-hybrid-toggle" htmlFor="evo-terrain-cells">
+              <input id="evo-terrain-cells" type="checkbox" checked={draft.terrainCells}
+                onChange={e=>update('terrainCells',e.target.checked)}/>
+              <span><b>SIMULATE SMALL TERRAIN CELLS</b>
+                <small>Soil, sand and stone shape runoff, erosion and footing.</small>
               </span>
             </label>
           </div>

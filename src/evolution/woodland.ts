@@ -3,6 +3,7 @@ import {terrainHumidity,terrainTemperature} from './biomeGeneration';
 import {hydrologyForWorld,riverBanks} from './hydrology';
 import {topographyForWorld,type Topography} from './topography';
 import {roadTiles} from './transport';
+import {terrainCellSummary} from './terrainCells';
 
 // One printable character per tile keeps the cover field compact in saves.
 const COVER='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
@@ -107,7 +108,8 @@ export function advanceWoodland(w:World):number[]{
     if(woodlandHabitat(tile.biome)&&!managed.has(i)){
       const nearby=neighboringCover(before,width,height,i%width,Math.floor(i/width));
       if(current>0||nearby>=MAX_COVER*.08){
-        const ideal=Math.round((suitability[i]-.25)*.95*MAX_COVER+nearby*.61);
+        const dampGround=(terrainCellSummary(w,i)?.moistSoil??0)*.28;
+        const ideal=Math.round((suitability[i]+dampGround-.25)*.95*MAX_COVER+nearby*.61);
         const target=Math.max(0,Math.min(MAX_COVER,ideal));
         next=current+Math.max(-2,Math.min(2,target-current));
         if(tile.biome==='plains'&&next>=FOREST_THRESHOLD){

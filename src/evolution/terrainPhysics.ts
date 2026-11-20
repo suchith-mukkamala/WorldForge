@@ -5,6 +5,7 @@
 import type {World} from './engine';
 import {hydrologyForWorld,riverBanks} from './hydrology';
 import {topographyForWorld} from './topography';
+import {terrainCellSummary} from './terrainCells';
 
 export type TerrainPhysics={version:1};
 export const TERRAIN_PHYSICS_VERSION=1;
@@ -30,7 +31,7 @@ export function terrainStepEffort(w:World,from:number,to:number):number{
   const heights=topographyForWorld(w).heights;
   const difference=heights[to]-heights[from];
   const steep=Math.abs(difference);
-  return 1+steep/180+Math.max(0,difference)/60;
+  return (1+steep/180+Math.max(0,difference)/60)*(terrainCellSummary(w,to)?.footing??1);
 }
 
 /** Highest surrounding drop/rise: a proxy for construction difficulty. */
@@ -58,7 +59,9 @@ export function terrainFarmFactor(w:World,index:number):number{
   const slopePenalty=Math.min(.38,rugged/180);
   const irrigation=w.settings.regionalGeography?
     riverBanks(drainage,w.width,w.height)[index]*.23:drainage.channel[index]>0?.13:0;
-  return Math.max(.48,Math.min(1.18,1-altitudePenalty-slopePenalty+irrigation));
+  const fertility=terrainCellSummary(w,index)?.fertility??1;
+  return Math.max(.48,Math.min(w.terrainCells?1.29:1.18,
+    (1-altitudePenalty-slopePenalty+irrigation)*fertility));
 }
 
 export function terrainBuildPenalty(w:World,index:number):number{
