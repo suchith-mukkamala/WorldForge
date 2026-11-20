@@ -11,24 +11,20 @@ type Painter=CanvasRenderingContext2D;
 export type DepthArtDetail=0|1|2;
 export const depthArtDetail=(zoom:number):DepthArtDetail=>
   zoom>=4?2:zoom>=2?1:0;
-/** The landscape stays on its cheap low-resolution layer. Only the final
- * compositing canvas gains backing pixels near the ground, so the 16×22
- * character artwork is no longer collapsed into a 2×3 bitmap before zoom.
- * Keep the backing surface under ~64 MB on very large worlds. */
+const detailDensity=(zoom:number)=>zoom>=6?7:zoom>=4?5:zoom>=2?3:2;
+/** Match the terrain samples in the final atlas where memory permits. */
 export function depthRenderDensity(zoom:number,size:{width:number;height:number}):number{
-  const requested=zoom>=6?6:zoom>=4?4:zoom>=2?2:1;
   const safe=Math.floor(Math.sqrt(16_000_000/
     Math.max(1,size.width*size.height)));
-  return Math.max(1,Math.min(requested,safe));
+  return Math.max(1,Math.min(detailDensity(zoom),safe));
 }
 /** The terrain must remain as sharp as the foreground when zooming in.
  * A smaller memory budget than the moving layer avoids doubling the GPU
  * cost of the entire continent, and the cache only rebuilds on scene edits. */
 export function depthSceneryDensity(zoom:number,size:{width:number;height:number}):number{
-  const requested=zoom>=6?6:zoom>=4?4:zoom>=2?3:2;
   const safe=Math.floor(Math.sqrt(12_000_000/
     Math.max(1,size.width*size.height)));
-  return Math.max(1,Math.min(requested,safe));
+  return Math.max(1,Math.min(detailDensity(zoom),safe));
 }
 /** Shrink houses much more than civic landmarks, without changing the site
  * position, save format, or the world's actual construction rules. */

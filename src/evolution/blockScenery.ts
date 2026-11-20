@@ -64,7 +64,7 @@ export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
   return {left,top,right,bottom};
 }
 
-const STAMP_DENSITY=3;
+const STAMP_DENSITY=4;
 const STAMP_SIZE=56*STAMP_DENSITY;
 export const BLOCK_ANCHOR={x:STAMP_SIZE/2,y:STAMP_SIZE-15*STAMP_DENSITY};
 const propCache=new Map<string,{image:HTMLCanvasElement;x:number;y:number;w:number;h:number}>();
@@ -84,7 +84,7 @@ export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
     const x=Math.max(0,Math.floor(left)-1),y=Math.max(0,Math.floor(top)-1);
     sprite={image,x,y,w:Math.min(STAMP_SIZE,Math.ceil(right)+1)-x,
       h:Math.min(STAMP_SIZE,Math.ceil(bottom)+1)-y};
-    if(propCache.size>=180)propCache.clear();
+    if(propCache.size>=132)propCache.clear();
     propCache.set(key,sprite);
   }
   const {image,x,y,w,h}=sprite;

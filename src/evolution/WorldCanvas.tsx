@@ -17,6 +17,8 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,overheadTerrainColor
 import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {paintTerrainMosaic} from './terrainCellArt';
+import {VISUAL_TERRAIN_SIDE} from './surfaceGrid';
+import {AtlasFish} from './AtlasFish';
 import {springFlood,waterSeason} from './riverSeasons';
 import {boardwalkSite,regionalBuildingStyle} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
@@ -66,8 +68,8 @@ export function WorldCanvas({
   const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
   // Integer multiples of the eight-square lattice make every top-down square
   // the same size on the backing surface as well as in world coordinates.
-  const cellPixels=8*Math.max(1,Math.min(zoom>=5?5:zoom>=2?3:2,
-    Math.floor(Math.sqrt(12_000_000/(world.width*world.height))/8)));
+  const cellPixels=VISUAL_TERRAIN_SIDE*Math.max(1,Math.min(zoom>=5?6:zoom>=2?4:2,
+    Math.floor(Math.sqrt(16_000_000/(world.width*world.height))/VISUAL_TERRAIN_SIDE)));
   const density=cellPixels/CELL;
   const season=waterSeason(world);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
@@ -576,7 +578,7 @@ export function WorldCanvas({
       if(brush.kind!=='inspect')onEdit(x,y);
     }else onSelect(x,y);
   };
-  return <canvas ref={canvasRef} className="evo-world-canvas"
+  return <><canvas ref={canvasRef} className="evo-world-canvas"
     width={world.width*cellPixels} height={world.height*cellPixels}
     style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
@@ -585,5 +587,12 @@ export function WorldCanvas({
         brush.kind==='spawn'?'place a '+brush.species:
           brush.kind==='food'?'replenish food':'paint '+brush.biome)+
       '. Arrow keys move the selection; Enter applies the selected brush.'}
-    onClick={select} onKeyDown={keyboard}/>;
+    onClick={select} onKeyDown={keyboard}/>
+    {fillWidth&&overlay==='terrain'&&atlasLevel(zoom)!=='world'&&
+      <AtlasFish world={world} width={mapWidth} height={mapHeight} square={1.1} project={p=>{
+        if(!isMultiIslandLayout(world.settings.layout)&&!visibleCoastTile(Math.floor(p.x),
+          Math.floor(p.y),world.width,world.height,'water',world.settings.seed))return;
+        return {x:p.x*CELL,y:p.y*CELL};
+      }}/>}
+  </>;
 }

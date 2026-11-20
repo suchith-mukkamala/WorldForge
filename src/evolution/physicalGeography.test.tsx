@@ -133,7 +133,7 @@ describe('v2.0 — terrain that physically matters and a selectable depth view',
       onSelect:()=>{},onEdit:()=>{},relief:4,
     }));
     expect(html).toContain('stepped tiles and orbit camera');
-    expect(html).toContain(`height="${depthCanvasSize(world,4).height}"`);
+    expect(html).toContain(`height="${depthCanvasSize(world,4).height*2}"`);
   });
 
   it('orbits the physical heightfield through 360 degrees without clipping or rotating tile IDs',()=>{
@@ -180,7 +180,7 @@ describe('v2.0 — terrain that physically matters and a selectable depth view',
     }));
     expect(html).toContain('orbit camera');
     expect(html).toContain(`width="${depthCanvasSize(world,2.5,
-      {yaw:135,pitch:18}).width}"`);
+      {yaw:135,pitch:18}).width*2}"`);
   });
 
   it('keeps calendar stepping deterministic with the v2.0 terrain rules',()=>{

@@ -103,7 +103,7 @@ export function generateRegionalTopography(width:number,height:number,
 }
 
 const seaCache=new WeakMap<Hydrology,Set<number>>();
-export function oceanBasins(w:World,drainage:Hydrology):Set<number>{
+export function oceanBasins(w:Pick<World,'width'|'height'|'tiles'>,drainage:Hydrology):Set<number>{
   const cached=seaCache.get(drainage);
   if(cached)return cached;
   const {width,height,tiles}=w,basins=new Set<number>();

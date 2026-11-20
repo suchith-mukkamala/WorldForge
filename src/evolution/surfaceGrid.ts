@@ -3,10 +3,11 @@ import {terrainRenderGrid,TERRAIN_CELL_SIDE,TERRAIN_ELEVATION_UNITS,
   type TerrainGrid,type TerrainSource} from './terrainCells';
 import {floodplains,riverLinks,waterSeason} from './riverSeasons';
 import {SEA_LEVEL,topographyForWorld} from './topography';
+import {coastalLife,coralTone} from './coastalLife';
 
 export const VISUAL_TERRAIN_SIDE=8;
 export const Shore={ground:0,wetSand:1,drySand:2,shallows:3,channel:4,
-  gravel:5,mud:6,ice:7,flood:8,foam:9} as const;
+  gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12} as const;
 export type SurfaceGrid=TerrainGrid&{shore:Uint8Array};
 export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'>;
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
@@ -25,6 +26,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const ground=new Uint16Array(count),water=new Uint8Array(count);
   const material=new Uint8Array(count),shore=new Uint8Array(count);
   const links=riverLinks(world),flood=riverlands&&season==='Bloom'?floodplains(world):null;
+  const {reefs}=coastalLife(world),seed=world.settings.seed;
   const land=Uint8Array.from(tiles,t=>+(t.biome!=='water'));
   const neighbour=(x:number,y:number)=>clamp(y,0,height-1)*width+clamp(x,0,width-1);
   const offset=Array.from({length:SIDE},(_,i)=>(i+.5)/SIDE-.5);
@@ -75,6 +77,10 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
               if(inward>.02&&lateral>.17&&lateral<.38&&inward+lateral>.44)
                 shore[i]=season==='Highsun'?Shore.wetSand:Shore.shallows;
             }
+            if(reefs[tile]&&blend<.31&&shore[i]!==Shore.wetSand){
+              const coral=coralTone(x*SIDE+col,y*SIDE+row,seed);
+              if(coral)shore[i]=Shore.reefBase+coral-1;
+            }
             continue;
           }
           const edge=clamp((blend-.46)/.42,0,1);
@@ -82,6 +88,10 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
             Math.max(waterline+1,ground[i]),edge));
           if(!cliff&&blend<.77)shore[i]=valley?Shore.mud:
             blend<.62?Shore.wetSand:Shore.drySand;
+        }
+        if(reefs[tile]&&!coastal){
+          const coral=coralTone(x*SIDE+col,y*SIDE+row,seed);
+          if(coral){shore[i]=Shore.reefBase+coral-1;water[i]=0;}
         }
         if(flood?.[tile]&&!cliff){
           shore[i]=Shore.flood;
