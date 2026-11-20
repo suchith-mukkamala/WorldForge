@@ -50,7 +50,8 @@ import {validMortalJournal,type MortalJournal} from './errandRecords';
 import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
 import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
-import {generateRegionalTopography,settlementGeography} from './regionalGeography';
+import {generateRegionalTopography,LANDFORM_NAMES,settlementGeography,
+  type LandformProfile} from './regionalGeography';
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
@@ -61,6 +62,7 @@ export type WorldSettings={
   layout?:WorldLayout;
   livingBiomes?:boolean;
   regionalGeography?:boolean;
+  landforms?:LandformProfile;
   terrainCells?:boolean;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
@@ -213,6 +215,8 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     interbreeding:input.interbreeding!==false,
     ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
     ...(typeof input.regionalGeography==='boolean'?{regionalGeography:input.regionalGeography}:{}),
+    ...(input.landforms&&Object.hasOwn(LANDFORM_NAMES,input.landforms)?
+      {landforms:input.landforms,regionalGeography:true}:{}),
     ...(typeof input.terrainCells==='boolean'?{terrainCells:input.terrainCells}:{}),
     ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
@@ -272,8 +276,9 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   });
   const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
-    tiles,topography:(settings.regionalGeography?generateRegionalTopography:generateTopography)(
-      width,height,tiles,settings.seed),
+    tiles,topography:settings.regionalGeography?
+      generateRegionalTopography(width,height,tiles,settings.seed,settings.landforms):
+      generateTopography(width,height,tiles,settings.seed),
     terrainPhysics:{version:1},
     agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
@@ -846,6 +851,7 @@ export function isWorld(value:unknown):value is World{
     settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
     settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
     settings.regionalGeography!==undefined&&typeof settings.regionalGeography!=='boolean'||
+    settings.landforms!==undefined&&!Object.hasOwn(LANDFORM_NAMES,settings.landforms)||
     settings.terrainCells!==undefined&&typeof settings.terrainCells!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||

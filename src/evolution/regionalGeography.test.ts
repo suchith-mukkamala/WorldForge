@@ -5,10 +5,31 @@ import {hydrologyForWorld,riverBanks} from './hydrology';
 import {settlementGeography} from './regionalGeography';
 import {compactWorld,readSavedWorld} from './storage';
 import {terrainFarmFactor} from './terrainPhysics';
+import {SEA_LEVEL} from './topography';
 
 const settings={size:'small',seed:321721,layout:'continents',regionalGeography:true} as const;
 
 describe('regional geography',()=>{
+  it('builds different relief profiles on the same coastline and keeps them in the save',()=>{
+    const classic=createWorld(settings);
+    const varied=createWorld({...settings,landforms:'varied'});
+    const alpine=createWorld({...settings,landforms:'alpine'});
+    const rolling=createWorld({...settings,landforms:'rolling'});
+    const heights=(w:typeof varied)=>w.topography!.heights;
+    const crest=(w:typeof varied)=>Math.max(...heights(w));
+    expect(crest(alpine)).toBeGreaterThan(crest(rolling)+60);
+    expect(crest(varied)).toBeGreaterThan(crest(rolling)+35);
+    expect(heights(varied)).not.toEqual(heights(classic));
+    expect(heights(varied)).toEqual(heights(createWorld({...settings,landforms:'varied'})));
+    for(const w of [varied,alpine,rolling]){
+      expect(w.tiles.map(t=>t.biome)).toEqual(classic.tiles.map(t=>t.biome));
+      expect(heights(w).every((h,i)=>w.tiles[i].biome==='water'?h<SEA_LEVEL:h>=SEA_LEVEL)).toBe(true);
+      expect(atlasRivers(hydrologyForWorld(w),false).length).toBeGreaterThan(0);
+      expect(readSavedWorld(compactWorld(w))).toEqual(w);
+    }
+    expect(readSavedWorld(compactWorld(classic))?.settings.landforms).toBeUndefined();
+  });
+
   it('connects inland headwaters to lower ground and persists its seed and elevation',()=>{
     const world=createWorld(settings),drainage=hydrologyForWorld(world);
     const heads=atlasRivers(drainage,true).filter(link=>world.topography!.heights[link.from]>=108);

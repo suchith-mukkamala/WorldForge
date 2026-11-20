@@ -37,17 +37,20 @@ describe('v2.4.4 — readable settlements and close-up mortals',()=>{
   });
 
   it('declutters existing saves while keeping priority projects visible',()=>{
-    const homes=Array.from({length:45},(_,i)=>({
-      building:residence(i+1,3+i%9,4+Math.floor(i/9)),
-      x:100+i%9*2,y:90+Math.floor(i/9)*2,
-    }));
+    const homes=Array.from({length:45},(_,i)=>{
+      const x=100+i%9*2,y=90+Math.floor(i/9)*2;
+      return {building:residence(i+1,3+i%9,4+Math.floor(i/9)),x,y,
+        bounds:{left:x-5,top:y-10,right:x+5,bottom:y+2}};
+    });
     const project={building:{...residence(99,9,9),stage:'foundation' as const,
-      type:'workshop' as const},x:107,y:93};
+      type:'workshop' as const},x:107,y:93,bounds:{left:102,top:89,right:112,bottom:95}};
     const drawn=uncrowdedDistrictBuildings([...homes,project]);
     expect(drawn.length).toBeLessThan(homes.length/2);
     expect(drawn.some(e=>e.building.id===99)).toBe(true);
     expect(uncrowdedDistrictBuildings([...homes,project]).map(e=>e.building.id))
       .toEqual(drawn.map(e=>e.building.id));
+    const neighbor={...homes[0],bounds:{left:99,top:81,right:110,bottom:91}};
+    expect(uncrowdedDistrictBuildings([neighbor,project])).toHaveLength(2);
   });
 
   it('resolves source pixels at close zoom without enlarging world footprints',()=>{

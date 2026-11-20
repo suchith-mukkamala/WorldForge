@@ -1,26 +1,36 @@
 import type {Building} from './construction';
 
-export type BuildingArt={image:HTMLCanvasElement;pixels:Uint8ClampedArray};
+export type ArtBounds={left:number;top:number;right:number;bottom:number};
+export type BuildingArt={image:HTMLCanvasElement;pixels:Uint8ClampedArray;bounds:ArtBounds};
 export type AtlasBuilding={building:Building;art:BuildingArt;x:number;y:number;scale:number};
 
 export function cacheBuildingArt(cache:Map<string,BuildingArt>,key:string,size:number,
-  paint:(ctx:CanvasRenderingContext2D)=>void):BuildingArt|undefined{
+  paint:(ctx:CanvasRenderingContext2D)=>ArtBounds):BuildingArt|undefined{
   const cached=cache.get(key);
   if(cached)return cached;
   const image=document.createElement('canvas');
   image.width=image.height=size;
   const ctx=image.getContext('2d',{willReadFrequently:true});
   if(!ctx)return;
-  paint(ctx);
-  const art={image,pixels:ctx.getImageData(0,0,size,size).data};
+  const {left,top,right,bottom}=paint(ctx);
+  const bounds={left:Math.max(0,Math.floor(left)-1),top:Math.max(0,Math.floor(top)-1),
+    right:Math.min(size,Math.ceil(right)+1),bottom:Math.min(size,Math.ceil(bottom)+1)};
+  const art={image,pixels:ctx.getImageData(0,0,size,size).data,bounds};
   if(cache.size>=200)cache.clear();
   cache.set(key,art);
   return art;
 }
 
+export function atlasBuildingBounds({art,x,y,scale}:AtlasBuilding):ArtBounds{
+  const {left,top,right,bottom}=art.bounds;
+  return {left:x+left*scale,top:y+top*scale,right:x+right*scale,bottom:y+bottom*scale};
+}
+
 export function paintAtlasBuilding(ctx:CanvasRenderingContext2D,placed:AtlasBuilding){
   const {art,x,y,scale}=placed;
-  ctx.drawImage(art.image,x,y,art.image.width*scale,art.image.height*scale);
+  const {left,top,right,bottom}=art.bounds;
+  const width=right-left,height=bottom-top;
+  ctx.drawImage(art.image,left,top,width,height,x+left*scale,y+top*scale,width*scale,height*scale);
 }
 
 /** Pick opaque art in reverse paint order so overlapping roofs select the

@@ -3,50 +3,11 @@
  */
 import type {Agent,Species} from './engine';
 import {traitProfile} from './family';
-import {ARCHITECTURE,type Building} from './construction';
 import {RESOURCE_COLORS,type ResourceKind} from './resources';
 import type {Facing,SpritePose} from './motion';
-import type {AncientKind} from './knowledge';
 
 export const PERSON_SPRITE_WIDTH=16;
 export const PERSON_SPRITE_HEIGHT=22;
-/** Six different hand-pixeled silhouettes, painted at map resolution.
- * An explored site has a lit doorway; abandoned cultures retain their tint. */
-export function paintAncientSite(ctx:CanvasRenderingContext2D,
-  kind:AncientKind,x:number,y:number,visited:boolean):void{
-  const p=(color:string,dx:number,dy:number,w:number,h:number)=>{
-    ctx.fillStyle=color;ctx.fillRect(x+dx,y+dy,w,h);
-  };
-  const stone='#746e79',shade='#353647',edge='#b6a2a0',gold='#e6c380';
-  p('#202636',-5,5,15,3);
-  if(kind==='temple'){
-    p(stone,-3,-4,12,9);p(gold,-5,-7,16,2);p('#a58976',-3,-5,12,2);
-    p(edge,-1,-3,2,7);p(edge,5,-3,2,7);p(shade,2,0,2,5);
-    p('#d9b05d',1,-8,3,1);p('#baa68b',-4,5,14,1);
-  }else if(kind==='library'||kind==='archive'){
-    p('#5a6d79',-4,-5,14,11);p('#b6c9c1',-3,-8,12,3);
-    p('#dfc8a0',-2,-4,3,7);p('#90745b',2,-4,5,7);
-    p('#d8ddbb',3,-3,1,5);p('#9fc0b0',5,-3,1,5);
-    p('#d6e5d9',0,-9,5,1);p(shade,-1,2,3,4);
-  }else if(kind==='crypt'){
-    p('#5a555f',-5,-5,15,11);p('#a8a0a0',-3,-7,11,3);
-    p('#242332',0,-3,5,9);p('#6f6572',1,-4,3,2);
-    p('#ddd2c1',1,0,3,2);p('#242332',1,0,1,1);p('#242332',3,0,1,1);
-    p('#c1a0b2',-6,1,2,3);p('#c1a0b2',9,0,2,4);
-  }else if(kind==='vault'){
-    p('#655568',-4,-6,13,12);p('#a494b3',-3,-8,11,3);
-    p('#2d293b',-1,-3,7,9);p('#997baa',0,-2,5,6);
-    p('#dbc596',2,0,2,2);p('#554a62',-5,4,15,2);
-  }else{
-    p(stone,-5,-2,4,8);p(edge,-5,-6,4,3);
-    p(stone,4,-5,4,11);p(edge,3,-7,6,2);
-    p('#a99ca0',-2,3,5,3);p('#6d717c',8,4,3,2);
-    p('#85818a',0,-6,4,2);p('#58606c',-4,-4,12,1);
-    p('#8b9a7c',-3,5,2,2);
-  }
-  if(visited){p('#f7db8a',2,3,2,2);p('#f3e4bf',2,2,1,1);}
-  else{p('#728f9d',2,3,2,2);}
-}
 export type PixelPerson=Pick<Agent,'id'|'species'|'ancestry'|'genes'> &
   Partial<Pick<Agent,'age'|'work'|'development'|'innateTrait'|'awakening'|
     'appearance'>>;
@@ -371,99 +332,4 @@ export function paintDeposit(ctx:CanvasRenderingContext2D,kind:ResourceKind,
     p('#ebded0',2,2,1,1);p('#445061',4,3,2,2);
     if(full<.4)p('#303f4d',3,1,2,3);
   }
-}
-
-/** Meaningful visual silhouettes for the nine autonomously built structures. */
-export function paintBuilding(ctx:CanvasRenderingContext2D,b:Building):void{
-  const x=b.x*6-2,y=b.y*6-3,style=ARCHITECTURE[b.culture];
-  const p=(c:string,dx:number,dy:number,w:number,h:number)=>{
-    ctx.fillStyle=c;ctx.fillRect(x+dx,y+dy,w,h);
-  };
-  const broken=b.stage==='ruin'||b.stage==='abandoned';
-  if(broken){
-    p('#343646',0,5,11,4);p('#757080',1,4,3,4);p('#9b8b93',6,6,4,2);
-    p('#2d3644',4,6,2,2);return;
-  }
-  if(b.stage!=='complete'){
-    p('#4d4a4a',0,7,11,2);
-    if(b.stage!=='foundation'){
-      p('#bd916b',1,3,1,5);p('#bd916b',9,3,1,5);
-      p('#e3c38f',1,3,9,1);
-    }
-    p('#e5d09b',0,10,Math.max(1,Math.round(b.progress/10)),1);
-    return;
-  }
-  if(b.type==='farm'){
-    p('#5d744d',0,5,12,5);
-    for(let row=0;row<3;row++){
-      p('#a17b50',1,5+row*2,10,1);
-      p('#b4d379',2+row,4+row*2,2,2);
-      p('#7aa260',7,5+row,2,2);
-    }
-    p('#e7d8aa',8,0,3,4);p(style.roof,7,0,5,2);return;
-  }
-  if(b.type==='well'){
-    p('#d6c5af',2,6,8,3);p('#476e7e',3,5,6,3);
-    p('#8a7969',2,2,1,5);p('#8a7969',9,2,1,5);
-    p(style.roof,1,1,10,2);p('#b7e1dc',5,6,2,1);return;
-  }
-  if(b.type==='dock'){
-    p('#463f49',0,7,12,3);p('#b68c69',0,5,12,2);
-    p('#e2bb87',2,4,2,5);p('#e2bb87',9,4,2,5);
-    p('#8d695c',5,2,2,4);p('#f6dfb6',6,1,1,4);return;
-  }
-  if(b.type==='market'){
-    p('#b3987d',1,5,10,4);p('#e7cd9a',1,8,10,1);
-    for(let i=0;i<5;i++)p(i%2?style.roof:'#e6d5a9',1+i*2,2,2,4);
-    p('#584854',2,7,2,2);p('#5b7b60',7,7,2,2);return;
-  }
-  // Later settlement materials are actual paid-for building tiers; a former
-  // stick shelter develops walls, masonry and eventually an upper storey.
-  if((b.type==='house'||b.type==='shelter')&&(b.tier??0)>0){
-    const tier=b.tier!,width=9+tier*2,wallHeight=5+tier*2;
-    p('#263244',-tier,9,width+2,2);
-    p(tier>=2?'#a3a5a8':style.wall,1-tier,9-wallHeight,width,wallHeight);
-    p(style.roof,-tier-1,7-wallHeight,width+2,3);
-    p('#ded0a8',1-tier,7-wallHeight,width-2,1);
-    p('#443746',3,5,2,4);
-    p('#f2d99a',width-4-tier,4,2,2);
-    p('#fae5af',width-4-tier,4,1,1);
-    p('#5d4a51',1-tier,9-wallHeight+1,width,1);
-    for(let ridge=2;ridge<width-2;ridge+=3)
-      p('#e6c99b',ridge-tier,7-wallHeight,1,1);
-    p('#a9977f',0,10,Math.min(width,6),1);
-    if(tier>=3){
-      p(style.roof,2,-wallHeight-1,width-4,3);
-      p('#d9c9ab',2,-wallHeight+2,width-4,2);
-      p('#ffe0ac',width-6-tier,-wallHeight+3,2,2);
-    }
-    return;
-  }
-  if(b.type==='shelter'){
-    p('#524f59',0,8,11,2);p('#c5ad82',1,5,9,3);
-    p(style.roof,3,2,5,4);p('#6e5361',5,6,2,3);return;
-  }
-  p('#293344',0,5,12,5);p(style.wall,1,4,10,5);
-  const roofSize=b.type==='communal'?10:8;
-  p(style.roof,1,2,roofSize,3);p('#e0c6a0',3,1,roofSize-3,1);
-  p('#f0d5aa',1,2,roofSize,1);p('#3d4450',0,9,12,1);
-  for(let shingle=2;shingle<roofSize;shingle+=3)
-    p('rgba(31,42,56,.38)',shingle,3,1,1);
-  if(b.type==='communal'){
-    p(style.wall,4,-3,4,6);p(style.roof,3,-4,6,2);
-    p('#e5d5aa',5,-1,2,2);
-  }else if(b.type==='workshop'){
-    p('#645b5a',8,-2,2,5);p('#a7a7a1',8,-3,2,1);
-    p('#ecab70',2,6,2,2);
-  }else if(b.type==='storage'){
-    p('#94714f',2,5,8,4);p('#d5b58a',4,6,1,3);
-    p('#d5b58a',7,6,1,3);
-  }else{
-    p('#3b3342',5,6,3,3);p('#e4c88c',2,5,2,2);
-    if(b.type==='house'){
-      p('#d9bda2',9,0,2,3);p('#ffe7af',2,5,2,2);
-      p('#8a7766',9,1,1,2);p('#7f8d80',2,10,2,1);
-    }
-  }
-  p(style.trim,1,4,1,3);
 }

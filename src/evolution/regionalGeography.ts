@@ -1,5 +1,5 @@
 import type {Biome,Tile,World} from './engine';
-import {terrainNoise} from './biomeGeneration';
+import {terrainHash,terrainNoise} from './biomeGeneration';
 import {generateHydrology,hydrologyForWorld,riverBanks,type Hydrology} from './hydrology';
 import {SEA_LEVEL,TOPOGRAPHY_VERSION,topographyForWorld,type Topography} from './topography';
 import {terrainRuggedness} from './terrainPhysics';
@@ -8,9 +8,41 @@ const uplift:Record<Biome,number>={
   plains:0,forest:0,mountain:1,cave:.82,wasteland:.22,volcanic:1,water:0,
 };
 
+export const LANDFORM_NAMES={
+  varied:'Varied highlands',alpine:'Alpine ranges',rolling:'Rolling hills',
+} as const;
+export type LandformProfile=keyof typeof LANDFORM_NAMES;
+export const DEFAULT_LANDFORMS:LandformProfile='varied';
+
+function landformRelief(scale:number,seed:number,profile:LandformProfile){
+  const angle=terrainHash(17,9,seed)*Math.PI*2;
+  const cos=Math.cos(angle),sin=Math.sin(angle);
+  return (x:number,y:number,geology:number,rolling:number)=>{
+    const u=x*cos+y*sin,v=y*cos-x*sin;
+    const region=terrainNoise(u+61,v-33,scale*.33,seed+6211);
+    const range=terrainNoise(u*1.7,v*.65,scale*.15,seed+6287)+
+      terrainNoise(u,v,scale*.055,seed+6317)*.23;
+    const crest=Math.pow(Math.max(0,1-Math.abs(range)),3);
+    const ridgeStrength=Math.min(1,Math.max(geology*.78,.45+region*.8));
+    const valley=Math.pow(Math.max(0,1-5*Math.abs(
+      terrainNoise(u*.8+36,v*1.2,scale*.17,seed+6353))),2);
+    const ridge=29+rolling*.59+ridgeStrength*(48+crest*126)-valley*26;
+    const hills=25+rolling*1.07+geology*(28+crest*26)-valley*8;
+    if(profile==='rolling')return hills;
+    if(profile==='alpine')return ridge+ridgeStrength*(18+crest*25);
+    // Neighboring ridges, basins and terraces blend across the same region.
+    const flatland=Math.min(1,Math.max(0,.48-region*.9-geology*.3));
+    const mesa=Math.max(0,terrainNoise(x-17,y+31,scale*.22,seed+6367))*
+      Math.max(0,.8-Math.abs(region)*1.4)*64;
+    const step=mesa/12,t=step-Math.floor(step);
+    const terraces=(Math.floor(step)+t*t*(3-2*t))*12;
+    return ridge*(1-flatland)+hills*flatland+terraces;
+  };
+}
+
 /** Smooth neighboring geology into hills and ridges before cutting valleys. */
 export function generateRegionalTopography(width:number,height:number,
-  tiles:readonly Pick<Tile,'biome'>[],seed:number):Topography{
+  tiles:readonly Pick<Tile,'biome'>[],seed:number,profile?:LandformProfile):Topography{
   const count=width*height,coast=new Uint16Array(count);
   for(let i=0;i<count;i++)coast[i]=tiles[i].biome==='water'?0:width+height;
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
@@ -37,13 +69,16 @@ export function generateRegionalTopography(width:number,height:number,
     });
   }
   const scale=Math.max(8,Math.min(width,height));
+  const relief=profile?landformRelief(scale,seed,profile):null;
   const heights=Array.from(coast,(distance,i)=>{
     if(!distance)return SEA_LEVEL-9;
     const x=i%width,y=Math.floor(i/width);
     const rolling=terrainNoise(x+31,y-47,scale*.25,seed+4701)*23+
       terrainNoise(x,y,Math.max(4,scale*.09),seed+4807)*11;
-    const ridge=1-Math.abs(terrainNoise(x+23,y+11,scale*.13,seed+5347));
     const inland=1-Math.exp(-distance/Math.max(2.8,scale*.063));
+    if(relief)return Math.round(Math.min(250,SEA_LEVEL+3+
+      inland*Math.max(5,relief(x,y,highland[i],rolling))));
+    const ridge=1-Math.abs(terrainNoise(x+23,y+11,scale*.13,seed+5347));
     return Math.round(SEA_LEVEL+3+inland*(33+rolling+highland[i]*(56+65*ridge)));
   });
   const rivers=generateHydrology(width,height,heights,tiles,seed,true);

@@ -2,20 +2,18 @@
  * must never depend on whether scenery is cached or refreshed. */
 import type {Settlement} from './engine';
 import {buildingTier,settlementStage,type Building} from './construction';
-import {buildingVisualScale} from './depthSprites';
+import type {ArtBounds} from './atlasBuildingArt';
 
-/** Screen-space occlusion for legacy packed towns as well as new settlements.
- * Prioritize construction sites and distinctive services over generic roofs;
- * culling only affects the view, never house capacity or saved buildings. */
-export function uncrowdedDistrictBuildings<T extends {building:Building;x:number;y:number}>(
+/** Keep adjacent roofs visible when their projected silhouettes can coexist.
+ * Where they strongly overlap, prioritize projects and distinctive services. */
+export function uncrowdedDistrictBuildings<T extends {building:Building;x:number;y:number;bounds:ArtBounds}>(
   buildings:readonly T[]):T[]{
   const priority=(b:Building)=>b.stage!=='complete'?9:
     b.type==='communal'?8:b.type==='market'||b.type==='workshop'?7:
     b.type==='well'||b.type==='storage'||b.type==='dock'?6:
     b.type==='farm'?4:1+buildingTier(b)*.2;
-  type Rectangle={left:number;right:number;top:number;bottom:number};
-  const occupied=new Map<string,Rectangle[]>(),kept:T[]=[];
-  const cells=(box:Rectangle)=>{
+  const occupied=new Map<string,ArtBounds[]>(),kept:T[]=[];
+  const cells=(box:ArtBounds)=>{
     const keys:string[]=[];
     for(let y=Math.floor(box.top/24);y<=Math.floor(box.bottom/24);y++)
       for(let x=Math.floor(box.left/24);x<=Math.floor(box.right/24);x++)
@@ -25,15 +23,14 @@ export function uncrowdedDistrictBuildings<T extends {building:Building;x:number
   for(const entry of [...buildings].sort((a,b)=>
     priority(b.building)-priority(a.building)||
     a.building.id-b.building.id||a.x-b.x||a.y-b.y)){
-    const b=entry.building,scale=buildingVisualScale(b.type);
-    const width=(b.type==='communal'?25:19+buildingTier(b)*2)*scale;
-    const height=(b.type==='communal'?37:25+buildingTier(b)*2)*scale;
-    const box={left:entry.x-width/2,right:entry.x+width/2,
-      top:entry.y-height,bottom:entry.y+2*scale};
+    const box=entry.bounds;
     const bucketKeys=cells(box);
-    if(bucketKeys.some(key=>(occupied.get(key)??[]).some(other=>
-      box.left<other.right&&box.right>other.left&&
-      box.top<other.bottom&&box.bottom>other.top)))continue;
+    if(bucketKeys.some(key=>(occupied.get(key)??[]).some(other=>{
+      const overlapX=Math.min(box.right,other.right)-Math.max(box.left,other.left);
+      const overlapY=Math.min(box.bottom,other.bottom)-Math.max(box.top,other.top);
+      return overlapX>0&&overlapY>0&&overlapX*overlapY>
+        (box.right-box.left)*(box.bottom-box.top)*.35;
+    })))continue;
     for(const key of bucketKeys){
       const bucket=occupied.get(key);
       if(bucket)bucket.push(box);else occupied.set(key,[box]);

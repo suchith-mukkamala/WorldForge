@@ -1,22 +1,23 @@
 import {useEffect,useRef} from 'react';
 import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
-import {ARCHITECTURE,settlementStage} from './construction';
+import {settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
-import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
-  paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
+import {paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
+  PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {buildTerrainDetailAtlas,paintTerrainDetail,
   paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
 import {woodlandCover,woodlandHabitat} from './woodland';
-import {ATLAS_SEA,atlasRivers,atlasTileGrain,occupiedScenery,overheadTerrainColor,
+import {ATLAS_SEA,atlasRivers,atlasTileGrain,highlandColor,occupiedScenery,overheadTerrainColor,
   paintOverheadTerrainTile,paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {TERRAIN_CELL_SIDE} from './terrainCells';
 import {terrainCellColor,terrainCellPatch} from './terrainCellArt';
+import {useTerrainFocus} from './useTerrainFocus';
 import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
@@ -26,11 +27,14 @@ import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
+import {blockBuilding,blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
+import {BLOCK_ANCHOR,OVERHEAD_BLOCK_VIEW,blockBuildingArt,blockStampScale,
+  paintBlockScenery} from './blockScenery';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
 import {wornPathTiles} from './trailNetwork';
 import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
-import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
+import {atlasBuildingAt,paintAtlasBuilding,
   type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
 
 export const WORLD_CELL_SIZE=6;
@@ -55,7 +59,10 @@ export function WorldCanvas({
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const mapWidth=world.width*CELL,mapHeight=world.height*CELL;
-  const cellFocus=overlay==='terrain'&&world.terrainCells&&atlasLevel(zoom)==='street'?selected:null;
+  const fineTerrain=overlay==='terrain'&&!!world.terrainCells&&atlasLevel(zoom)==='street';
+  const terrainFocus=useTerrainFocus(canvasRef,fineTerrain,world.width,world.height,(x,y)=>
+    x>=0&&x<1&&y>=0&&y<1?{x:Math.floor(x*world.width),y:Math.floor(y*world.height)}:null);
+  const cellFocus=fineTerrain?(terrainFocus??selected):null;
   const cellTile=cellFocus?cellFocus.y*world.width+cellFocus.x:-1;
   const terrainCells=cellFocus?world.terrainCells:undefined;
   const density=cellFocus&&mapWidth*mapHeight*4<=6_000_000?2:1;
@@ -151,6 +158,7 @@ export function WorldCanvas({
       const index=y*W+x,h=heights[index];
       const cover=tiled&&woodlandHabitat(tile.biome)?woodlandCover(woodland,index):undefined;
       const grain=tiled?pixelTerrainHash(x,y,world.settings.seed):0;
+      const upland=tiled&&world.settings.landforms?highlandColor(tile.biome,h,grain):undefined;
       const cells=patch?.get(index);
       if(cells){
         const size=CELL/TERRAIN_CELL_SIDE;
@@ -160,7 +168,7 @@ export function WorldCanvas({
             py+Math.floor(offset/TERRAIN_CELL_SIDE)*size,size,size);
         }
       }else if(ocean){
-        paintOverheadTerrainTile(ctx,x,y,CELL,overheadTerrainColor(tile.biome,ocean[index],cover),
+        paintOverheadTerrainTile(ctx,x,y,CELL,upland??overheadTerrainColor(tile.biome,ocean[index],cover),
           atlasTileGrain(tile.biome,ocean[index],grain));
       }else if(overlay==='watersheds'&&drainage){
         ctx.fillStyle=tile.biome==='water'?'#285d7a':
@@ -188,7 +196,12 @@ export function WorldCanvas({
           x>0&&(world.tiles[index-1].biome==='water')!==water||
           x<W-1&&(world.tiles[index+1].biome==='water')!==water;
         const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore,cover);
-        if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y,!showBuildings);
+        const prop=upland&&h>=175?'snowstone':terrainBlockProp(detail.motif);
+        if(prop){
+          const tree=prop==='oak'||prop==='pine';
+          paintBlockScenery(ctx,blockProp(prop,detail.variant),{x:px+CELL/2,y:py+CELL/2},
+            OVERHEAD_BLOCK_VIEW,tree?(showBuildings?.78:.39):showBuildings?.56:.28);
+        }else if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y,!showBuildings);
         else if(showBuildings)paintTerrainDetail(ctx,detail,x,y);
       }
       if(overlay==='resources'&&tile.biome!=='water'){
@@ -246,58 +259,31 @@ export function WorldCanvas({
       ctx.fillStyle='#876b58';ctx.fillRect(x*CELL+1,y*CELL+2,1,3);
       ctx.fillRect(x*CELL+4,y*CELL+2,1,3);
     }
-    if(showBuildings)for(const ruin of world.ruins??[]){
-      const x=ruin.x*CELL,y=ruin.y*CELL;
-      const culture=ARCHITECTURE[ruin.species];
-      ctx.fillStyle='#222537';ctx.fillRect(x-4,y+4,16,3);
-      ctx.fillStyle=culture.wall;ctx.fillRect(x-4,y-3,4,8);
-      ctx.fillRect(x+6,y-5,4,9);
-      ctx.fillStyle=culture.roof;ctx.fillRect(x-5,y-6,5,2);
-      ctx.fillRect(x+5,y-7,5,2);
-      ctx.fillStyle='#394351';ctx.fillRect(x,y+2,6,4);
-      ctx.fillStyle='#8fa18b';ctx.fillRect(x-3,y+4,2,2);
-      ctx.fillRect(x+9,y+3,2,2);
-    }
-    if(showBuildings)for(const site of world.ancientSites??[]){
-      paintAncientSite(ctx,site.kind,site.x*CELL,site.y*CELL,
-        (site.visits??site.visitors.length)>0);
-    }
-    if(showBuildings)for(const s of world.settlements){
-      if(s.infrastructure?.buildings.length)continue;
-      const px=s.x*CELL,py=s.y*CELL;
-      const stage=settlementStage(s),size={encampment:8,hamlet:10,
-        village:12,town:14,city:16}[stage];
-      const roof=ARCHITECTURE[s.species].roof;
-      ctx.fillStyle='#222b3c';ctx.fillRect(px-3,py-3,size+2,size+2);
-      ctx.fillStyle='#e2c598';ctx.fillRect(px-2,py-2,size,size);
-      ctx.fillStyle=roof;ctx.fillRect(px-2,py-4,size,4);
-      ctx.fillStyle=ARCHITECTURE[s.species].wall;
-      ctx.fillRect(px,py,Math.max(3,size-4),Math.max(3,size-4));
-      ctx.fillStyle='#342e40';ctx.fillRect(px+2,py+size-6,3,4);
-      ctx.fillStyle=SPECIES_INFO[s.species].color;
-      ctx.fillRect(px+size-5,py+1,2,2);
-      if(stage==='village'||stage==='town'||stage==='city'){
-        ctx.fillStyle='#f5e0b1';ctx.fillRect(px,py-5,size-3,1);
-        ctx.fillStyle='#d3b78a';ctx.fillRect(px+size-6,py-7,3,5);
+    if(showBuildings){
+      const center=(x:number,y:number)=>({x:(x+.5)*CELL,y:(y+.5)*CELL});
+      for(const ruin of world.ruins??[])
+        paintBlockScenery(ctx,blockLandmark('ruin'),center(ruin.x,ruin.y),OVERHEAD_BLOCK_VIEW,1.08);
+      for(const site of world.ancientSites??[]){
+        const model=blockLandmark(site.kind,(site.visits??site.visitors.length)>0);
+        paintBlockScenery(ctx,model,center(site.x,site.y),OVERHEAD_BLOCK_VIEW,1.08);
       }
-      if(stage==='town'||stage==='city'){
-        ctx.fillStyle='#f5e5bb';ctx.fillRect(px+size-6,py-9,3,3);
-        if(stage==='city'){
-          ctx.fillStyle=roof;ctx.fillRect(px-3,py-8,4,6);
-          ctx.fillRect(px+size-1,py-8,4,6);
-        }
+      for(const s of world.settlements){
+        if(s.infrastructure?.buildings.length)continue;
+        const model=blockSettlement(settlementStage(s),s.species);
+        paintBlockScenery(ctx,model,center(s.x,s.y),OVERHEAD_BLOCK_VIEW,1);
       }
     }
     const plots:AtlasBuilding[]=[];
     if(showBuildings){
-      for(const s of world.settlements)for(const b of s.infrastructure?.buildings??[]){
-        const key=[b.type,b.culture,b.stage,b.tier??0,Math.round(b.progress/10)].join(':');
-        const art=cacheBuildingArt(buildingArtRef.current,key,36,
-          painter=>paintBuilding(painter,{...b,x:3,y:4}));
+      const buildings=world.settlements.flatMap(s=>s.infrastructure?.buildings??[]);
+      buildings.sort((a,b)=>a.y-b.y);
+      for(const b of buildings){
+        const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,world.settings.seed));
+        const art=blockBuildingArt(buildingArtRef.current,model,OVERHEAD_BLOCK_VIEW,1.2);
         if(!art)continue;
-        const scale=buildingVisualScale(b.type);
-        const plot={building:b,art,scale,x:(b.x+.5)*CELL-3.5*CELL*scale,
-          y:(b.y+1)*CELL-5*CELL*scale};
+        const scale=blockStampScale(buildingVisualScale(b.type));
+        const plot={building:b,art,scale,x:(b.x+.5)*CELL-BLOCK_ANCHOR.x*scale,
+          y:(b.y+.5)*CELL-BLOCK_ANCHOR.y*scale};
         plots.push(plot);
         paintAtlasBuilding(ctx,plot);
       }
