@@ -2,7 +2,9 @@
  * Whispers may be refused; direct changes take effect. Everything is stored
  * in the world file and resolved deterministically from the world seed.
  */
-import type {Agent,Biome,Species,World} from './engine';
+import {BIOME_INFO,type Agent,type Biome,type Species,type World} from './engine';
+import {paintWoodland} from './woodland';
+import {clearTerrainTile} from './terrainCells';
 import {appendLifeMoment,makeLifeRecord} from './identity';
 import {birthPotentialRank,potentialRank} from './traitRanks';
 import {birthInnateTrait,innateTrait} from './innateTraits';
@@ -225,13 +227,15 @@ export function intervene(previous:World,action:DivineAction):World{
     const idx=action.y*w.width+action.x;
     if(action.biome==='water'&&w.agents.some(a=>a.x===action.x&&a.y===action.y))
       throw Error('Move or relocate the occupant before flooding their tile.');
-    const food={plains:7.5,forest:9.5,mountain:5,cave:4.5,
-      wasteland:4.2,volcanic:3.7,water:0}[action.biome];
+    const food=action.biome==='wasteland'?4.2:action.biome==='volcanic'?3.7:
+      BIOME_INFO[action.biome]?.food;
     if(food===undefined)throw Error('Unknown terrain type.');
     w.tiles[idx]={biome:action.biome,food:food*w.settings.resourceLevel};
+    paintWoodland(w,idx);
     // God-mode terrain changes must invalidate the same elevation/drainage
     // fields as map-brush edits. Hydrology itself never changes the biome.
     w.topography=generateTopography(w.width,w.height,w.tiles,w.settings.seed);
+    clearTerrainTile(w,idx);
     editDeposit(w,idx);
     reconcileTradeTerrain(w,idx);
     reconcileTransportTerrain(w,idx);

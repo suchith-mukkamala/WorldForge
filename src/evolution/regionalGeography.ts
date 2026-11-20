@@ -6,6 +6,7 @@ import {terrainRuggedness} from './terrainPhysics';
 
 const uplift:Record<Biome,number>={
   plains:0,forest:0,mountain:1,cave:.82,wasteland:.22,volcanic:1,water:0,
+  taiga:.23,wetland:0,savanna:.06,
 };
 
 export const LANDFORM_NAMES={

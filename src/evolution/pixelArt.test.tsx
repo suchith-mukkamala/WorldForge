@@ -6,7 +6,8 @@ import {PixelPortrait} from './PixelPortrait';
 import {PeopleDirectory} from './PeopleDirectory';
 import {WorldFamily} from './WorldFamily';
 import {appearanceFor,paintPerson,paintTerrain,spriteKey} from './pixelArt';
-import {blockBuilding} from './blockModels';
+import {blockBuilding,blockProp} from './blockModels';
+import {biomeTreeAt,TREE_KINDS} from './biomeTrees';
 import {BUILDING_TYPES,prepareInfrastructure} from './construction';
 
 describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
@@ -77,7 +78,7 @@ describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
     expect(JSON.stringify(w)).toBe(original);
   });
 
-  it('gives all nine construction types distinct block geometry',()=>{
+  it('gives each construction type distinct block geometry',()=>{
     const shapes=new Set<string>();
     for(const type of BUILDING_TYPES){
       const model=blockBuilding({
@@ -87,5 +88,16 @@ describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
       shapes.add(model.faces.map(f=>[f.x,f.y,f.z,f.direction].join(':')).sort().join('|'));
     }
     expect(shapes.size).toBe(BUILDING_TYPES.length);
+  });
+
+  it('makes regional trees read differently by their geometry as well as color',()=>{
+    expect(biomeTreeAt('taiga',0,110)).toBe('spruce');
+    expect(biomeTreeAt('taiga',1,110)).toBe('larch');
+    expect(biomeTreeAt('wetland',2,60)).toBe('willow');
+    expect(biomeTreeAt('savanna',0,85)).toBe('acacia');
+    expect(biomeTreeAt('savanna',2,85)).toBe('baobab');
+    const silhouette=(kind:typeof TREE_KINDS[number])=>blockProp(kind,1).faces
+      .map(f=>[f.x,f.y,f.z,f.direction].join(',')).sort().join('|');
+    expect(new Set(TREE_KINDS.map(silhouette)).size).toBe(TREE_KINDS.length);
   });
 });

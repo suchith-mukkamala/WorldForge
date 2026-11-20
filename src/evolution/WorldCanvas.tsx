@@ -10,14 +10,13 @@ import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {buildTerrainDetailAtlas,paintTerrainDetail,
   paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
+import {isTreeKind} from './biomeTrees';
 import {woodlandCover,woodlandHabitat} from './woodland';
-import {ATLAS_SEA,atlasRivers,atlasTileGrain,highlandColor,occupiedScenery,overheadTerrainColor,
-  paintOverheadTerrainTile,paintRiverSegment,showAtlasScenery} from './atlasTerrain';
+import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,overheadTerrainColor,
+  paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
-import {TERRAIN_CELL_SIDE} from './terrainCells';
-import {terrainCellColor,terrainCellPatch} from './terrainCellArt';
-import {useTerrainFocus} from './useTerrainFocus';
+import {paintTerrainMosaic} from './terrainCellArt';
 import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
@@ -59,13 +58,8 @@ export function WorldCanvas({
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const mapWidth=world.width*CELL,mapHeight=world.height*CELL;
-  const fineTerrain=overlay==='terrain'&&!!world.terrainCells&&atlasLevel(zoom)==='street';
-  const terrainFocus=useTerrainFocus(canvasRef,fineTerrain,world.width,world.height,(x,y)=>
-    x>=0&&x<1&&y>=0&&y<1?{x:Math.floor(x*world.width),y:Math.floor(y*world.height)}:null);
-  const cellFocus=fineTerrain?(terrainFocus??selected):null;
-  const cellTile=cellFocus?cellFocus.y*world.width+cellFocus.x:-1;
-  const terrainCells=cellFocus?world.terrainCells:undefined;
-  const density=cellFocus&&mapWidth*mapHeight*4<=6_000_000?2:1;
+  const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
+  const density=atlasLevel(zoom)!=='world'&&mapWidth*mapHeight*4<=10_000_000?2:1;
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
@@ -78,7 +72,7 @@ export function WorldCanvas({
     ancientSites:World['ancientSites'];
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     street:boolean;regional:boolean;
-    cellTile:number;terrainCells:World['terrainCells'];
+    terrainCells:World['terrainCells'];
     width:number;height:number;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
@@ -121,7 +115,7 @@ export function WorldCanvas({
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
-      stamp.cellTile!==cellTile||stamp.terrainCells!==terrainCells||
+      stamp.terrainCells!==terrainCells||
       stamp.woodland!==woodland||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
@@ -150,7 +144,14 @@ export function WorldCanvas({
       hydrologyForWorld(world):null;
     const multiShore=isMultiIslandLayout(world.settings.layout);
     const ocean=tiled?coastalDepth(W,H,i=>world.tiles[i].biome==='water'):null;
-    const patch=cellFocus?terrainCellPatch(world,cellFocus):null;
+    if(ocean)paintTerrainMosaic(ctx,world,CELL,index=>{
+      const {biome}=world.tiles[index],x=index%W,y=Math.floor(index/W);
+      if(!multiShore&&!visibleCoastTile(x,y,W,H,biome,world.settings.seed))return;
+      const grain=pixelTerrainHash(x,y,world.settings.seed);
+      const cover=woodlandHabitat(biome)?woodlandCover(woodland,index):undefined;
+      const upland=world.settings.landforms?highlandColor(biome,heights[index],grain):undefined;
+      return {color:upland??overheadTerrainColor(biome,ocean[index],cover),grain,water:biome==='water'};
+    },ATLAS_SEA);
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
       if(!multiShore&&!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
@@ -159,18 +160,7 @@ export function WorldCanvas({
       const cover=tiled&&woodlandHabitat(tile.biome)?woodlandCover(woodland,index):undefined;
       const grain=tiled?pixelTerrainHash(x,y,world.settings.seed):0;
       const upland=tiled&&world.settings.landforms?highlandColor(tile.biome,h,grain):undefined;
-      const cells=patch?.get(index);
-      if(cells){
-        const size=CELL/TERRAIN_CELL_SIDE;
-        for(const [offset,cell] of cells.entries()){
-          ctx.fillStyle=terrainCellColor(cell);
-          ctx.fillRect(px+offset%TERRAIN_CELL_SIDE*size,
-            py+Math.floor(offset/TERRAIN_CELL_SIDE)*size,size,size);
-        }
-      }else if(ocean){
-        paintOverheadTerrainTile(ctx,x,y,CELL,upland??overheadTerrainColor(tile.biome,ocean[index],cover),
-          atlasTileGrain(tile.biome,ocean[index],grain));
-      }else if(overlay==='watersheds'&&drainage){
+      if(overlay==='watersheds'&&drainage){
         ctx.fillStyle=tile.biome==='water'?'#285d7a':
           BASIN_COLORS[(drainage.basin[index]>>>0)%BASIN_COLORS.length];
         ctx.fillRect(px,py,CELL,CELL);
@@ -198,7 +188,7 @@ export function WorldCanvas({
         const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore,cover);
         const prop=upland&&h>=175?'snowstone':terrainBlockProp(detail.motif);
         if(prop){
-          const tree=prop==='oak'||prop==='pine';
+          const tree=isTreeKind(prop);
           paintBlockScenery(ctx,blockProp(prop,detail.variant),{x:px+CELL/2,y:py+CELL/2},
             OVERHEAD_BLOCK_VIEW,tree?(showBuildings?.78:.39):showBuildings?.56:.28);
         }else if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y,!showBuildings);
@@ -214,11 +204,10 @@ export function WorldCanvas({
     if(drainage){
       const center=(i:number)=>({x:(i%W+.5)*CELL,y:(Math.floor(i/W)+.5)*CELL});
       for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
-        if(patch?.has(from)&&patch.has(to))continue;
         const a=center(from),end=center(to);
         const middle={x:(a.x+end.x)/2,y:(a.y+end.y)/2};
-        const b=patch?.has(to)||world.tiles[to].biome==='water'?middle:end;
-        paintRiverSegment(ctx,patch?.has(from)?middle:a,b,tier,overlay==='watersheds');
+        const b=world.tiles[to].biome==='water'?middle:end;
+        paintRiverSegment(ctx,a,b,tier,overlay==='watersheds');
       }
     }
     if(overlay==='deposits'){
@@ -294,7 +283,7 @@ export function WorldCanvas({
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
-      cellTile,terrainCells,
+      terrainCells,
       width:canvas.width,height:canvas.height};
     }
     else if(stamp)stamp.tiles=world.tiles;
@@ -532,7 +521,7 @@ export function WorldCanvas({
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,world.woodland,
     world.settings.regionalGeography,
-    cellFocus,cellTile,terrainCells,density,mapWidth,mapHeight,
+    terrainCells,density,mapWidth,mapHeight,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
     world.topography,world.dayOfYear,world.ancientSites,world.trails]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{

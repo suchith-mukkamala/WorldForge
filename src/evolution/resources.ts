@@ -32,6 +32,9 @@ const WEIGHTS:Record<Biome,Partial<Record<ResourceKind,number>>>={
   wasteland:{tree:.02,stone:.40,clay:.20,coal:.085,copper:.065,iron:.045,gold:.008},
   volcanic:{stone:.42,clay:.09,coal:.10,copper:.09,iron:.12,gold:.025},
   water:{},
+  taiga:{tree:.59,stone:.20,clay:.055,coal:.022,iron:.016},
+  wetland:{tree:.28,clay:.43,stone:.095,iron:.01},
+  savanna:{tree:.19,stone:.25,clay:.25,copper:.029,iron:.02},
 };
 const round=(n:number)=>Math.round(n*100)/100;
 // Stable per-tile pseudo-noise. Resource generation consumes no world RNG and

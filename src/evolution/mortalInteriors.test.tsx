@@ -37,8 +37,8 @@ function place(world:World,type:Building['type']='house',
 }
 
 describe('v2.6.0 — reusable interior spaces',()=>{
-  it('includes a stable independent layout for all nine building categories',()=>{
-    expect(BUILDING_TYPES).toHaveLength(9);
+  it('includes a stable independent layout for every building category',()=>{
+    expect(Object.keys(INTERIOR_TEMPLATES)).toHaveLength(BUILDING_TYPES.length);
     for(const type of BUILDING_TYPES){
       const template=INTERIOR_TEMPLATES[type];
       expect(template.name.length).toBeGreaterThan(0);

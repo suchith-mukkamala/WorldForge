@@ -72,7 +72,7 @@ function stockLimit(good:Good):number{
     (MATERIALS as readonly string[]).includes(good)?500:140;
 }
 function capacity(s:Settlement,good:Good):number{
-  if(good==='food')return Math.min(760,360+buildings(s,'storage')*80);
+  if(good==='food')return Math.min(760,360+buildings(s,'storage')*80+buildings(s,'granary')*130);
   return stockLimit(good);
 }
 function setStock(s:Settlement,good:Good,amount:number):void{
@@ -114,7 +114,7 @@ export function inferSpecialty(w:World,s:Settlement,
     const d=deposits.get(idx);
     if(d&&d.amount>.3){if(d.kind==='tree')trees++;
       else if(d.kind!=='clay')ores++;}
-    if(w.tiles[idx].biome==='plains')plains++;
+    if(['plains','wetland','savanna'].includes(w.tiles[idx].biome))plains++;
   }
   const scores:Record<Specialty,number>={
     agriculture:buildings(s,'farm')*5+Math.min(8,plains*.13)+
@@ -224,7 +224,8 @@ function farmAndFeed(w:World,s:Settlement,residents:Agent[]):void{
     const farm=farms.find(b=>distance(a,b)<=3);
     if(!farm)continue;
     const tile=w.tiles[farm.y*w.width+farm.x];
-    const fertile=tile.biome==='plains'?1.2:tile.biome==='forest'?1:
+    const fertile=tile.biome==='plains'||tile.biome==='wetland'?1.2:
+      tile.biome==='savanna'?1.04:tile.biome==='forest'?1:
       ['wasteland','volcanic'].includes(tile.biome)?.55:.8;
     const technique=knows(a,'agriculture')?1.24:.55;
     const irrigation=knows(a,'irrigation')?1.25:1;

@@ -75,7 +75,8 @@ function initialWorld():World{
   }
   // First-time visitors get their own world; existing local saves always win.
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
-    livingBiomes:true,regionalGeography:true,landforms:DEFAULT_LANDFORMS,terrainCells:true,
+    livingBiomes:true,regionalGeography:true,regionalBiomes:true,
+    landforms:DEFAULT_LANDFORMS,terrainCells:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }

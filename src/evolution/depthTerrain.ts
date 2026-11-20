@@ -23,7 +23,8 @@ export type DepthPicking={width:number;height:number;ids:Uint32Array};
 
 /** Rasterize visible convex faces in draw order. Each pixel has one tile ID,
  * so anti-aliased edges can't mix two IDs into some unrelated location. */
-export function pickTerrainFace(picking:DepthPicking,points:readonly Point[],index:number):void{
+export function pickTerrainFace(picking:DepthPicking,points:readonly Point[],index:number,
+  pixels?:Uint32Array,color=0):void{
   let top=Infinity,bottom=-Infinity;
   for(const {y} of points){top=Math.min(top,y);bottom=Math.max(bottom,y);}
   const lastRow=Math.min(picking.height,Math.ceil(bottom-.5));
@@ -37,6 +38,10 @@ export function pickTerrainFace(picking:DepthPicking,points:readonly Point[],ind
       left=Math.min(left,x);right=Math.max(right,x);
     }
     const start=Math.max(0,Math.ceil(left-.5)),end=Math.min(picking.width,Math.ceil(right-.5));
-    if(start<end)picking.ids.fill(index+1,y*picking.width+start,y*picking.width+end);
+    if(start<end){
+      const offset=y*picking.width;
+      picking.ids.fill(index+1,offset+start,offset+end);
+      pixels?.fill(color,offset+start,offset+end);
+    }
   }
 }

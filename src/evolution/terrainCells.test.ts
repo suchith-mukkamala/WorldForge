@@ -1,13 +1,31 @@
 import {describe,expect,it} from 'vitest';
 import {createWorld,editWorld,isWorld,stepWorld} from './engine';
 import {compactWorld,readSavedWorld} from './storage';
-import {enableTerrainCells,routeTerrainWater,terrainCellsIn} from './terrainCells';
+import {enableTerrainCells,routeTerrainWater,terrainCellsIn,terrainRenderGrid} from './terrainCells';
 import {terrainFarmFactor,terrainStepEffort} from './terrainPhysics';
 
 const landscape=()=>createWorld({size:'small',seed:321721,layout:'continents',
   regionalGeography:true,starting:{human:0,elf:0,dwarf:0,demon:0}});
 
 describe('fine terrain and material physics',()=>{
+  it('provides the same four by four square grid across active and legacy maps',()=>{
+    const old=landscape(),active=enableTerrainCells(old);
+    const plain=terrainRenderGrid(old),grid=terrainRenderGrid(active);
+    expect(grid.columns).toBe(active.width*4);
+    expect(grid.rows).toBe(active.height*4);
+    expect(plain.ground.length).toBe(grid.ground.length);
+    expect(plain.water.every(depth=>depth===0)).toBe(true);
+    const visibleLand=active.tiles.map((tile,i)=>tile.biome==='water'?-1:i).filter(i=>i>=0);
+    for(const tile of [visibleLand[0],visibleLand[Math.floor(visibleLand.length/2)],visibleLand.at(-1)!]){
+      const first=(Math.floor(tile/active.width)*grid.columns+tile%active.width)*4;
+      const cells=terrainCellsIn(active,tile)!;
+      cells.forEach((square,offset)=>{
+        const cell=first+Math.floor(offset/4)*grid.columns+offset%4;
+        expect(grid.ground[cell]).toBe(square.height*4);
+        expect(grid.water[cell]).toBe(square.waterDepth*4);
+      });
+    }
+  });
   it('moves water across small steps and lets it pool in a low cell',()=>{
     const ground=new Uint16Array([240,234,228,234,240]);
     const depth=new Uint8Array([6,0,0,0,0]);

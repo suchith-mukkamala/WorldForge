@@ -4,8 +4,9 @@ import {hydrologyForWorld} from './hydrology';
 import {SEA_LEVEL,topographyForWorld,type Topography} from './topography';
 
 export const TERRAIN_CELL_SIDE=4;
+export const TERRAIN_ELEVATION_UNITS=4;
 const SIDE=TERRAIN_CELL_SIDE,CELLS_PER_TILE=SIDE*SIDE;
-const UNITS=4,SEA=SEA_LEVEL*UNITS,MAX_DEPTH=15;
+const UNITS=TERRAIN_ELEVATION_UNITS,SEA=SEA_LEVEL*UNITS,MAX_DEPTH=15;
 const ROCK=0,SOIL=1,SAND=2;
 const MATERIALS=['stone','soil','sand'] as const;
 export type TerrainMaterial=typeof MATERIALS[number];
@@ -97,7 +98,9 @@ function baseTerrain(w:World):TerrainBase{
       const sx=x*SIDE+col,sy=y*SIDE+row,index=sy*columns+sx;
       const grain=terrainHash(sx,sy,seed+1199);
       const layer=water?(grain<.7?SAND:ROCK):
-        (rocky&&grain<.76)||grain<.075?ROCK:(shore&&grain<.68)||biome==='wasteland'?SAND:SOIL;
+        (rocky&&grain<.76)||grain<.075?ROCK:
+          (shore&&biome!=='wetland'&&grain<.68)||biome==='wasteland'||
+          biome==='savanna'&&grain<.51?SAND:SOIL;
       reservoir[index]=+water;
       material[index]=layer;
       cover[index]=layer===ROCK?0:Math.round(3+grain*9);
@@ -130,7 +133,8 @@ function baseTerrain(w:World):TerrainBase{
       course(receiver,tile,tier);
       const center=(Math.floor(tile/width)*SIDE+SIDE/2)*columns+tile%width*SIDE+SIDE/2;
       runoff.push({index:center,tier});
-    }else if(tiles[tile].biome!=='water'&&terrainHash(tile%width,Math.floor(tile/width),seed+1097)<.10){
+    }else if(tiles[tile].biome!=='water'&&terrainHash(tile%width,Math.floor(tile/width),seed+1097)<
+      (tiles[tile].biome==='wetland'?.33:.10)){
       rainSpots.push(lowPoint[tile]);
     }
   }
@@ -157,6 +161,34 @@ function terrainSurface(w:World):Surface|undefined{
   const surface={base,cells,summaries:new Array<TerrainCellSummary|undefined>(w.tiles.length)};
   surfaces.set(w.terrainCells,surface);
   return surface;
+}
+
+export type TerrainGrid={columns:number;rows:number;ground:Uint16Array;
+  material:Uint8Array;water:Uint8Array};
+const renderGrids=new WeakMap<TerrainBase|Surface,TerrainGrid>();
+
+/** The atlas uses one complete square grid, including worlds with no
+ * simulated cell state. The draw buffers are derived and never saved. */
+export function terrainRenderGrid(w:World):TerrainGrid{
+  const surface=terrainSurface(w),base=surface?.base??baseTerrain(w),key=surface??base;
+  const existing=renderGrids.get(key);
+  if(existing)return existing;
+  const {columns,rows}=base,ground=base.ground.slice(),material=base.material.slice();
+  const water=new Uint8Array(ground.length),heights=topographyForWorld(w).heights;
+  for(let i=0;i<ground.length;i++){
+    if(base.reservoir[i]){
+      const col=Math.floor((i%columns)/SIDE),row=Math.floor(i/(columns*SIDE));
+      ground[i]=heights[row*w.width+col]*UNITS;
+      continue;
+    }
+    const value=surface?.cells[i]??0,removed=Math.min(base.cover[i],value&15);
+    ground[i]-=removed;
+    if(removed===base.cover[i])material[i]=ROCK;
+    water[i]=value>>>4;
+  }
+  const grid={columns,rows,ground,material,water};
+  renderGrids.set(key,grid);
+  return grid;
 }
 
 function saveCells(w:World,cells:Uint8Array):void{

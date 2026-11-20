@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {
-  BIOMES,BIOME_INFO,DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,
+  BIOME_INFO,DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,
   createWorld,stepWorld,advanceWorld,editWorld,isWorld,normalizeSettings,population,
   type World,
 } from './engine';
@@ -24,7 +24,7 @@ describe('Evolution Lab v0.1: reproducible fantasy worlds',()=>{
     expect(new Set(world.agents.map(a=>a.y*world.width+a.x)).size)
       .toBe(world.agents.length);
     const biomes=new Set(world.tiles.map(t=>t.biome));
-    for(const biome of BIOMES)expect(biomes.has(biome)).toBe(true);
+    expect(biomes).toEqual(new Set(['plains','forest','mountain','cave','wasteland','volcanic','water']));
     for(const species of SPECIES){
       const agents=world.agents.filter(a=>a.species===species);
       expect(agents.length).toBeGreaterThan(0);

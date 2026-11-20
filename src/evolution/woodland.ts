@@ -14,8 +14,11 @@ const decode=new Uint8Array(128);
 for(let i=0;i<COVER.length;i++)decode[COVER.charCodeAt(i)]=i;
 
 export function woodlandHabitat(biome:Biome):boolean{
-  return biome==='forest'||biome==='plains';
+  return biome==='forest'||biome==='plains'||biome==='taiga'||
+    biome==='wetland'||biome==='savanna';
 }
+const seededCover=(biome:Biome)=>biome==='forest'?MAX_COVER:
+  biome==='taiga'?50:biome==='wetland'?30:biome==='savanna'?13:0;
 
 export function woodlandCover(woodland:string|undefined,index:number):number|undefined{
   return woodland===undefined?undefined:decode[woodland.charCodeAt(index)]/MAX_COVER;
@@ -37,14 +40,17 @@ function neighboringCover(cover:Uint8Array,width:number,height:number,x:number,y
 export function initialWoodland(w:Pick<World,'width'|'height'|'tiles'>):string{
   const {width,height,tiles}=w;
   const potential=Uint8Array.from(tiles,tile=>+woodlandHabitat(tile.biome));
-  let cover=Uint8Array.from(tiles,tile=>tile.biome==='forest'?MAX_COVER:0);
+  let cover=Uint8Array.from(tiles,tile=>seededCover(tile.biome));
   for(let pass=0;pass<3;pass++){
     cover=cover.map((current,index)=>potential[index]?Math.round(current*.25+
       neighboringCover(cover,width,height,index%width,Math.floor(index/width))*.75):0);
   }
   let woodland='';
   for(let i=0;i<tiles.length;i++){
-    const initial=tiles[i].biome==='forest'?Math.max(35,cover[i]):Math.min(28,cover[i]);
+    const biome=tiles[i].biome;
+    const initial=biome==='forest'?Math.max(35,cover[i]):biome==='taiga'?Math.max(31,cover[i]):
+      biome==='wetland'?Math.max(17,Math.min(40,cover[i])):
+      biome==='savanna'?Math.max(8,Math.min(24,cover[i])):Math.min(28,cover[i]);
     woodland+=COVER[initial];
   }
   return woodland;
@@ -58,7 +64,7 @@ export function enableLivingBiomes(w:World):World{
 
 export function paintWoodland(w:World,index:number):void{
   if(w.woodland===undefined)return;
-  const cover=w.tiles[index].biome==='forest'?COVER[MAX_COVER]:COVER[0];
+  const cover=COVER[seededCover(w.tiles[index].biome)];
   w.woodland=w.woodland.slice(0,index)+cover+w.woodland.slice(index+1);
 }
 
@@ -110,7 +116,8 @@ export function advanceWoodland(w:World):number[]{
       if(current>0||nearby>=MAX_COVER*.08){
         const dampGround=(terrainCellSummary(w,i)?.moistSoil??0)*.28;
         const ideal=Math.round((suitability[i]+dampGround-.25)*.95*MAX_COVER+nearby*.61);
-        const target=Math.max(0,Math.min(MAX_COVER,ideal));
+        const limit=tile.biome==='savanna'?28:tile.biome==='wetland'?44:MAX_COVER;
+        const target=Math.max(0,Math.min(limit,ideal));
         next=current+Math.max(-2,Math.min(2,target-current));
         if(tile.biome==='plains'&&next>=FOREST_THRESHOLD){
           tiles[i]={...tile,biome:'forest'};

@@ -9,12 +9,18 @@ export const ATLAS_SEA='#102737';
 export const TILE_SHEEN='rgba(235,237,195,.12)';
 export const TILE_SHADE='rgba(17,33,48,.17)';
 const canopyColors=woodlandPalette(BIOME_INFO.plains.color,BIOME_INFO.forest.color);
+const regionalCanopy:Partial<Record<Biome,string[]>>={
+  taiga:woodlandPalette('#729184','#2e5c58'),
+  wetland:woodlandPalette('#759682','#3e6c5a'),
+  savanna:woodlandPalette('#ab925c','#65764f'),
+};
 
 export type AtlasLand=Pick<World,'width'|'height'|'tiles'|'settings'|'woodland'|'topography'>;
 
 export function overheadTerrainColor(biome:Biome,waterDepth:number,cover?:number):string{
   if(biome==='water')return OCEAN_TONES[waterDepth];
-  return cover===undefined?BIOME_INFO[biome].color:canopyColors[Math.round(cover*63)];
+  return cover===undefined?BIOME_INFO[biome].color:
+    (regionalCanopy[biome]??canopyColors)[Math.round(cover*63)];
 }
 
 const HIGH_GROUND=['#8d9b96','#a5aea6','#bdc7bf','#d5ded3'];
@@ -45,7 +51,8 @@ export function paintOverheadTerrainTile(ctx:CanvasRenderingContext2D,x:number,y
 export function showAtlasScenery(biome:Biome,x:number,y:number,seed:number,
   street:boolean,cover?:number):boolean{
   const patch=terrainNoise(x,y,8,seed+2049)*.14;
-  const density=cover!==undefined?.08+.17*cover:
+  const density=biome==='taiga'?.19+.18*(cover??.5):biome==='wetland'?.17:
+    biome==='savanna'?.12:cover!==undefined?.08+.17*cover:
     biome==='forest'?.25:biome==='water'?.025:biome==='plains'?.12:.09;
   return terrainHash(x,y,seed+2187)<Math.max(.025,density+patch)*(street?1.25:1);
 }

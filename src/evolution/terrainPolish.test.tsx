@@ -11,6 +11,7 @@ import {buildTerrainDetailAtlas,paintTerrainDetail,
   type TerrainMotif} from './terrainDetails';
 import {topographyForWorld} from './topography';
 import {sceneryZoomTier,type MapOverlay} from './WorldCanvas';
+import {TREE_KINDS} from './biomeTrees';
 
 describe('v1.9.5 — polished, economical, compatible rendering',()=>{
   it('rasterizes every atlas sprite with exactly the legacy painter pixels',()=>{
@@ -23,13 +24,14 @@ describe('v1.9.5 — polished, economical, compatible rendering',()=>{
       for(let row=y;row<y+h;row++)for(let col=x;col<x+w;col++)
         pixels.set(col+','+row,String(atlasPainter.fillStyle));
     }} as unknown as CanvasRenderingContext2D;
-    expect(buildTerrainDetailAtlas(canvas as unknown as HTMLCanvasElement)).toBe(true);
-    expect(canvas.height).toBe(6);
-    expect(canvas.width).toBe(17*4*6);
-    expect(painted).toBeGreaterThan(17*4);
-    const motifs:TerrainMotif[]=['oak','pine','fern','grass','flowers',
+    const motifs:TerrainMotif[]=[...TREE_KINDS,'fern','grass','flowers',
       'pebbles','reeds','boulder','scree','snowstone','crystal','stalagmite',
       'scrub','basalt','embers','ripples','shorefoam','none'];
+    const paintedMotifs=motifs.length-1;
+    expect(buildTerrainDetailAtlas(canvas as unknown as HTMLCanvasElement)).toBe(true);
+    expect(canvas.height).toBe(6);
+    expect(canvas.width).toBe(paintedMotifs*4*6);
+    expect(painted).toBeGreaterThan(paintedMotifs*4);
     for(const motif of motifs)for(const variant of [0,1,2,3] as const){
       const detail:TerrainDetail={motif,variant};
       const direct:Pixel[]=Array(36).fill(null);
