@@ -54,12 +54,14 @@ describe('v2.05 — unequal footprints, free sprite movement and growing homes',
 
   it('projects real block walls and crowns around a much smaller mortal',()=>{
     const w=createWorld({seed:205,size:'small'}),a=w.agents[0];
-    const rectangles:number[]=[],faces:string[]=[];
+    const rectangles:number[]=[],frames:Uint8ClampedArray[]=[];
     const painter={
-      fillStyle:'',strokeStyle:'',lineWidth:1,
+      canvas:{width:44,height:44},
       fillRect(_x:number,_y:number,width:number){rectangles.push(width);},
-      beginPath(){},moveTo(){},lineTo(){},closePath(){},stroke(){},
-      fill(){faces.push(String(painter.fillStyle));},
+      createImageData(width:number,height:number){
+        return {width,height,data:new Uint8ClampedArray(width*height*4)};
+      },
+      putImageData(image:ImageData){frames.push(image.data);},
     } as unknown as CanvasRenderingContext2D;
     const anchor={x:22,y:22},view=depthBlockView({yaw:0,pitch:30});
     paintDepthPerson(painter,a,anchor);
@@ -69,10 +71,12 @@ describe('v2.05 — unequal footprints, free sprite movement and growing homes',
     const original=paintBlockModel(painter,tree,anchor,view,1);
     expect(original.bottom-original.top).toBeGreaterThan(8);
     expect(original.right-original.left).toBeGreaterThan(5);
-    const before=faces.splice(0);
+    const [before]=frames.splice(0);
+    expect(before.some((value,i)=>i%4===3&&value===255)).toBe(true);
+    expect(before.every((value,i)=>i%4!==3||value===0||value===255)).toBe(true);
     const rotated=paintBlockModel(painter,tree,anchor,depthBlockView({yaw:145,pitch:30}),1);
     expect(rotated).not.toEqual(original);
-    expect(faces).not.toEqual(before);
+    expect(frames[0]).not.toEqual(before);
     const {s}=readyTown();
     const building=blockBuilding(s.infrastructure!.buildings[0],0);
     const box=paintBlockModel(painter,building,anchor,view,1.2);

@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {createDepthProjector} from './depthProjection';
-import {depthTileQuarters,pickTerrainFace,terrainRiverEdge} from './depthTerrain';
+import {depthTileQuarters,pickTerrainFace,rasterFace,terrainRiverEdge} from './depthTerrain';
 
 describe('raised atlas terrain',()=>{
   it('splits each raised tile into four equal squares at every camera angle',()=>{
@@ -37,5 +37,15 @@ describe('raised atlas terrain',()=>{
     expect(hit.ids[2*hit.width+4]).toBe(1665);
     expect(hit.ids[4*hit.width+4]).toBe(709);
     expect(hit.ids[0]).toBe(0);
+  });
+
+  it('joins two crisp colors along a shared diagonal on pixel centers',()=>{
+    const size={width:6,height:4},pixels=new Uint32Array(24);
+    const top={x:1,y:0},bottom={x:5,y:4};
+    rasterFace(size,[{x:0,y:0},top,bottom,{x:0,y:4}],pixels,0xff00cfff);
+    rasterFace(size,[top,{x:6,y:0},{x:6,y:4},bottom],pixels,0xffffb600);
+    expect([...pixels]).toEqual([1,2,3,4].flatMap(n=>[
+      ...new Array(n).fill(0xff00cfff),...new Array(6-n).fill(0xffffb600),
+    ]));
   });
 });

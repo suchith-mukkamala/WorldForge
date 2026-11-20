@@ -1,6 +1,7 @@
 import {cacheBuildingArt,type BuildingArt} from './atlasBuildingArt';
 import {BLOCK_FACES,type BlockModel} from './blockModels';
 import type {DepthCamera} from './depthProjection';
+import {rasterFace} from './depthTerrain';
 import type {Point} from './motion';
 
 type BlockView={key:string;xx:number;xy:number;yx:number;yy:number;
@@ -21,14 +22,14 @@ export function depthBlockView({yaw,pitch}:DepthCamera):BlockView{
 export const OVERHEAD_BLOCK_VIEW=depthBlockView({yaw:315,pitch:70});
 export const DESCENT_BLOCK_VIEW=depthBlockView({yaw:318,pitch:50});
 
-const colorCache=new Map<string,string>();
-function faceColor(color:string,light:number,tone:number):string{
+const colorCache=new Map<string,number>();
+function faceColor(color:string,light:number,tone:number):number{
   const key=color+':'+light+':'+tone;
   const cached=colorCache.get(key);
   if(cached)return cached;
   const base=parseInt(color.slice(1),16),factor=light*(.94+.04*tone);
   const channel=(shift:number)=>Math.min(255,Math.round((base>>shift&255)*factor));
-  const result='rgb('+channel(16)+','+channel(8)+','+channel(0)+')';
+  const result=(255<<24|channel(0)<<16|channel(8)<<8|channel(16))>>>0;
   colorCache.set(key,result);
   return result;
 }
@@ -44,23 +45,23 @@ export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
     const order=(f.x+dx/2)*depthX+(f.y+dy/2)*depthY+(f.z+dz/2)*depthZ;
     return {f,order};
   }).sort((a,b)=>a.order-b.order);
+  const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
+  const pixels=new Uint32Array(image.data.buffer);
   let left=p.x,top=p.y,right=p.x,bottom=p.y;
-  ctx.lineWidth=unit*.08;
   for(const {f} of faces){
     const {quad,light}=BLOCK_FACES[f.direction];
     const grain=(Math.imul(f.x,31)^Math.imul(f.y,17)^Math.imul(f.z,13))&3;
     const color=faceColor(f.color,light,grain);
-    ctx.fillStyle=color;ctx.strokeStyle=color;
-    ctx.beginPath();
-    for(let i=0;i<quad.length;i++){
-      const [u,v,w]=quad[i],x=f.x+u,y=f.y+v,z=f.z+w;
+    const points=quad.map(([u,v,w])=>{
+      const x=f.x+u,y=f.y+v,z=f.z+w;
       const sx=p.x+(x*xx+y*yx)*unit,sy=p.y+(x*xy+y*yy-z*rise)*unit;
       left=Math.min(left,sx);top=Math.min(top,sy);
       right=Math.max(right,sx);bottom=Math.max(bottom,sy);
-      if(i===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
-    }
-    ctx.closePath();ctx.fill();ctx.stroke();
+      return {x:sx,y:sy};
+    });
+    rasterFace(image,points,pixels,color);
   }
+  ctx.putImageData(image,0,0);
   return {left,top,right,bottom};
 }
 
