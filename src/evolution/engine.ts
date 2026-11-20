@@ -51,6 +51,7 @@ import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
 import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
 import {generateRegionalTopography,settlementGeography} from './regionalGeography';
+import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
@@ -60,6 +61,7 @@ export type WorldSettings={
   layout?:WorldLayout;
   livingBiomes?:boolean;
   regionalGeography?:boolean;
+  terrainCells?:boolean;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
@@ -129,6 +131,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
   nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;
   woodland?:string;
+  terrainCells?:TerrainCells;
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -210,6 +213,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     interbreeding:input.interbreeding!==false,
     ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
     ...(typeof input.regionalGeography==='boolean'?{regionalGeography:input.regionalGeography}:{}),
+    ...(typeof input.terrainCells==='boolean'?{terrainCells:input.terrainCells}:{}),
     ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
 export function population(world:Pick<World,'agents'>):Record<Species,number>{
@@ -279,6 +283,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
     ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
   if(settings.livingBiomes)world.woodland=initialWoodland(world);
+  if(settings.terrainCells)advanceTerrainCells(world);
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
   const occupied=new Set<number>();
@@ -412,6 +417,7 @@ export function stepWorld(previous:World):World{
       lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
     expeditions:previous.expeditions?.map(e=>({...e}))??[]};
   prepareDevelopment(world);
+  if(world.settings.terrainCells)advanceTerrainCells(world);
   const newForests=world.settings.livingBiomes?advanceWoodland(world):undefined;
   regrowDeposits(world,newForests);
   for(const s of world.settlements){
@@ -807,7 +813,7 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
     if(tile.biome!==brush.biome)paintWoodland(world,index);
     const topography=generateTopography(world.width,world.height,
       world.tiles,world.settings.seed);
-    if(world.woodland!==undefined||world.settings.regionalGeography){
+    if(world.woodland!==undefined||world.settings.regionalGeography||world.terrainCells){
       // Canopy changes over time without raising or lowering the ground.
       // Only refresh the painted tile and any shore affected by this edit.
       const heights=topographyForWorld(previous).heights.slice();
@@ -821,6 +827,7 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
       topography.heights=heights;
     }
     world.topography=topography;
+    clearTerrainTile(world,index);
     editDeposit(world,index);
     reconcileTradeTerrain(world,index);
     reconcileTransportTerrain(world,index);
@@ -839,6 +846,7 @@ export function isWorld(value:unknown):value is World{
     settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
     settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
     settings.regionalGeography!==undefined&&typeof settings.regionalGeography!=='boolean'||
+    settings.terrainCells!==undefined&&typeof settings.terrainCells!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||
     settings.wandering<.5||settings.wandering>1.8||
@@ -880,6 +888,7 @@ export function isWorld(value:unknown):value is World{
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
   if(!validWoodland(w as World))return false;
+  if(!validTerrainCells(w as World))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();
   const traversableBridges=bridgeTiles(w as World);
   const captains=new Map((w.shipments??[]).filter(t=>t.mode==='sea')

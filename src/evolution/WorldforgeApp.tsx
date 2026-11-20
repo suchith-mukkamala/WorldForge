@@ -9,6 +9,8 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
 import {MapLayerLegend} from './MapLayerLegend';
 import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
+import {enableTerrainCells,terrainCellsIn} from './terrainCells';
+import {TerrainCellPanel} from './TerrainCellPanel';
 import {settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
@@ -25,7 +27,7 @@ import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import type {Point} from './motion';
-import {ATLAS_PLACE_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {ATLAS_PLACE_ZOOM,ATLAS_STREET_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {AtlasPlacePicker,AtlasSettlementMarkers} from './AtlasPlaces';
 import {AtlasTownCard} from './AtlasTownCard';
 import {PixelPortrait} from './PixelPortrait';
@@ -73,7 +75,7 @@ function initialWorld():World{
   }
   // First-time visitors get their own world; existing local saves always win.
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
-    livingBiomes:true,regionalGeography:true,
+    livingBiomes:true,regionalGeography:true,terrainCells:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
@@ -674,6 +676,7 @@ export function WorldforgeApp(){
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
   const drainage=displayed?hydrologyForWorld(world):null;
   const drainageIndex=displayed?displayed.y*world.width+displayed.x:-1;
+  const selectedTerrain=displayed?terrainCellsIn(world,drainageIndex):undefined;
   const treeCover=tile&&woodlandHabitat(tile.biome)?
     woodlandCover(world.woodland,drainageIndex):undefined;
   const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
@@ -1201,6 +1204,14 @@ export function WorldforgeApp(){
               setNotice('Living biome borders are active. Advance time to watch the tree cover change.');
             }}>Enable living biomes</button>
           </div>}
+          {!world.terrainCells&&<div className="evo-terrain-upgrade">
+            <div><strong>Material terrain</strong>
+              <span>Give each tile smaller steps, flowing water and material-dependent footing.</span></div>
+            <button onClick={()=>{
+              setWorld(w=>enableTerrainCells(enablePhysicalTerrain(w)));
+              setNotice('Terrain cells are active. Select a tile to inspect its smaller squares.');
+            }}>Enable terrain cells</button>
+          </div>}
           {!hasPhysicalTerrain(world)&&<div className="evo-terrain-upgrade" role="note">
             <div><strong>CLASSIC TERRAIN RULES</strong>
               <span>This older world keeps its original routes and farming.
@@ -1391,6 +1402,8 @@ export function WorldforgeApp(){
                     {treeCover!==undefined&&<small>Tree cover {Math.round(treeCover*100)}%</small>}
                   </div>
                 </div>
+                {selectedTerrain&&displayed&&<TerrainCellPanel key={drainageIndex} cells={selectedTerrain}
+                  onZoom={detail==='street'?undefined:()=>locateAtlasPoint(displayed,ATLAS_STREET_ZOOM)}/>}
                 {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
                   <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
                   <div><strong>PHYSICAL TERRAIN</strong>

@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.15.0 — Material Terrain** divides terrain into four-by-four groups of small squares with their own elevations and layers of soil, sand or stone. Water runs downhill, pools and erodes sediment. Soft ground affects travel, and damp soil helps crops and woodland. Select a tile to inspect its cells and choose **Zoom to terrain cells** to see the steps around it. New worlds start with terrain cells enabled. Existing saves can enable them under **Map options**.
+
 - **v2.14.1 — Finer Pixel Tiles** uses smaller square textures in the overhead atlas and gives the 2.5D map stepped tile tops. Zoom into a settlement to see full-size trees, rocks and building sprites.
 - **v2.14.0 — Landscapes and Rivers** adds highland streams that cut valleys and irrigate their banks in new worlds. Nearby settlers favor fertile valleys, shallow crossings and sheltered harbors.
 - **v2.13.0 — Living Biomes and Trade** blends woodland and grassland through scattered trees and mixed edges. As years pass, nearby canopy, moisture and elevation can change tree cover and local timber supplies. New worlds use living biomes by default. To enable them in an existing world, open **Map options**. Use **Trade** to follow active caravans and ships in either map view, and select a settlement to see its specialty, food production and shortages.
