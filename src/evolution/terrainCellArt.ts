@@ -23,6 +23,8 @@ export function terrainCellPatch(w:World,focus:Point):Map<number,TerrainCell[]>{
   for(let y=Math.max(0,focus.y-radius);y<=Math.min(w.height-1,focus.y+radius);y++){
     for(let x=Math.max(0,focus.x-radius);x<=Math.min(w.width-1,focus.x+radius);x++){
       const index=y*w.width+x;
+      // A lake or sea has one rendered surface. Its bed and depth are inspectable.
+      if(w.tiles[index].biome==='water')continue;
       patch.set(index,terrainCellsIn(w,index)!);
     }
   }
