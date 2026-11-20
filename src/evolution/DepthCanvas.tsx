@@ -6,14 +6,16 @@ import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
 import {woodlandCover,woodlandHabitat} from './woodland';
-import {ATLAS_SEA,atlasRivers,atlasTerrainColors,occupiedScenery,
+import {ATLAS_SEA,TILE_SHADE,TILE_SHEEN,atlasRivers,atlasTileGrain,occupiedScenery,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
-import {depthGroundHeight,depthTerrain,pickTerrainFace,projectedTerrainCorners,
+import {depthTileQuarters,pickTerrainFace,
   terrainRiverEdge,type DepthPicking} from './depthTerrain';
 import {paintTradeRoutes} from './tradeRoutes';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
-import {paintDepthRoads,paintDepthSurfaceDetail,depthRoadSignature} from './depthWorldArt';
+import {coastalDepth,OCEAN_TONES} from './oceanDepth';
+import {paintDepthRoads,paintDepthSurfaceDetail,depthRoadSignature,
+  pixelTerrainHash,surfaceColor} from './depthWorldArt';
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
 import {buildingVisualScale,depthArtDetail,depthRenderDensity,depthSceneryDensity,
@@ -28,7 +30,8 @@ import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
-import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,type DepthCamera} from './depthProjection';
+import {createDepthProjector,DEFAULT_DEPTH_CAMERA,interpolatedGroundHeight,
+  type DepthCamera} from './depthProjection';
 import {atlasLevel} from './atlasMap';
 import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
   type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
@@ -50,39 +53,37 @@ const HEIGHT_COLORS=['#234966','#3b7182','#5d866b','#74936a',
 type Pt={x:number;y:number};
 type Projector=ReturnType<typeof createDepthProjector>;
 
-function polygon(ctx:CanvasRenderingContext2D,hit:DepthPicking,
-  points:readonly Pt[],color:string,index:number){
+function polygon(ctx:CanvasRenderingContext2D,points:readonly Pt[],color:string,seal=true){
   ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
   for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
   ctx.closePath();ctx.fill();
   // Seal subpixel seams where two adjacent, anti-aliased faces touch.
-  ctx.strokeStyle=color;ctx.lineWidth=.72;ctx.stroke();
-  pickTerrainFace(hit,points,index);
+  if(seal){ctx.strokeStyle=color;ctx.lineWidth=.65;ctx.stroke();}
 }
 function rockFace(ctx:CanvasRenderingContext2D,hit:DepthPicking,
-  a:Pt,b:Pt,dropA:number,dropB:number,color:string,index:number,detail:boolean){
-  if(dropA<=0&&dropB<=0)return;
-  polygon(ctx,hit,[a,b,{x:b.x,y:b.y+dropB},{x:a.x,y:a.y+dropA}],color,index);
-  if(detail&&Math.min(dropA,dropB)>=5){
+  a:Pt,b:Pt,drop:number,color:string,index:number,detail:boolean){
+  if(drop<=0)return;
+  const face=[a,b,{x:b.x,y:b.y+drop},{x:a.x,y:a.y+drop}];
+  polygon(ctx,face,color);
+  pickTerrainFace(hit,face,index);
+  if(drop>=5&&(detail||drop>=10)){
     ctx.strokeStyle='rgba(238,221,181,.19)';ctx.lineWidth=.7;
     for(const fraction of [.38,.71]){
-      ctx.beginPath();ctx.moveTo(a.x,a.y+dropA*fraction);
-      ctx.lineTo(b.x,b.y+dropB*fraction);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(a.x,a.y+drop*fraction);
+      ctx.lineTo(b.x,b.y+drop*fraction);ctx.stroke();
     }
   }
 }
 
-const cross=(a:Pt,b:Pt,c:Pt)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
 function paintSurface(ctx:CanvasRenderingContext2D,hit:DepthPicking,
-  corners:readonly Pt[],center:Pt,color:string,index:number){
-  if(corners.every((a,i)=>cross(a,corners[(i+1)%4],center)>=0&&
-    cross(a,corners[(i+1)%4],corners[(i+2)%4])>=0)){
-    polygon(ctx,hit,corners,color,index);
-    return;
+  corners:readonly [Pt,Pt,Pt,Pt],color:string,index:number,grain?:number){
+  polygon(ctx,corners,color);
+  if(grain!==undefined){
+    const quarters=depthTileQuarters(corners),light=grain&3;
+    polygon(ctx,quarters[light],TILE_SHEEN,false);
+    polygon(ctx,quarters[light^3],TILE_SHADE,false);
   }
-  // A steep tile can fold in projection. Its four triangular slopes still
-  // cover its true center and its boundary with each neighboring tile.
-  for(let i=0;i<4;i++)polygon(ctx,hit,[corners[i],corners[(i+1)%4],center],color,index);
+  pickTerrainFace(hit,corners,index);
 }
 function tileColor(w:World,index:number,overlay:MapOverlay,height:number,
   drainage:ReturnType<typeof hydrologyForWorld>|null):string{
@@ -121,12 +122,13 @@ function renderTerrain(w:World,overlay:MapOverlay,
   ctx:CanvasRenderingContext2D,hit:DepthPicking,
   projector:Projector,detailTier:DepthArtDetail,trees:TreeSpriteCache,
   sceneryDensity:number,showBuildings:boolean,street:boolean){
-  const W=w.width,H=w.height,surface=depthTerrain(w),{heights}=surface;
+  const W=w.width,H=w.height,heights=topographyForWorld(w).heights,seed=w.settings.seed;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
     hydrologyForWorld(w):null;
   const multiShore=isMultiIslandLayout(w.settings.layout);
-  const landscape=overlay==='terrain'||overlay==='trade'?atlasTerrainColors(w):null;
-  const occupied=overlay==='terrain'&&showBuildings?occupiedScenery(w):null;
+  const tiled=overlay==='terrain'||overlay==='trade';
+  const ocean=tiled?coastalDepth(W,H,i=>w.tiles[i].biome==='water'):null;
+  const occupied=overlay==='terrain'?occupiedScenery(w):null;
   const waterLinks=new Map<number,{other:number;tier:number;downstream:boolean}[]>();
   if(drainage)for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
     for(const [index,other] of [[from,to],[to,from]]){
@@ -146,30 +148,30 @@ function renderTerrain(w:World,overlay:MapOverlay,
       const x=index%W,y=Math.floor(index/W),height=heights[index];
       if(!multiShore&&!visibleCoastTile(x,y,W,H,w.tiles[index].biome,
         w.settings.seed))continue;
-      const p=projector.projectSmooth(x,y,height);
-      const corners=projectedTerrainCorners(surface,projector,W,index);
+      const p=projector.project(x,y,height);
+      const corners=projector.tileCorners(x,y,height);
       const biome=w.tiles[index].biome,palette=PALETTE[biome];
+      const cover=tiled&&woodlandHabitat(biome)?woodlandCover(w.woodland,index):undefined;
+      const grain=tiled?pixelTerrainHash(x,y,seed):0;
       const fx=projector.frontX,fy=projector.frontY;
       if(biome!=='water'){
-        const edge=(a:number,b:number,neighbor:number,na:number,nb:number,stone:string)=>{
-          const aHeight=surface.corners[index*4+a],bHeight=surface.corners[index*4+b];
-          const drop=(above:number,below:number)=>Math.max(0,(above-below)/DEPTH_RISE*projector.riseScale);
-          const belowA=neighbor<0?SEA_LEVEL:surface.corners[neighbor*4+na];
-          const belowB=neighbor<0?SEA_LEVEL:surface.corners[neighbor*4+nb];
-          rockFace(ctx,hit,corners[a],corners[b],drop(aHeight,belowA),drop(bHeight,belowB),
-            stone,index,showBuildings);
+        const edge=(a:number,b:number,below:number,stone:string)=>{
+          const drop=projector.project(x,y,below).y-p.y;
+          rockFace(ctx,hit,corners[a],corners[b],drop,stone,index,showBuildings);
         };
-        if(fx>0)edge(1,2,x===W-1?-1:index+1,0,3,palette.right);
-        if(fx<0)edge(3,0,x===0?-1:index-1,2,1,palette.left);
-        if(fy>0)edge(2,3,y===H-1?-1:index+W,1,0,palette.right);
-        if(fy<0)edge(0,1,y===0?-1:index-W,3,2,palette.left);
+        if(fx>0)edge(1,2,x===W-1?SEA_LEVEL:heights[index+1],palette.right);
+        if(fx<0)edge(3,0,x===0?SEA_LEVEL:heights[index-1],palette.left);
+        if(fy>0)edge(2,3,y===H-1?SEA_LEVEL:heights[index+W],palette.left);
+        if(fy<0)edge(0,1,y===0?SEA_LEVEL:heights[index-W],palette.right);
       }
-      paintSurface(ctx,hit,corners,p,landscape?.[index]??tileColor(w,index,overlay,height,drainage),index);
+      const color=ocean?(biome==='water'?OCEAN_TONES[ocean[index]]:
+        surfaceColor(biome,x,y,seed,cover)):tileColor(w,index,overlay,height,drainage);
+      paintSurface(ctx,hit,corners,color,index,ocean?atlasTileGrain(biome,ocean[index],grain):undefined);
       for(const {other,tier,downstream} of waterLinks.get(index)??[]){
-        const bank=terrainRiverEdge(surface,projector,W,index,other);
+        const bank=terrainRiverEdge(heights,projector,W,index,other);
         paintRiverSegment(ctx,p,bank,tier,overlay==='watersheds');
         if(downstream&&(fx&&other%W-x===fx||fy&&Math.floor(other/W)-y===fy)){
-          const lowerBank=terrainRiverEdge(surface,projector,W,other,index);
+          const lowerBank=terrainRiverEdge(heights,projector,W,other,index);
           if(lowerBank.y>bank.y+1)paintRiverSegment(ctx,bank,lowerBank,tier,overlay==='watersheds');
         }
       }
@@ -180,15 +182,14 @@ function renderTerrain(w:World,overlay:MapOverlay,
         ctx.beginPath();ctx.moveTo(corners[3].x,corners[3].y);
         ctx.lineTo(corners[0].x,corners[0].y);ctx.stroke();
       }
-      const cover=occupied&&woodlandHabitat(biome)?woodlandCover(w.woodland,index):undefined;
-      if(occupied&&!occupied.has(index)&&showAtlasScenery(biome,x,y,w.settings.seed,street,cover)){
-        const vegetationHash=(Math.imul(x+w.settings.seed,73856093)^
-          Math.imul(y+w.settings.seed,19349663))>>>0;
-        const detail=terrainDetailAt(biome,x,y,w.settings.seed,height,false,cover);
+      const scenery=biome==='water'?ocean&&ocean[index]<=2&&grain%8===0:
+        showBuildings?showAtlasScenery(biome,x,y,seed,street,cover):grain%8===0;
+      if(occupied&&!occupied.has(index)&&scenery){
+        const detail=terrainDetailAt(biome,x,y,seed,height,false,cover);
         if(detail.motif==='oak'||detail.motif==='pine'){
           paintCachedTree(ctx,p,detail.motif==='pine',
-            (vegetationHash>>>5)%3,detailTier,trees);
-        }else if(['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
+            (grain>>>5)%3,detailTier,trees);
+        }else if(showBuildings&&['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
           const span=detail.variant+3,rise=detail.variant%3+2;
           const left=Math.round(p.x-span/2),base=Math.round(p.y);
           const crystal=detail.motif==='crystal',dark=detail.motif==='basalt';
@@ -198,7 +199,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
           ctx.fillRect(left,base-rise,span,rise);
           ctx.fillStyle=crystal?'#a7d8d2':dark?'#786672':'#abb6b4';
           ctx.fillRect(left+1,base-rise-1,span-2,2);
-        }else if(['flowers','grass','reeds','fern','scrub'].includes(detail.motif)){
+        }else if(showBuildings&&['flowers','grass','reeds','fern','scrub'].includes(detail.motif)){
           ctx.fillStyle=biome==='wasteland'?'#9c9279':'#427b5d';
           ctx.fillRect(p.x-2,p.y-2,5,2);
           ctx.fillStyle=detail.motif==='flowers'?'#e9c88a':
@@ -206,7 +207,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
           ctx.fillRect(p.x-1,p.y-4,1,3);
           ctx.fillRect(p.x+2,p.y-3,1,2);
         }else{
-          paintDepthSurfaceDetail(ctx,biome,p,x,y,w.settings.seed);
+          paintDepthSurfaceDetail(ctx,biome,p,x,y,seed);
         }
       }
       if(overlay==='watersheds'&&drainage&&
@@ -279,7 +280,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     // Both the horizontal position and the changing elevation must advance
     // continuously. Sampling only the destination tile used to make people
     // leap vertically as soon as a step onto a slope began.
-    const ground=depthGroundHeight(w,pos.x,pos.y);
+    const ground=interpolatedGroundHeight(heights,w.width,w.height,pos.x,pos.y);
     const p=projector.projectSmooth(pos.x,pos.y,ground);
     actors.push({order:p.y+.6,paint:()=>paintDepthPerson(ctx,a,p,walking.has(a.id),
       zoom>=2||!!selected&&selected.x===a.x&&selected.y===a.y,
@@ -291,7 +292,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     const index=selected.y*w.width+selected.x;
     if(index>=0&&index<heights.length){
       const p=projector.project(selected.x,selected.y,heights[index]);
-      const corners=projectedTerrainCorners(depthTerrain(w),projector,w.width,index);
+      const corners=projector.tileCorners(selected.x,selected.y,heights[index]);
       ctx.lineWidth=2;ctx.strokeStyle='#fff0ac';ctx.beginPath();
       ctx.moveTo(corners[0].x,corners[0].y);
       for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);
@@ -526,7 +527,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     width={size.width*density} height={size.height*density}
     style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
-    aria-label={'Isometric terrain depth view with slopes and orbit camera: '+world.width+' by '+
+    aria-label={'Isometric terrain depth view with stepped tiles and orbit camera: '+world.width+' by '+
       world.height+' world cells. Click a raised tile to '+
       (brush.kind==='inspect'?'inspect it':'apply the selected map tool')+
       '. Arrow keys move the selection; Enter applies the brush.'}

@@ -11,8 +11,7 @@ import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
 import {settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
-import {createDepthProjector} from './depthProjection';
-import {depthGroundHeight} from './depthTerrain';
+import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -240,7 +239,7 @@ export function WorldforgeApp(){
     const w=current.width,h=current.height;
     let fx=(x+.5)/w,fy=(y+.5)/h;
     if(mapView==='depth'){
-      const elevation=depthGroundHeight(current,x,y);
+      const elevation=interpolatedGroundHeight(topographyForWorld(current).heights,w,h,x,y);
       const point=projection.projectSmooth(x,y,elevation);
       fx=point.x/projection.size.width;fy=point.y/projection.size.height;
     }

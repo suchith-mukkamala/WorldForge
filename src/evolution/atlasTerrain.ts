@@ -1,76 +1,37 @@
-import type {Biome,World} from './engine';
+import {BIOME_INFO,type Biome,type World} from './engine';
 import {terrainHash,terrainNoise} from './biomeGeneration';
-import {coastalDepth} from './oceanDepth';
-import {hydrologyForWorld,riverBanks,type Hydrology} from './hydrology';
-import {topographyForWorld,type Topography} from './topography';
-import {woodlandCover,woodlandHabitat} from './woodland';
+import {OCEAN_TONES} from './oceanDepth';
+import type {Hydrology} from './hydrology';
+import {woodlandPalette} from './terrainDetails';
 import type {Point} from './motion';
 
-export const ATLAS_SEA='#142c40';
-const waterTones=['#397d81','#316d76','#285a6a','#204858',ATLAS_SEA] as const;
-const landTones:Record<Exclude<Biome,'water'>,number>={
-  plains:0x799161,forest:0x346a54,mountain:0x818e93,
-  cave:0x657584,wasteland:0x947b70,volcanic:0x8c5e62,
-};
-const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
-function blend(a:number,b:number,amount:number):number{
-  const channel=(shift:number)=>Math.round((a>>shift&255)*(1-amount)+(b>>shift&255)*amount);
-  return channel(16)<<16|channel(8)<<8|channel(0);
-}
-const color=(rgb:number)=>'#'+rgb.toString(16).padStart(6,'0');
+export const ATLAS_SEA='#102737';
+export const TILE_SHEEN='rgba(235,237,195,.12)';
+export const TILE_SHADE='rgba(17,33,48,.17)';
+const canopyColors=woodlandPalette(BIOME_INFO.plains.color,BIOME_INFO.forest.color);
 
 export type AtlasLand=Pick<World,'width'|'height'|'tiles'|'settings'|'woodland'|'topography'>;
-type Landscape={tiles:World['tiles'];woodland:World['woodland'];seed:number;
-  regional:boolean;colors:string[]};
-const landscapeCache=new WeakMap<Topography,Landscape>();
 
-/** World-scale color uses broad fields, with the same light in both views. */
-export function atlasTerrainColors(w:AtlasLand):string[]{
-  const {width,height,tiles,woodland}=w,seed=w.settings.seed,regional=!!w.settings.regionalGeography;
-  const topography=topographyForWorld(w),saved=landscapeCache.get(topography);
-  if(saved?.seed===seed&&saved.regional===regional&&saved.woodland===woodland&&
-    (saved.tiles===tiles||saved.tiles.every((tile,i)=>tile.biome===tiles[i]?.biome)))
-    return saved.colors;
-  const heights=topography.heights;
-  const water=coastalDepth(width,height,i=>tiles[i].biome==='water');
-  const wet=riverBanks(hydrologyForWorld(w),width,height);
-  const material=Uint32Array.from(tiles,(tile,i)=>{
-    if(tile.biome==='water')return 0;
-    const canopy=woodlandHabitat(tile.biome)?woodlandCover(woodland,i):undefined;
-    return canopy===undefined?landTones[tile.biome]:blend(landTones.plains,landTones.forest,canopy);
-  });
-  const colors=tiles.map((tile,i)=>{
-    if(tile.biome==='water')return waterTones[water[i]-1];
-    const x=i%width,y=Math.floor(i/width);
-    let red=(material[i]>>16)*5,green=(material[i]>>8&255)*5;
-    let blue=(material[i]&255)*5,weight=5;
-    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-      if((!dx&&!dy)||x+dx<0||x+dx>=width||y+dy<0||y+dy>=height)continue;
-      const tone=material[i+dx+dy*width];
-      if(!tone)continue;
-      red+=tone>>16;
-      green+=tone>>8&255;
-      blue+=tone&255;
-      weight++;
-    }
-    let tone=Math.round(red/weight)<<16|Math.round(green/weight)<<8|Math.round(blue/weight);
-    const elevation=(dx:number,dy:number)=>{
-      const nx=x+dx,ny=y+dy,at=ny*width+nx;
-      return nx>=0&&nx<width&&ny>=0&&ny<height&&material[at]?heights[at]:heights[i];
-    };
-    const light=elevation(2,0)+elevation(0,2)-elevation(-2,0)-elevation(0,-2);
-    const variation=terrainNoise(x,y,11,seed+1907)*.15+
-      terrainNoise(x,y,4,seed+2111)*.044;
-    const shade=clamp(light/420+variation,-.31,.28);
-    if(woodlandHabitat(tile.biome)){
-      tone=blend(tone,0x73967a,wet[i]*.31);
-    }else if(tile.biome==='mountain'||tile.biome==='cave'){
-      tone=blend(tone,0xc4c1ab,clamp((heights[i]-120)/240,0,.3));
-    }
-    return color(blend(tone,shade<0?0x233b43:0xbfc8a9,Math.abs(shade)));
-  });
-  landscapeCache.set(topography,{tiles,woodland,seed,regional,colors});
-  return colors;
+export function overheadTerrainColor(biome:Biome,waterDepth:number,cover?:number):string{
+  if(biome==='water')return OCEAN_TONES[waterDepth];
+  return cover===undefined?BIOME_INFO[biome].color:canopyColors[Math.round(cover*63)];
+}
+
+export function atlasTileGrain(biome:Biome,waterDepth:number,grain:number):number|undefined{
+  return biome!=='water'||waterDepth<4||grain%6===0?grain:undefined;
+}
+
+/** Four half-size squares keep the terrain visible at atlas scale. */
+export function paintOverheadTerrainTile(ctx:CanvasRenderingContext2D,x:number,y:number,
+  size:number,color:string,grain?:number):void{
+  const half=size/2,px=x*size,py=y*size;
+  ctx.fillStyle=color;ctx.fillRect(px,py,size,size);
+  if(grain===undefined)return;
+  const light=grain&3,dark=light^3;
+  ctx.fillStyle=TILE_SHEEN;
+  ctx.fillRect(px+(light&1)*half,py+(light>>1)*half,half,half);
+  ctx.fillStyle=TILE_SHADE;
+  ctx.fillRect(px+(dark&1)*half,py+(dark>>1)*half,half,half);
 }
 
 /** Sparse close-up details cluster in patches so repeating sprites recede. */

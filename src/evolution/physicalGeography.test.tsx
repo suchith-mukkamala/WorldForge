@@ -132,7 +132,7 @@ describe('v2.0 — terrain that physically matters and a selectable depth view',
       world,brush:{kind:'inspect'},overlay:'terrain',selected:null,
       onSelect:()=>{},onEdit:()=>{},relief:4,
     }));
-    expect(html).toContain('slopes and orbit camera');
+    expect(html).toContain('stepped tiles and orbit camera');
     expect(html).toContain(`height="${depthCanvasSize(world,4).height}"`);
   });
 

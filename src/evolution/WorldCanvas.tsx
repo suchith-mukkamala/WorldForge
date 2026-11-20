@@ -11,8 +11,10 @@ import {hydrologyForWorld} from './hydrology';
 import {buildTerrainDetailAtlas,paintTerrainDetail,
   paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
 import {woodlandCover,woodlandHabitat} from './woodland';
-import {ATLAS_SEA,atlasRivers,atlasTerrainColors,occupiedScenery,
-  paintRiverSegment,showAtlasScenery} from './atlasTerrain';
+import {ATLAS_SEA,atlasRivers,atlasTileGrain,occupiedScenery,overheadTerrainColor,
+  paintOverheadTerrainTile,paintRiverSegment,showAtlasScenery} from './atlasTerrain';
+import {coastalDepth} from './oceanDepth';
+import {pixelTerrainHash} from './depthWorldArt';
 import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
@@ -115,12 +117,12 @@ export function WorldCanvas({
     if(sceneryChanged){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
-    const landscape=overlay==='terrain'||overlay==='trade'?atlasTerrainColors(world):null;
-    if(landscape){
+    const tiled=overlay==='terrain'||overlay==='trade';
+    if(tiled){
       ctx.fillStyle=ATLAS_SEA;
       ctx.fillRect(0,0,canvas.width,canvas.height);
     }
-    const occupied=overlay==='terrain'&&showBuildings?occupiedScenery(world):null;
+    const occupied=overlay==='terrain'?occupiedScenery(world):null;
     if(occupied&&!terrainAtlasRef.current){
       const atlas=document.createElement('canvas');
       if(buildTerrainDetailAtlas(atlas))terrainAtlasRef.current=atlas;
@@ -130,14 +132,17 @@ export function WorldCanvas({
     const drainage=overlay==='terrain'||overlay==='watersheds'?
       hydrologyForWorld(world):null;
     const multiShore=isMultiIslandLayout(world.settings.layout);
+    const ocean=tiled?coastalDepth(W,H,i=>world.tiles[i].biome==='water'):null;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
       if(!multiShore&&!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
       const px=x*CELL,py=y*CELL;
       const index=y*W+x,h=heights[index];
-      if(landscape){
-        ctx.fillStyle=landscape[index];
-        ctx.fillRect(px,py,CELL,CELL);
+      const cover=tiled&&woodlandHabitat(tile.biome)?woodlandCover(woodland,index):undefined;
+      const grain=tiled?pixelTerrainHash(x,y,world.settings.seed):0;
+      if(ocean){
+        paintOverheadTerrainTile(ctx,x,y,CELL,overheadTerrainColor(tile.biome,ocean[index],cover),
+          atlasTileGrain(tile.biome,ocean[index],grain));
       }else if(overlay==='watersheds'&&drainage){
         ctx.fillStyle=tile.biome==='water'?'#285d7a':
           BASIN_COLORS[(drainage.basin[index]>>>0)%BASIN_COLORS.length];
@@ -147,26 +152,25 @@ export function WorldCanvas({
           ctx.fillStyle='#4b8a98';ctx.fillRect(px+1,py+1,4,4);
         }
       }
-      const cover=occupied&&woodlandHabitat(tile.biome)?
-        woodlandCover(woodland,index):undefined;
-      if(!landscape&&overlay!=='watersheds'&&overlay!=='elevation'){
+      if(!tiled&&overlay!=='watersheds'&&overlay!=='elevation'){
         paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
       }
-      if(!landscape&&overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
+      if(!tiled&&overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
         south:y<H-1?heights[index+W]:h,
         west:x>0?heights[index-1]:h,
         east:x<W-1?heights[index+1]:h},
         tile.biome,overlay==='elevation'?'elevation':'terrain');
-      if(occupied&&!occupied.has(index)&&
-        showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover)){
+      const scenery=tile.biome==='water'?ocean&&ocean[index]<=2&&grain%9===0:
+        showBuildings?showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover):grain%3!==0;
+      if(occupied&&!occupied.has(index)&&scenery){
         const water=tile.biome==='water';
         const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
           x>0&&(world.tiles[index-1].biome==='water')!==water||
           x<W-1&&(world.tiles[index+1].biome==='water')!==water;
         const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore,cover);
-        if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y);
-        else paintTerrainDetail(ctx,detail,x,y);
+        if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y,!showBuildings);
+        else if(showBuildings)paintTerrainDetail(ctx,detail,x,y);
       }
       if(overlay==='resources'&&tile.biome!=='water'){
         const fullness=Math.min(1,tile.food/Math.max(1,biome.food*world.settings.resourceLevel));

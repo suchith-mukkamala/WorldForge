@@ -45,13 +45,14 @@ export function buildTerrainDetailAtlas(canvas:HTMLCanvasElement):boolean{
   return true;
 }
 
-/** Draw the exact 6x6 sprite in one blit rather than 2-4 tiny paint calls. */
+/** Stamp the full sprite locally or shrink it to a quarter at atlas zoom. */
 export function paintTerrainDetailFromAtlas(ctx:CanvasRenderingContext2D,
-  atlas:HTMLCanvasElement,detail:TerrainDetail,x:number,y:number):void{
+  atlas:HTMLCanvasElement,detail:TerrainDetail,x:number,y:number,small=false):void{
   if(detail.motif==='none')return;
   const source=(ATLAS_INDEX[detail.motif]*4+detail.variant)*ATLAS_CELL;
-  ctx.drawImage(atlas,source,0,ATLAS_CELL,ATLAS_CELL,
-    x*ATLAS_CELL,y*ATLAS_CELL,ATLAS_CELL,ATLAS_CELL);
+  const size=small?ATLAS_CELL/2:ATLAS_CELL;
+  const dx=small?(detail.variant&1)*size:0,dy=small?(detail.variant>>1)*size:0;
+  ctx.drawImage(atlas,source,0,ATLAS_CELL,ATLAS_CELL,x*ATLAS_CELL+dx,y*ATLAS_CELL+dy,size,size);
 }
 
 function hash(seed:number,x:number,y:number):number{

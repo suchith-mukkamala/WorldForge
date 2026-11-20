@@ -63,6 +63,15 @@ describe('v1.9.5 — polished, economical, compatible rendering',()=>{
       .toEqual([0,0,0,1,1,2,2,2]);
   });
 
+  it('fits an overview terrain sprite in one half-size square',()=>{
+    const blits:number[][]=[];
+    const ctx={drawImage(_atlas:HTMLCanvasElement,...coordinates:number[]){
+      blits.push(coordinates);
+    }} as unknown as CanvasRenderingContext2D;
+    paintTerrainDetailFromAtlas(ctx,{} as HTMLCanvasElement,{motif:'oak',variant:3},2,4,true);
+    expect(blits).toEqual([[18,0,6,6,15,27,3,3]]);
+  });
+
   it('keeps map legends legible and distinguishes terrain from navigable water',()=>{
     const labels:Record<MapOverlay,string>={
       terrain:'LIVING LANDSCAPE',resources:'FOOD AVAILABILITY',
