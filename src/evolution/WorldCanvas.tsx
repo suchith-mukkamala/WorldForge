@@ -3,14 +3,19 @@ import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {ARCHITECTURE,settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
-import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,
-  paintHydrologyStream,spriteKey,
+import {paintBuilding,paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
   paintAncientSite,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {buildTerrainDetailAtlas,paintTerrainDetail,
   paintTerrainDetailFromAtlas,terrainDetailAt} from './terrainDetails';
+import {woodlandCover,woodlandHabitat} from './woodland';
+import {ATLAS_SEA,atlasRivers,atlasTileGrain,occupiedScenery,overheadTerrainColor,
+  paintOverheadTerrainTile,paintRiverSegment,showAtlasScenery} from './atlasTerrain';
+import {coastalDepth} from './oceanDepth';
+import {pixelTerrainHash} from './depthWorldArt';
+import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalWorldPoint} from './spatialDetails';
@@ -20,25 +25,29 @@ import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
 import {visibleCoastTile} from './worldOutline';
+import {isMultiIslandLayout} from './worldGeography';
 import {wornPathTiles} from './trailNetwork';
+import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
+  type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
-export type MapOverlay='terrain'|'resources'|'deposits'|'elevation'|'watersheds';
+export type MapOverlay='terrain'|'resources'|'deposits'|'elevation'|'watersheds'|'trade';
 const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
   '#465766','#50545f','#3d605f','#505e54'];
 /** Only these zoom boundaries add scenic objects; fractional steps within a
  * tier change CSS magnification but do not need a new terrain raster. */
-export const sceneryZoomTier=(zoom:number)=>zoom>=2.5?2:zoom>=2?1:0;
+export const sceneryZoomTier=(zoom:number)=>zoom>=ATLAS_TOWN_ZOOM?2:zoom>=2?1:0;
 /** Pixel-art fantasy map. Canvas redraw depends ONLY on world / map settings. */
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,
-  followId=null,onFollowPosition,onDiagnostics,
+  followId=null,personId=null,fillWidth=false,onFollowPosition,onDiagnostics,
 }:{
   world:World;brush:Brush;overlay:MapOverlay;
   selected:{x:number;y:number}|null;
   onSelect:(x:number,y:number)=>void;onEdit:(x:number,y:number)=>void;
-  zoom?:number;speed?:number;followId?:number|null;
+  zoom?:number;speed?:number;followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
   onDiagnostics?:(stats:{drawn:number;frameMs:number})=>void;
 }){
@@ -46,11 +55,15 @@ export function WorldCanvas({
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
+  const buildingArtRef=useRef<Map<string,BuildingArt>>(new Map());
+  const buildingPlotsRef=useRef<AtlasBuilding[]>([]);
   const backgroundStamp=useRef<{
-    tiles:World['tiles'];topography:World['topography'];settlementKey:string;
+    tiles:World['tiles'];topography:World['topography'];woodland:World['woodland'];
+    settlementKey:string;
     ruins:World['ruins'];deposits:World['deposits'];
     ancientSites:World['ancientSites'];
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
+    street:boolean;regional:boolean;
     width:number;height:number;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
@@ -87,18 +100,30 @@ export function WorldCanvas({
       (overlay==='resources'||!stamp||stamp.tiles.length!==world.tiles.length||
         stamp.tiles.some((tile,i)=>tile.biome!==world.tiles[i].biome));
     const sceneryTier=sceneryZoomTier(zoom);
+    const showBuildings=sceneryTier===2;
+    const showResidents=atlasLevel(zoom)==='street';
+    const regional=!!world.settings.regionalGeography;
+    const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
+      stamp.woodland!==woodland||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       stamp.deposits!==world.deposits||stamp.transport!==world.transport||
       stamp.sceneryTier!==sceneryTier||stamp.overlay!==overlay||
+      stamp.street!==showResidents||stamp.regional!==regional||
       stamp.seed!==world.settings.seed||stamp.width!==canvas.width||
       stamp.height!==canvas.height;
     if(sceneryChanged){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;
-    if(overlay==='terrain'&&!terrainAtlasRef.current){
+    const tiled=overlay==='terrain'||overlay==='trade';
+    if(tiled){
+      ctx.fillStyle=ATLAS_SEA;
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+    const occupied=overlay==='terrain'?occupiedScenery(world):null;
+    if(occupied&&!terrainAtlasRef.current){
       const atlas=document.createElement('canvas');
       if(buildTerrainDetailAtlas(atlas))terrainAtlasRef.current=atlas;
     }
@@ -106,12 +131,19 @@ export function WorldCanvas({
     const heights=topographyForWorld(world).heights;
     const drainage=overlay==='terrain'||overlay==='watersheds'?
       hydrologyForWorld(world):null;
+    const multiShore=isMultiIslandLayout(world.settings.layout);
+    const ocean=tiled?coastalDepth(W,H,i=>world.tiles[i].biome==='water'):null;
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
-      if(!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
+      if(!multiShore&&!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
       const px=x*CELL,py=y*CELL;
       const index=y*W+x,h=heights[index];
-      if(overlay==='watersheds'&&drainage){
+      const cover=tiled&&woodlandHabitat(tile.biome)?woodlandCover(woodland,index):undefined;
+      const grain=tiled?pixelTerrainHash(x,y,world.settings.seed):0;
+      if(ocean){
+        paintOverheadTerrainTile(ctx,x,y,CELL,overheadTerrainColor(tile.biome,ocean[index],cover),
+          atlasTileGrain(tile.biome,ocean[index],grain));
+      }else if(overlay==='watersheds'&&drainage){
         ctx.fillStyle=tile.biome==='water'?'#285d7a':
           BASIN_COLORS[(drainage.basin[index]>>>0)%BASIN_COLORS.length];
         ctx.fillRect(px,py,CELL,CELL);
@@ -119,22 +151,26 @@ export function WorldCanvas({
           // Potential impoundment, deliberately not converted into water.
           ctx.fillStyle='#4b8a98';ctx.fillRect(px+1,py+1,4,4);
         }
-      }else if(overlay!=='elevation')
+      }
+      if(!tiled&&overlay!=='watersheds'&&overlay!=='elevation'){
         paintTerrain(ctx,tile.biome,biome.color,x,y,world.settings.seed);
-      if(overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
+      }
+      if(!tiled&&overlay!=='watersheds')paintRelief(ctx,x,y,h,{north:y>0?heights[index-W]:h,
         south:y<H-1?heights[index+W]:h,
         west:x>0?heights[index-1]:h,
         east:x<W-1?heights[index+1]:h},
         tile.biome,overlay==='elevation'?'elevation':'terrain');
-      if(overlay==='terrain'){
+      const scenery=tile.biome==='water'?ocean&&ocean[index]<=2&&grain%9===0:
+        showBuildings?showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover):grain%3!==0;
+      if(occupied&&!occupied.has(index)&&scenery){
         const water=tile.biome==='water';
         const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
           x>0&&(world.tiles[index-1].biome==='water')!==water||
           x<W-1&&(world.tiles[index+1].biome==='water')!==water;
-        const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore);
-        if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y);
-        else paintTerrainDetail(ctx,detail,x,y);
+        const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore,cover);
+        if(atlas)paintTerrainDetailFromAtlas(ctx,atlas,detail,x,y,!showBuildings);
+        else if(showBuildings)paintTerrainDetail(ctx,detail,x,y);
       }
       if(overlay==='resources'&&tile.biome!=='water'){
         const fullness=Math.min(1,tile.food/Math.max(1,biome.food*world.settings.resourceLevel));
@@ -143,26 +179,26 @@ export function WorldCanvas({
         ctx.fillRect(px,py,CELL,CELL);
       }
     }
-    if(drainage)for(let i=0;i<W*H;i++){
-      const tier=drainage.channel[i],next=drainage.flowTo[i];
-      if(!tier||next<0)continue;
-      paintHydrologyStream(ctx,i%W,Math.floor(i/W),next%W,
-        Math.floor(next/W),tier,overlay==='watersheds');
+    if(drainage){
+      const center=(i:number)=>({x:(i%W+.5)*CELL,y:(Math.floor(i/W)+.5)*CELL});
+      for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
+        const a=center(from),end=center(to);
+        const b=world.tiles[to].biome==='water'?{x:(a.x+end.x)/2,y:(a.y+end.y)/2}:end;
+        paintRiverSegment(ctx,a,b,tier,overlay==='watersheds');
+      }
     }
-    if(overlay==='deposits'||zoom>=2){
+    if(overlay==='deposits'){
       for(const d of world.deposits??[]){
         const x=d.index%W,y=Math.floor(d.index/W),px=x*CELL,py=y*CELL;
         if(d.amount<.1)continue;
         paintDeposit(ctx,d.kind,x,y,d.amount,d.capacity);
-        if(overlay==='deposits'){
-          ctx.fillStyle='rgba(8,14,27,.8)';
-          ctx.fillRect(px,py+5,6,1);
-          ctx.fillStyle=RESOURCE_COLORS[d.kind];
-          ctx.fillRect(px,py+5,6*d.amount/d.capacity,1);
-        }
+        ctx.fillStyle='rgba(8,14,27,.8)';
+        ctx.fillRect(px,py+5,6,1);
+        ctx.fillStyle=RESOURCE_COLORS[d.kind];
+        ctx.fillRect(px,py+5,6*d.amount/d.capacity,1);
       }
     }
-    if(zoom>=2){
+    if(showBuildings&&overlay==='terrain'){
       const worn=wornPathTiles(world.trails??[],world.width,world.height);
       for(const s of world.settlements){
         for(const id of s.infrastructure?.roads??[]){
@@ -173,25 +209,23 @@ export function WorldCanvas({
         }
       }
     }
-    // Engine-owned transport infrastructure is visible at both world and
-    // neighborhood scales. Display decisions never enter its simulation.
-    for(const road of world.transport?.roads??[]){
+    if(sceneryTier>0&&overlay==='terrain')for(const road of world.transport?.roads??[]){
       if(road.condition<=25)continue;
       const x=road.index%W,y=Math.floor(road.index/W);
       ctx.fillStyle='rgba(229,185,111,.85)';
       ctx.fillRect(x*CELL,y*CELL+2,CELL,3);
-      if(zoom>=2){
+      if(showBuildings){
         ctx.fillStyle='#725f53';ctx.fillRect(x*CELL+2,y*CELL+3,2,1);
       }
     }
-    for(const bridge of world.transport?.bridges??[]){
+    if(sceneryTier>0&&overlay==='terrain')for(const bridge of world.transport?.bridges??[]){
       if(bridge.condition<=25)continue;
       const x=bridge.index%W,y=Math.floor(bridge.index/W);
       ctx.fillStyle='#f2d1a0';ctx.fillRect(x*CELL,y*CELL+1,CELL,4);
       ctx.fillStyle='#876b58';ctx.fillRect(x*CELL+1,y*CELL+2,1,3);
       ctx.fillRect(x*CELL+4,y*CELL+2,1,3);
     }
-    for(const ruin of world.ruins??[]){
+    if(showBuildings)for(const ruin of world.ruins??[]){
       const x=ruin.x*CELL,y=ruin.y*CELL;
       const culture=ARCHITECTURE[ruin.species];
       ctx.fillStyle='#222537';ctx.fillRect(x-4,y+4,16,3);
@@ -203,11 +237,12 @@ export function WorldCanvas({
       ctx.fillStyle='#8fa18b';ctx.fillRect(x-3,y+4,2,2);
       ctx.fillRect(x+9,y+3,2,2);
     }
-    for(const site of world.ancientSites??[]){
+    if(showBuildings)for(const site of world.ancientSites??[]){
       paintAncientSite(ctx,site.kind,site.x*CELL,site.y*CELL,
         (site.visits??site.visitors.length)>0);
     }
-    for(const s of world.settlements){
+    if(showBuildings)for(const s of world.settlements){
+      if(s.infrastructure?.buildings.length)continue;
       const px=s.x*CELL,py=s.y*CELL;
       const stage=settlementStage(s),size={encampment:8,hamlet:10,
         village:12,town:14,city:16}[stage];
@@ -232,22 +267,26 @@ export function WorldCanvas({
         }
       }
     }
-    if(zoom>=2.5){
+    const plots:AtlasBuilding[]=[];
+    if(showBuildings){
       for(const s of world.settlements)for(const b of s.infrastructure?.buildings??[]){
-        // Roofs stay centered on their plots rather than covering neighbors.
-        const anchorX=(b.x+.5)*CELL,anchorY=(b.y+1)*CELL;
+        const key=[b.type,b.culture,b.stage,b.tier??0,Math.round(b.progress/10)].join(':');
+        const art=cacheBuildingArt(buildingArtRef.current,key,36,
+          painter=>paintBuilding(painter,{...b,x:3,y:4}));
+        if(!art)continue;
         const scale=buildingVisualScale(b.type);
-        ctx.save();ctx.translate(anchorX,anchorY);ctx.scale(scale,scale);
-        ctx.translate(-anchorX,-anchorY);
-        paintBuilding(ctx,b);
-        ctx.restore();
+        const plot={building:b,art,scale,x:(b.x+.5)*CELL-3.5*CELL*scale,
+          y:(b.y+1)*CELL-5*CELL*scale};
+        plots.push(plot);
+        paintAtlasBuilding(ctx,plot);
       }
     }
+    buildingPlotsRef.current=plots;
     backgroundStamp.current={tiles:world.tiles,
       topography:world.topography,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
-      sceneryTier,overlay,seed:world.settings.seed,
+      woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
       width:canvas.width,height:canvas.height};
     }
     else if(stamp)stamp.tiles=world.tiles;
@@ -297,12 +336,14 @@ export function WorldCanvas({
     if(atmosphere.height!==canvas.height)atmosphere.height=canvas.height;
     if(overlay==='terrain')updateAtmosphereLayer(atmosphere,
       world.settings.seed,world.year,day,'overhead');
-    const scrollParent=canvas.parentElement;
+    const scrollParent=canvas.closest<HTMLElement>('.evo-map-scroll')??canvas.parentElement;
     const bounds=()=>{
       const screen=canvas.getBoundingClientRect();
       const width=screen.width||canvas.width,height=screen.height||canvas.height;
-      const x=(scrollParent?.scrollLeft??0)/width*W;
-      const y=(scrollParent?.scrollTop??0)/height*H;
+      const scroll=fillWidth&&scrollParent&&canvas.parentElement?
+        atlasScrollGeometry(scrollParent,canvas.parentElement):scrollParent;
+      const x=(scroll?.scrollLeft??0)/width*W;
+      const y=(scroll?.scrollTop??0)/height*H;
       const w=(scrollParent?.clientWidth??width)/width*W;
       const h=(scrollParent?.clientHeight??height)/height*H;
       return {minX:Math.max(0,Math.floor(x)-3),minY:Math.max(0,Math.floor(y)-3),
@@ -325,15 +366,21 @@ export function WorldCanvas({
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0);
       if(overlay==='terrain')visible.drawImage(atmosphere,0,0);
+      if(overlay==='trade'){
+        visible.fillStyle='rgba(12,29,33,.26)';
+        visible.fillRect(0,0,canvas.width,canvas.height);
+        paintTradeRoutes(visible,world.shipments??[],index=>({
+          x:(index%W+.5)*CELL,y:(Math.floor(index/W)+.5)*CELL,
+        }),canvas.width/(canvas.clientWidth||canvas.width));
+      }
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
       // Cull sprites outside the camera; preserve tracked character and tile.
       const ordered=cachedVisible??(cachedVisible=renderedPopulation(
-        world.agents,scene,{bounds:bounds(),zoom,focusId:followId,selected}));
-      const tracked=followId!==null?world.agents.find(a=>a.id===followId):
-        selected?world.agents.find(a=>a.x===selected.x&&a.y===selected.y):
-        undefined;
-      if(zoom>=3&&tracked?.cognition?.trail.length){
+        world.agents,scene,{bounds:bounds(),zoom,focusId:followId??personId,
+          focusOnly:!showResidents||overlay==='trade'}));
+      const tracked=ordered.find(a=>a.id===(followId??personId));
+      if(showResidents&&tracked?.cognition?.trail.length){
         const points=tracked.cognition.trail.map(id=>
           ({x:id%W,y:Math.floor(id/W)}));
         visible.save();visible.strokeStyle='rgba(248,220,145,.75)';
@@ -419,7 +466,7 @@ export function WorldCanvas({
           visible.fillStyle='#ffe1b3';visible.fillRect(px+6,py-8,2,2);
         }
       }
-      if(zoom>=1.5)for(const shipment of world.shipments??[]){
+      if(showResidents&&overlay!=='trade')for(const shipment of world.shipments??[]){
         const p=positions.get(shipment.carrierId);if(!p)continue;
         const px=p.x*CELL,py=p.y*CELL;
         if(shipment.mode==='sea'){
@@ -474,13 +521,19 @@ export function WorldCanvas({
       cancelAnimationFrame(handle);
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
-    world.deposits,world.transport,world.shipments,world.settings.seed,
-    overlay,selected,zoom,speed,followId,onFollowPosition,onDiagnostics,
-    world.topography,world.dayOfYear]);
+    world.deposits,world.transport,world.shipments,world.settings.seed,world.woodland,
+    world.settings.regionalGeography,
+    overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
+    world.topography,world.dayOfYear,world.ancientSites,world.trails]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
-    const x=Math.floor((event.clientX-rect.left)/rect.width*world.width);
-    const y=Math.floor((event.clientY-rect.top)/rect.height*world.height);
+    const px=(event.clientX-rect.left)/rect.width*world.width*CELL;
+    const py=(event.clientY-rect.top)/rect.height*world.height*CELL;
+    if(brush.kind==='inspect'&&atlasLevel(zoom)!=='world'){
+      const building=atlasBuildingAt(buildingPlotsRef.current,px,py);
+      if(building){onSelect(building.x,building.y);return;}
+    }
+    const x=Math.floor(px/CELL),y=Math.floor(py/CELL);
     if(x<0||x>=world.width||y<0||y>=world.height)return;
     if(brush.kind==='inspect')onSelect(x,y);
     else onEdit(x,y);
@@ -500,7 +553,7 @@ export function WorldCanvas({
   };
   return <canvas ref={canvasRef} className="evo-world-canvas"
     width={world.width*CELL} height={world.height*CELL}
-    style={{width:(zoom*100)+'%'}}
+    style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
     aria-label={'Interactive fantasy map: '+world.width+' by '+world.height+
       ' cells. Click to '+(brush.kind==='inspect'?'inspect a location':

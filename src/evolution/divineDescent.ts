@@ -6,6 +6,9 @@ import {tileCapacity} from './density';
 import {biomeHome} from './biomeGeneration';
 import {cleanIdentityName,renamePerson} from './identity';
 import type {Career} from './development';
+import {adventureArrival} from './adventureMap';
+import type {TownStop} from './adventurePlaces';
+import {isMultiIslandLayout} from './worldGeography';
 
 export const DESCENT_BACKGROUNDS=[
   {id:'scout',name:'Wayfinder',description:'A curious traveler seeking unknown lands.'},
@@ -20,10 +23,13 @@ export type MortalCreation={name:string;species:Species;
 /** Choose a safe, available plot near a living settlement of this species.
  * On worlds without settlements, favor the species' native biome. This is a
  * one-time O(map area + population) query, never part of the frame loop. */
-export function mortalArrivalSite(world:World,species:Species):{x:number;y:number}|null{
+function arrival(world:World,species:Species):{
+  point:{x:number;y:number};place?:TownStop}|null{
   const settlement=world.settlements.find(s=>s.species===species);
   const home=biomeHome(world.settings.seed,species);
-  const anchor=settlement??{x:Math.round(home[0]*(world.width-1)),
+  const resident=isMultiIslandLayout(world.settings.layout)?
+    world.agents.find(a=>a.species===species):undefined;
+  const anchor=settlement??resident??{x:Math.round(home[0]*(world.width-1)),
     y:Math.round(home[1]*(world.height-1))};
   const capacity=tileCapacity(world);
   const occupancy=new Map<number,number>();
@@ -31,17 +37,25 @@ export function mortalArrivalSite(world:World,species:Species):{x:number;y:numbe
     const id=a.y*world.width+a.x;
     occupancy.set(id,(occupancy.get(id)??0)+1);
   }
+  const available=(i:number)=>world.tiles[i].biome!=='water'&&
+    (occupancy.get(i)??0)<capacity[i];
+  const gate=adventureArrival(world,species,available);
+  if(gate)return gate;
   let best:null|{x:number;y:number}=null,score=Infinity;
   const preferred=SPECIES_INFO[species].preferred;
   for(let i=0;i<world.tiles.length;i++){
     const tile=world.tiles[i];
-    if(tile.biome==='water'||(occupancy.get(i)??0)>=capacity[i])continue;
+    if(!available(i))continue;
     const x=i%world.width,y=Math.floor(i/world.width);
     const distance=(x-anchor.x)**2+(y-anchor.y)**2;
     const next=distance+(preferred.includes(tile.biome)?0:160);
     if(next<score){score=next;best={x,y};}
   }
-  return best;
+  return best?{point:best}:null;
+}
+
+export function mortalArrivalSite(world:World,species:Species):{x:number;y:number}|null{
+  return arrival(world,species)?.point??null;
 }
 
 export function createMortal(world:World,options:MortalCreation):{
@@ -58,8 +72,9 @@ export function createMortal(world:World,options:MortalCreation):{
     throw Error('Choose a valid appearance.');
   if(world.descent&&world.agents.some(a=>a.id===world.descent!.agentId))
     throw Error('You already have a living mortal. Resume their story first.');
-  const location=mortalArrivalSite(world,options.species);
-  if(!location)throw Error('This world has no safe space for a new mortal.');
+  const start=arrival(world,options.species);
+  if(!start)throw Error('This world has no safe space for a new mortal.');
+  const location=start.point;
   const spawned=editWorld(world,location.x,location.y,
     {kind:'spawn',species:options.species});
   if(spawned===world)throw Error('The arrival location is no longer available.');
@@ -73,7 +88,8 @@ export function createMortal(world:World,options:MortalCreation):{
     r.id===id?{...r,appearance:{...look}}:r)},id,name);
   const description='The divine spirit descended as '+name+'.';
   const updated:World={...named,descent:{agentId:id,mode:'mortal',
-    createdYear:world.year},lineage:named.lineage.map(r=>r.id===id?{
+    createdYear:world.year,...(start.place?{place:start.place}:{})},
+    lineage:named.lineage.map(r=>r.id===id?{
       ...r,moments:[...(r.moments??[]),{year:world.year,kind:'divine' as const,
         text:'A divine soul began its mortal journey.'}].slice(-40),
     }:r),events:[...named.events,{id:named.nextEventId,year:world.year,

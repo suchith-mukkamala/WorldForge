@@ -1,19 +1,24 @@
 import {describe,expect,it} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {createWorld,type Settlement,type World} from './engine';
+import {createWorld,isWorld,type Settlement,type World} from './engine';
 import {createMortal} from './divineDescent';
+import {advanceWorldDays} from './calendar';
 import {BUILDING_TYPES,type Building} from './construction';
 import {MortalInterior} from './MortalInterior';
 import {canEnterMortalBuilding,findInteriorBuilding,atInteriorDoor,
-  INTERIOR_DOOR,INTERIOR_TEMPLATES,moveInside,ROOM_WIDTH,ROOM_HEIGHT}
+  enterMortalRoom,INTERIOR_DOOR,INTERIOR_TEMPLATES,leaveMortalRoom,moveInside,
+  occupiedMortalRoom,ROOM_WIDTH,ROOM_HEIGHT}
   from './mortalInteriors';
-import type {MortalBuilding} from './mortalGameplay';
+import {mortalTileCapacity,type MortalBuilding} from './mortalGameplay';
+import {interactWithInteriorProp} from './interiorActions';
+import {compactWorld,readSavedWorld} from './storage';
 
-const create=()=>createMortal(createWorld({seed:4017,size:'small'}),{
+const options={
   name:'Nessa',species:'human',background:'scout',
   appearance:{skin:2,hair:0,hairStyle:1,outfit:'wanderer'},
-}).world;
+} as const;
+const create=()=>createMortal(createWorld({seed:4017,size:'small'}),options).world;
 function place(world:World,type:Building['type']='house',
   stage:Building['stage']='complete'){
   const actor=world.agents.find(a=>a.id===world.descent?.agentId)!;
@@ -90,13 +95,58 @@ describe('v2.6.0 — reusable interior spaces',()=>{
   it('renders a real named interior and its same living mortal without editing world',()=>{
     const {world,site}=place(create(),'workshop');
     const markup=renderToStaticMarkup(createElement(MortalInterior,{
-      world,site,position:INTERIOR_DOOR,running:true,message:'',
-      onExit:()=>{},onToggleTime:()=>{},onAscend:()=>{},
+      world,site,position:INTERIOR_DOOR,message:'',
+      onExit:()=>{},
     }));
     expect(markup).toContain('Enterable building interior');
-    expect(markup).toContain('WESTRIDGE');
     expect(markup).toContain('Workshop');
-    expect(markup).toContain('EXIT BUILDING');
+    expect(markup).toContain('Exit building');
     expect(world.agents.find(a=>a.id===world.descent?.agentId)).toBeDefined();
+  });
+
+  it('saves room progress and leaves the mortal on the original doorstep',()=>{
+    const settled=advanceWorldDays(createWorld({seed:108,size:'small',layout:'archipelago'}),365*6);
+    const {world,agent}=createMortal(settled,options);
+    const site=world.settlements.flatMap(town=>(town.infrastructure?.buildings??[])
+      .filter(b=>b.type==='house')
+      .map(b=>findInteriorBuilding(world,{settlementId:town.id,buildingId:b.id})))
+      .find(door=>door&&door.distance>0&&world.agents.filter(a=>
+        a.x===door.entrance.x&&a.y===door.entrance.y).length<
+        mortalTileCapacity(world,door.entrance.x,door.entrance.y))!;
+    const reference={settlementId:site.settlementId,buildingId:site.building.id};
+    expect(enterMortalRoom(world,reference)).toBe(world);
+    const ready={...world,agents:world.agents.map(a=>a.id===agent.id?{...a,...site.entrance}:a)};
+    expect(isWorld(ready)).toBe(true);
+    const opened=enterMortalRoom(ready,reference);
+    const room=opened.descent!.interior!;
+    expect(room.position).toEqual(INTERIOR_DOOR);
+    const walked={...opened,descent:{...opened.descent!,interior:{
+      ...room,position:moveInside('house',room.position,0,-1),
+    }}};
+    const restored=readSavedWorld(compactWorld(walked))!;
+    expect(restored.descent?.interior?.position).toEqual({x:6,y:7});
+    expect(occupiedMortalRoom(restored)?.entrance).toEqual(site.entrance);
+    const outside=leaveMortalRoom(restored);
+    expect(outside.descent?.interior).toBeUndefined();
+    expect(outside.agents.find(a=>a.id===outside.descent?.agentId)).toMatchObject(site.entrance);
+    expect(isWorld({...restored,descent:{...restored.descent!,interior:{
+      ...room,position:{x:6,y:20},
+    }}})).toBe(false);
+  });
+
+  it('requires reaching furniture and advances a day to recover energy',()=>{
+    const {world,site}=place(create());
+    const actorId=world.descent!.agentId;
+    const tired={...world,agents:world.agents.map(a=>a.id===actorId?{...a,energy:50}:a)};
+    const room=enterMortalRoom(tired,{settlementId:site.settlementId,buildingId:site.building.id});
+    const chair={x:6,y:5};
+    expect(interactWithInteriorProp(room,chair).world).toBe(room);
+    const beside={...room,descent:{...room.descent!,interior:{
+      ...room.descent!.interior!,position:{x:6,y:6},
+    }}};
+    const rested=interactWithInteriorProp(beside,chair).world;
+    expect(rested.dayOfYear).toBe(1);
+    expect(rested.agents.find(a=>a.id===actorId)).toMatchObject({...site.entrance,energy:68});
+    expect(beside.agents.find(a=>a.id===actorId)?.energy).toBe(50);
   });
 });

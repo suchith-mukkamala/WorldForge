@@ -1,4 +1,5 @@
 import type {MapOverlay} from './WorldCanvas';
+import {CARAVAN_ROUTE_COLOR,SHIP_ROUTE_COLOR} from './tradeRoutes';
 
 /** Map colors are a reading aid, never additional terrain or simulation data. */
 const KEYS:Record<MapOverlay,{title:string;items:readonly {
@@ -28,6 +29,10 @@ const KEYS:Record<MapOverlay,{title:string;items:readonly {
     {label:'Creek / river',color:'#a2e9ee'},
     {label:'Potential pool',color:'#4b8a98'},
   ],hint:'Creek tiles can benefit farms in v2.0 worlds; boats still use established water biomes.'},
+  trade:{title:'TRADE ROUTES',items:[
+    {label:'Caravan',color:CARAVAN_ROUTE_COLOR},
+    {label:'Ship',color:SHIP_ROUTE_COLOR},
+  ],hint:'Dots show where shipments are now.'},
 };
 
 export function MapLayerLegend({overlay}:{overlay:MapOverlay}){

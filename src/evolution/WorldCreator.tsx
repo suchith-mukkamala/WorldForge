@@ -1,7 +1,12 @@
-import {useState} from 'react';
-import {SPECIES,SPECIES_INFO,WORLD_SIZES,
+import {useMemo,useState} from 'react';
+import {DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,WORLD_SIZES,
   normalizeSettings,type WorldSettings} from './engine';
 import {freshWorldSeed} from './worldSeeds';
+import {DEFAULT_WORLD_LAYOUT,generateSeedTerrain,landmassCount,WORLD_LAYOUTS,
+  WORLD_LAYOUT_NAMES,type WorldLayout} from './worldGeography';
+import {TerrainPreview} from './TerrainPreview';
+import {generateRegionalTopography} from './regionalGeography';
+import {initialWoodland} from './woodland';
 
 const PRESETS=[
   {id:'balanced',name:'FOUR KINGDOMS',description:'Every people starts with a foothold',
@@ -24,30 +29,53 @@ export function WorldCreator({
   // still an explicit choice for players who want a reproducible landscape.
   const [draft,setDraft]=useState<WorldSettings>(()=>normalizeSettings({
     ...current,seed:freshWorldSeed(current.seed),
+    layout:current.layout??DEFAULT_WORLD_LAYOUT,
+    livingBiomes:current.livingBiomes??true,
+    regionalGeography:true,
   }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
-  return <main className="evo-creator">
+  const [width,height]=WORLD_SIZES[draft.size];
+  const {seed,layout,livingBiomes}=draft;
+  const map=useMemo(()=>{
+    const terrain=generateSeedTerrain(width,height,seed,layout);
+    const tiles=terrain.biomes.map(biome=>({biome,food:0}));
+    const landscape={width,height,tiles,settings:{...DEFAULT_SETTINGS,seed,layout,regionalGeography:true},
+      topography:generateRegionalTopography(width,height,tiles,seed)};
+    const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined};
+    return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
+  },[width,height,seed,layout,livingBiomes]);
+  const landmasses=map.count+' landmass'+(map.count===1?'':'es');
+  return <main className="evo-creator world-generator">
     <header className="evo-section-header">
       <div>
-        <span className="evo-overline">WORLDFORGE / GENESIS</span>
-        <h2>World Creator</h2>
-        <p>Begin with a fresh island—or customize the opening conditions.</p>
+        <h2>New world</h2>
+        <p>Preview the terrain before starting a new simulation.</p>
       </div>
       <button className="evo-quiet-button" onClick={onReturn}>← RETURN TO WORLD</button>
     </header>
-    <section className="evo-genesis-quick" aria-label="Quick world creation">
-      <div><span className="evo-overline">READY TO BEGIN</span>
-        <h3>{draft.seed===current.seed?'Revisit a familiar landscape.':
-          'A world no one has seen before.'}</h3>
-        <p>{draft.seed===current.seed?
-          'This seed recreates the previous geography. Your other settings may differ.':
-          'A fresh seed is ready. Four peoples will discover, build and decide their own future.'}</p>
-        <small>Seed {draft.seed} · {draft.size} island · {total} founders</small>
+    <section className="world-preview-card" aria-label="World preview">
+      <figure>
+        <TerrainPreview world={map.preview} label={WORLD_LAYOUT_NAMES[map.layout]+' terrain preview'}/>
+        <figcaption><strong>{WORLD_LAYOUT_NAMES[map.layout]}</strong>
+          <span>{landmasses} · Seed {draft.seed}</span></figcaption>
+      </figure>
+      <div className="world-preview-controls">
+        <label htmlFor="world-geography">Geography</label>
+        <select id="world-geography" value={draft.layout??'classic'}
+          onChange={event=>update('layout',event.target.value as WorldLayout)}>
+          {WORLD_LAYOUTS.map(layout=><option key={layout} value={layout}>
+            {WORLD_LAYOUT_NAMES[layout]}</option>)}
+        </select>
+        <div className="world-preview-actions">
+          <button type="button" onClick={()=>update('seed',freshWorldSeed(draft.seed))}>
+            Randomize terrain
+          </button>
+          <button className="evo-primary-button"
+            onClick={()=>onCreate(normalizeSettings(draft))}>BEGIN NEW WORLD</button>
+        </div>
       </div>
-      <button className="evo-primary-button"
-        onClick={()=>onCreate(normalizeSettings(draft))}>✦ BEGIN NEW WORLD</button>
     </section>
     <details className="evo-creator-advanced">
       <summary>⚙ CUSTOMIZE WORLD SETTINGS <span>POPULATION · MAP SIZE · SEED · RESOURCES</span></summary>
@@ -105,8 +133,9 @@ export function WorldCreator({
                   freshWorldSeed(draft.seed))} title="Generate a different random seed">
                   <span aria-hidden="true">⚄</span> RANDOM
                 </button>
-                <button type="button" onClick={()=>update('seed',current.seed)}
-                  title="Reuse this world's exact seed">↺ REUSE</button>
+                <button type="button" onClick={()=>setDraft(settings=>({...settings,
+                  seed:current.seed,size:current.size,layout:current.layout}))}
+                  title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>
               <small className="evo-seed-hint">A fresh seed is chosen for each new world.
                 Reuse or enter a seed to reproduce a familiar map.</small>
@@ -130,10 +159,17 @@ export function WorldCreator({
                   blended ancestry, genetic traits and lifespan.</small>
               </span>
             </label>
+            <label className="evo-hybrid-toggle" htmlFor="evo-living-biomes">
+              <input id="evo-living-biomes" type="checkbox" checked={draft.livingBiomes}
+                onChange={e=>update('livingBiomes',e.target.checked)}/>
+              <span><b>LET BIOMES CHANGE OVER TIME</b>
+                <small>Forests can spread into grassland or thin into meadows as years pass.</small>
+              </span>
+            </label>
           </div>
         </section>
         <section className="evo-section-card evo-genesis-summary">
-          <div className="evo-card-heading"><strong>WORLD PREVIEW</strong></div>
+          <div className="evo-card-heading"><strong>STARTING CONDITIONS</strong></div>
           <div className="evo-genesis-count">{total}<span>founding individuals</span></div>
           <p>New world seed <strong>{draft.seed}</strong> · {draft.size} map ·
             {WORLD_SIZES[draft.size].join(' × ')} tiles ·
@@ -150,10 +186,5 @@ export function WorldCreator({
       </aside>
     </div>
     </details>
-    <div className="evo-future-note">
-      <strong>COMING LATER</strong>
-      <span>Partnerships, hybrids and family archives are here. Coming later:
-        settlements at war, natural disasters, separate realms, and learning agents.</span>
-    </div>
   </main>;
 }

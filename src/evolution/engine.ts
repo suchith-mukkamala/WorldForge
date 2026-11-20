@@ -33,10 +33,9 @@ import {advanceKnowledge,generateAncientSites,knows,validKnowledge,
 import {advanceCulture,cloneCulture,validCulture,
   type Belief,type CultureState} from './culture';
 import {cloneDailyLife,validDailyLife,type DailyLife} from './dailyLife';
-import {visibleCoastTile} from './worldOutline';
-import {seededBiome,biomeHome} from './biomeGeneration';
+import {generateSeedTerrain,WORLD_LAYOUTS,type WorldLayout} from './worldGeography';
 import {cloneCognition,validCognition,type Cognition} from './mindII';
-import {generateTopography,validTopography,type Topography} from './topography';
+import {generateTopography,topographyForWorld,validTopography,type Topography} from './topography';
 import {advanceEarthworks,validEarthworks,type Earthwork} from './earthworks';
 import {terrainStepEffort,type TerrainPhysics} from './terrainPhysics';
 import {birthPotentialRank,isTraitRank,potentialRank,type TraitRank} from './traitRanks';
@@ -46,12 +45,21 @@ import {isTraitHeritage,type TraitHeritage} from './traitHeritage';
 import {activeTraitBonus} from './traitEffects';
 import {advancePublicHealth,isDiseaseRecord,isPublicHealthState,
   type DiseaseRecord,type PublicHealthState} from './publicHealth';
+import {validAdventurePlace,type AdventurePlace} from './adventurePlaces';
+import {validMortalJournal,type MortalJournal} from './errandRecords';
+import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
+import {validMortalRoom,type MortalRoom} from './roomSave';
+import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
+import {generateRegionalTopography,settlementGeography} from './regionalGeography';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export type Biome='plains'|'forest'|'mountain'|'cave'|'wasteland'|'volcanic'|'water';
 export type WorldSize='small'|'medium'|'large'|'vast';
 export type WorldSettings={
   seed:number;size:WorldSize;starting:Record<Species,number>;
   resourceLevel:number;wandering:number;interbreeding:boolean;
+  layout?:WorldLayout;
+  livingBiomes?:boolean;
+  regionalGeography?:boolean;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
@@ -59,7 +67,8 @@ export type Ancestry=Record<Species,number>;
 export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
 export type MortalAppearance={skin:number;hair:number;hairStyle:number;
   outfit:MortalOutfit};
-export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number};
+export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number;
+  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   appearance?:MortalAppearance;
@@ -119,6 +128,7 @@ export type Sample={year:number;total:number;human:number;elf:number;dwarf:numbe
 export type World={version:2;settings:WorldSettings;width:number;height:number;
   year:number;dayOfYear?:number;nextAgentId:number;nextSettlementId:number;nextEventId:number;
   nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;
+  woodland?:string;
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -197,7 +207,10 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     ),0,75)])) as Record<Species,number>,
     resourceLevel:clamp(Number.isFinite(input.resourceLevel)?input.resourceLevel!:1,.5,1.8),
     wandering:clamp(Number.isFinite(input.wandering)?input.wandering!:1,.5,1.8),
-    interbreeding:input.interbreeding!==false};
+    interbreeding:input.interbreeding!==false,
+    ...(typeof input.livingBiomes==='boolean'?{livingBiomes:input.livingBiomes}:{}),
+    ...(typeof input.regionalGeography==='boolean'?{regionalGeography:input.regionalGeography}:{}),
+    ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
 export function population(world:Pick<World,'agents'>):Record<Species,number>{
   const counts={human:0,elf:0,dwarf:0,demon:0};
@@ -248,19 +261,15 @@ function freeNearby(world:World,origin:{x:number;y:number},radius:number,
 export function createWorld(input:Partial<WorldSettings>={}):World{
   const settings=normalizeSettings(input),[width,height]=WORLD_SIZES[settings.size];
   const state={n:prngState(settings.seed)};
-  const tiles:Tile[]=Array.from({length:width*height},(_,index)=>{
-    const x=index%width,y=Math.floor(index/width);
-    // v2.3: new worlds are islands with seeded, irregular coasts. The same
-    // rectangular index space remains authoritative for simulation and saves.
-    // Existing worlds are not rewritten when loading older save data.
-    const biome=visibleCoastTile(x,y,width,height,'water',settings.seed)?
-      seededBiome(x,y,width,height,settings.seed):'water';
+  const geography=generateSeedTerrain(width,height,settings.seed,settings.layout);
+  const tiles:Tile[]=geography.biomes.map(biome=>{
     const info=BIOME_INFO[biome];
     return {biome,food:round(info.food*settings.resourceLevel*(.75+.25*random(state)))};
   });
   const world:World={version:2,settings,width,height,year:0,dayOfYear:0,rngState:state.n,
     nextAgentId:1,nextSettlementId:1,nextEventId:1,nextBondId:1,
-    tiles,topography:generateTopography(width,height,tiles,settings.seed),
+    tiles,topography:(settings.regionalGeography?generateRegionalTopography:generateTopography)(
+      width,height,tiles,settings.seed),
     terrainPhysics:{version:1},
     agents:[],settlements:[],bonds:[],lineage:[],
     events:[],history:[],totalBirths:0,totalDeaths:0,demography:emptyDemography(0),
@@ -269,14 +278,13 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     transport:{roads:[],bridges:[]},tradeRelations:[],
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
     ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
+  if(settings.livingBiomes)world.woodland=initialWoodland(world);
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
   const occupied=new Set<number>();
   for(const s of SPECIES){
     const info=SPECIES_INFO[s];
-    const home=biomeHome(settings.seed,s);
-    const target={x:Math.round(home[0]*(width-1)),
-      y:Math.round(home[1]*(height-1))};
+    const target=geography.homes[s];
     // Nearest favored starting biome in O(tiles) rather than sorting huge worlds.
     let closest=target,closestD=Infinity;
     for(let index=0;index<tiles.length;index++){
@@ -404,7 +412,8 @@ export function stepWorld(previous:World):World{
       lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
     expeditions:previous.expeditions?.map(e=>({...e}))??[]};
   prepareDevelopment(world);
-  regrowDeposits(world);
+  const newForests=world.settings.livingBiomes?advanceWoodland(world):undefined;
+  regrowDeposits(world,newForests);
   for(const s of world.settlements){
     if(!world.codex!.settlements.some(r=>r.id===s.id)){
       world.codex!.settlements.push({id:s.id,species:s.species,name:s.name,
@@ -681,17 +690,31 @@ export function stepWorld(previous:World):World{
         if(b.species===a.species&&adult(b))nearby.push(b);
     }
     if(nearby.length<4)continue;
+    let site={x:a.x,y:a.y};
+    if(world.settings.regionalGeography){
+      let best=settlementGeography(world,offset(world.width,a.x,a.y)).score;
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+        const x=a.x+dx,y=a.y+dy;
+        if((!dx&&!dy)||!within(world.width,world.height,x,y))continue;
+        const index=offset(world.width,x,y),tile=world.tiles[index];
+        if(settlementCoverage[index]||tile.biome==='water'||
+          biomeSuitability(a.ancestry,tile.biome)<.55)continue;
+        const score=settlementGeography(world,index).score-Math.hypot(dx,dy)*.10;
+        if(score<=best||nearby.filter(resident=>distance(resident,{x,y})<=4).length<4)continue;
+        best=score;site={x,y};
+      }
+    }
     const id=world.nextSettlementId++;
     const names=settlementNames[a.species];
     const n=world.settlements.filter(s=>s.species===a.species).length;
     const name=names[n%names.length]+(n>=names.length?' '+(1+Math.floor(n/names.length)):'');
-    const founded:Settlement={id,species:a.species,name,x:a.x,y:a.y,
+    const founded:Settlement={id,species:a.species,name,...site,
       founded:world.year,population:nearby.length,stores:20,emptyYears:0};
     world.settlements.push(founded);
     markNeighborhood(settlementCoverage,world.width,world.height,founded,7);
     registerSettlement(world,founded,a.id);
     log(world,'settlement',info.name+' founded '+name+' in the '+
-      BIOME_INFO[world.tiles[offset(world.width,a.x,a.y)].biome].name.toLowerCase()+'.');
+      BIOME_INFO[world.tiles[offset(world.width,site.x,site.y)].biome].name.toLowerCase()+'.');
   }
   world.settlements=world.settlements.filter(s=>{
     const residents=residentsNear(residentCounts,world.width,world.height,s,5);
@@ -781,9 +804,23 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
   }else{
     world.tiles[index]={biome:brush.biome,food:round(
       BIOME_INFO[brush.biome].food*world.settings.resourceLevel)};
-    // Terrain edits also refresh elevation, without changing existing paths.
-    world.topography=generateTopography(world.width,world.height,
+    if(tile.biome!==brush.biome)paintWoodland(world,index);
+    const topography=generateTopography(world.width,world.height,
       world.tiles,world.settings.seed);
+    if(world.woodland!==undefined||world.settings.regionalGeography){
+      // Canopy changes over time without raising or lowering the ground.
+      // Only refresh the painted tile and any shore affected by this edit.
+      const heights=topographyForWorld(previous).heights.slice();
+      const radius=(tile.biome==='water')!==(brush.biome==='water')?2:0;
+      for(let ny=Math.max(0,y-radius);ny<=Math.min(world.height-1,y+radius);ny++){
+        for(let nx=Math.max(0,x-radius);nx<=Math.min(world.width-1,x+radius);nx++){
+          const neighbor=ny*world.width+nx;
+          heights[neighbor]=topography.heights[neighbor];
+        }
+      }
+      topography.heights=heights;
+    }
+    world.topography=topography;
     editDeposit(world,index);
     reconcileTradeTerrain(world,index);
     reconcileTransportTerrain(world,index);
@@ -799,6 +836,9 @@ export function isWorld(value:unknown):value is World{
   const w=value as Partial<World>,settings=w.settings;
   if(w.version!==2||!settings||!Object.hasOwn(WORLD_SIZES,settings.size)||
     !Number.isSafeInteger(settings.seed)||settings.seed<1||settings.seed>2147483647||
+    settings.layout!==undefined&&!WORLD_LAYOUTS.includes(settings.layout)||
+    settings.livingBiomes!==undefined&&typeof settings.livingBiomes!=='boolean'||
+    settings.regionalGeography!==undefined&&typeof settings.regionalGeography!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||
     settings.wandering<.5||settings.wandering>1.8||
@@ -839,6 +879,7 @@ export function isWorld(value:unknown):value is World{
   if(!validEarthworks(w as World))return false;
   if(!w.tiles.every(t=>t&&BIOMES.includes(t.biome)&&Number.isFinite(t.food)&&
     t.food>=0&&t.food<=20))return false;
+  if(!validWoodland(w as World))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();
   const traversableBridges=bridgeTiles(w as World);
   const captains=new Map((w.shipments??[]).filter(t=>t.mode==='sea')
@@ -997,7 +1038,11 @@ export function isWorld(value:unknown):value is World{
     const d=w.descent;
     if(!d||!Number.isSafeInteger(d.agentId)||!records.has(d.agentId)||
       !['mortal','divine'].includes(d.mode)||
-      !Number.isInteger(d.createdYear)||d.createdYear<0||d.createdYear>year)
+      !Number.isInteger(d.createdYear)||d.createdYear<0||d.createdYear>year||
+      d.place!==undefined&&!validAdventurePlace(d.place,width,height)||
+      d.journal!==undefined&&!validMortalJournal(d.journal,year*365+(w.dayOfYear??0))||
+      d.surveys!==undefined&&!validSiteSurveys(d.surveys,year)||
+      d.interior!==undefined&&!validMortalRoom(d.interior))
       return false;
   }
   // Optional because v0.2 JSON saves had no diagnostics. New saves are

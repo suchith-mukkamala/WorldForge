@@ -27,6 +27,7 @@ export type AncientSite={id:number;kind:AncientKind;x:number;y:number;
   topic:Topic;danger:number;visitors:number[];visits?:number;
   origin?:'ancient'|'collapsed';name?:string;culture?:Species;
   collapsed?:number;lostTopics?:Topic[];recovered?:number};
+export const ancientSiteName=(site:AncientSite)=>site.name??'Ancient '+site.kind+' #'+site.id;
 export type Artifact={siteId:number;name:string;kind:'relic'|'tome'|'tool'|'charm';
   topic:Topic;year:number};
 export type ExpeditionRecord={year:number;personId:number;siteId:number;

@@ -1,9 +1,8 @@
-/** v1.9.3 — deterministic, presentation-only drainage foundations.
+/** Deterministic drainage for atlas rivers, farm irrigation and woodland.
  *
  * A priority flood connects every land cell to an existing water tile or a
  * world edge, even across a closed depression. Reverse traversal then counts
- * contributing cells and identifies visible streams. No terrain biomes or
- * travel rules are changed; this is derived from the persisted heightfield.
+ * contributing cells and identifies streams from the persisted heightfield.
  */
 import type {Tile,World} from './engine';
 import {topographyForWorld} from './topography';
@@ -15,7 +14,7 @@ export type Hydrology={
   catchment:Uint32Array;
   /** Shared receiving water body or world-edge outlet ID. */
   basin:Int32Array;
-  /** 0=none, 1=creek, 2=stream, 3=river (display only). */
+  /** 0=none, 1=creek, 2=stream, 3=river. */
   channel:Uint8Array;
   /** Filled minus original height: potential ponding, not actual water. */
   pondDepth:Uint8Array;
@@ -66,7 +65,8 @@ const directions=[[-1,0],[0,-1],[1,0],[0,1],
   [-1,-1],[1,-1],[1,1],[-1,1]] as const;
 
 export function generateHydrology(width:number,height:number,
-  heights:readonly number[],tiles:readonly Pick<Tile,'biome'>[],seed:number):Hydrology{
+  heights:readonly number[],tiles:readonly Pick<Tile,'biome'>[],seed:number,
+  followSlopes=false):Hydrology{
   const size=width*height;
   if(width<1||height<1||heights.length!==size||tiles.length!==size)
     throw new Error('Hydrology dimensions do not match the terrain');
@@ -123,22 +123,56 @@ export function generateHydrology(width:number,height:number,
       heap.push({index:next,level:spill,tie:tieFor(next,seed)});
     }
   }
+  if(followSlopes){
+    const rank=new Int32Array(size);
+    ordered.forEach((i,position)=>{rank[i]=position;});
+    for(const i of ordered){
+      if(flowTo[i]<0)continue;
+      const x=i%width,y=Math.floor(i/width);
+      let receiver=flowTo[i];
+      let grade=(filled[i]-filled[receiver])/
+        (receiver%width!==x&&Math.floor(receiver/width)!==y?Math.SQRT2:1);
+      // Prefer the steepest descending neighbor. Keep the priority flood's
+      // spill path on flats, and only look back to avoid drainage cycles.
+      for(const [dx,dy] of directions){
+        const nx=x+dx,ny=y+dy;
+        if(nx<0||ny<0||nx>=width||ny>=height)continue;
+        const next=index(nx,ny);
+        if(rank[next]>=rank[i])continue;
+        const descent=(filled[i]-filled[next])/(dx&&dy?Math.SQRT2:1);
+        if(descent>grade){grade=descent;receiver=next;}
+      }
+      flowTo[i]=receiver;
+      basin[i]=basin[receiver];
+    }
+  }
   // The receiver always precedes the donor in `ordered`.
   for(let j=ordered.length-1;j>=0;j--){
     const i=ordered[j],next=flowTo[i];
     if(next!==-1)catchment[next]+=catchment[i];
   }
-  const threshold=Math.max(24,Math.floor(Math.sqrt(size)*.38));
+  const threshold=followSlopes?Math.max(15,Math.floor(Math.sqrt(size)*.30)):
+    Math.max(24,Math.floor(Math.sqrt(size)*.38));
   for(let i=0;i<size;i++){
     if(tiles[i].biome==='water'||flowTo[i]<0||catchment[i]<threshold)
       continue;
     const sizeRatio=catchment[i]/threshold;
     channel[i]=sizeRatio>=8?3:sizeRatio>=3?2:1;
   }
+  if(followSlopes){
+    const headwaterThreshold=Math.max(5,Math.floor(threshold*.28));
+    for(let j=ordered.length-1;j>=0;j--){
+      const i=ordered[j],receiver=flowTo[i];
+      if(receiver<0)continue;
+      if(!channel[i]&&heights[i]>=108&&catchment[i]>=headwaterThreshold)channel[i]=1;
+      if(channel[i]&&flowTo[receiver]>=0&&!channel[receiver])channel[receiver]=1;
+    }
+  }
   return {flowTo,catchment,basin,channel,pondDepth};
 }
 
 const cache=new WeakMap<object,Hydrology>();
+const regionalCache=new WeakMap<object,Hydrology>();
 const legacyCache=new Map<string,{biomes:string[];drainage:Hydrology}>();
 /** Cached per immutable heightfield. Annual/day ticks reuse the same result;
  * terrain brush edits replace the heightfield and invalidate this naturally.
@@ -149,7 +183,7 @@ export function hydrologyForWorld(world:Geography):Hydrology{
   // saving a heightfield. Reuse drainage if the exact biome sequence matches,
   // and bound the small compatibility cache for users switching worlds.
   const legacyKey=!world.topography?
-    `${world.settings.seed}:${world.width}:${world.height}`:null;
+    `${world.settings.seed}:${world.width}:${world.height}:${!!world.settings.regionalGeography}`:null;
   if(legacyKey){
     const previous=legacyCache.get(legacyKey);
     if(previous&&previous.biomes.length===world.tiles.length&&
@@ -157,15 +191,40 @@ export function hydrologyForWorld(world:Geography):Hydrology{
       return previous.drainage;
   }
   const topography=topographyForWorld(world);
-  const saved=cache.get(topography);
+  const drainageCache=world.settings.regionalGeography?regionalCache:cache;
+  const saved=drainageCache.get(topography);
   if(saved)return saved;
   const generated=generateHydrology(world.width,world.height,topography.heights,
-    world.tiles,world.settings.seed);
-  cache.set(topography,generated);
+    world.tiles,world.settings.seed,world.settings.regionalGeography);
+  drainageCache.set(topography,generated);
   if(legacyKey){
     legacyCache.delete(legacyKey);
     legacyCache.set(legacyKey,{biomes:world.tiles.map(t=>t.biome),drainage:generated});
     if(legacyCache.size>4)legacyCache.delete(legacyCache.keys().next().value!);
   }
   return generated;
+}
+
+const bankCache=new WeakMap<Hydrology,Float32Array>();
+/** Irrigation reaches the banks, and farther out beside the larger streams. */
+export function riverBanks(drainage:Hydrology,width:number,height:number):Float32Array{
+  const cached=bankCache.get(drainage);
+  if(cached)return cached;
+  const wet=new Float32Array(width*height);
+  for(let i=0;i<wet.length;i++){
+    const tier=drainage.channel[i];
+    if(!tier)continue;
+    const radius=tier>=2?2:1;
+    const x=i%width,y=Math.floor(i/width);
+    for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||ny<0||nx>=width||ny>=height)continue;
+      const distance=Math.hypot(dx,dy);
+      const influence=(tier===3?1:tier===2?.83:.56)*(1-distance/(radius+1));
+      const neighbor=ny*width+nx;
+      wet[neighbor]=Math.max(wet[neighbor],influence);
+    }
+  }
+  bankCache.set(drainage,wet);
+  return wet;
 }

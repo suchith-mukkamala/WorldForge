@@ -1,21 +1,23 @@
-/** v2.5.2 — Presentation-only mortal perspective. No simulation, movement,
- * terrain or save data depends on which camera the player chooses. */
-export type MortalCameraMode='adventure'|'atlas';
+import {inFrontOf,samePoint,type Facing,type Point} from './motion';
 
-export const ADVENTURE_PITCH=20;
-export const ADVENTURE_MIN_ZOOM=5.5;
-export const ATLAS_MAX_ZOOM=3.5;
+type Size={width:number;height:number};
 
-/** Adventure frames the sprite below center so more of the route ahead stays
- * visible. The atlas remains the established top-down follow view. */
-export function cameraVerticalAnchor(mode:MortalCameraMode):number{
-  return mode==='adventure'?.67:.5;
+export function adventureFrameSize(width:number,height:number):Size{
+  const pixels=width<540?216:312;
+  return {width:pixels,height:Math.max(136,Math.round(height/Math.max(1,width)*pixels))};
 }
 
-/** Keep a comfortable close-up without changing character world footprints. */
-export function enterAdventureZoom(current:number):number{
-  return Math.max(ADVENTURE_MIN_ZOOM,Math.min(8,current));
+/** Keep the feet below center, leaving room to see ahead. Clamp at the
+ * edge of the art so a tiny room still fills as much of the view as it can. */
+export function adventureCamera(focus:Point,frame:Size,bounds:Size):Point{
+  const axis=(target:number,view:number,size:number,anchor:number)=>
+    Math.round(view>=size?(size-view)/2:Math.max(0,Math.min(size-view,target-view*anchor)));
+  return {x:axis(focus.x,frame.width,bounds.width,.5),
+    y:axis(focus.y,frame.height,bounds.height,.57)};
 }
-export function enterAtlasZoom(current:number):number{
-  return Math.min(ATLAS_MAX_ZOOM,Math.max(1,current));
+
+export function facingActions<T extends {point?:Point}>(actions:T[],position:Point,facing:Facing):T[]{
+  const front=inFrontOf(position,facing);
+  const index=actions.findIndex(action=>action.point&&samePoint(action.point,front));
+  return index<=0?actions:[actions[index],...actions.slice(0,index),...actions.slice(index+1)];
 }

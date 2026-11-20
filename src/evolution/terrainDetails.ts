@@ -4,6 +4,17 @@
  */
 import type {Biome} from './engine';
 
+export function woodlandPalette(plains:string,forest:string):string[]{
+  const light=parseInt(plains.slice(1),16),dark=parseInt(forest.slice(1),16);
+  return Array.from({length:64},(_,cover)=>{
+    const rgb=[16,8,0].map(shift=>{
+      const a=light>>shift&255,b=dark>>shift&255;
+      return Math.round(a+(b-a)*cover/63);
+    });
+    return 'rgb('+rgb.join(',')+')';
+  });
+}
+
 export type TerrainMotif='oak'|'pine'|'fern'|'grass'|'flowers'|'pebbles'|
   'reeds'|'boulder'|'scree'|'snowstone'|'crystal'|'stalagmite'|
   'scrub'|'basalt'|'embers'|'ripples'|'shorefoam'|'none';
@@ -34,13 +45,14 @@ export function buildTerrainDetailAtlas(canvas:HTMLCanvasElement):boolean{
   return true;
 }
 
-/** Draw the exact 6x6 sprite in one blit rather than 2-4 tiny paint calls. */
+/** Stamp the full sprite locally or shrink it to a quarter at atlas zoom. */
 export function paintTerrainDetailFromAtlas(ctx:CanvasRenderingContext2D,
-  atlas:HTMLCanvasElement,detail:TerrainDetail,x:number,y:number):void{
+  atlas:HTMLCanvasElement,detail:TerrainDetail,x:number,y:number,small=false):void{
   if(detail.motif==='none')return;
   const source=(ATLAS_INDEX[detail.motif]*4+detail.variant)*ATLAS_CELL;
-  ctx.drawImage(atlas,source,0,ATLAS_CELL,ATLAS_CELL,
-    x*ATLAS_CELL,y*ATLAS_CELL,ATLAS_CELL,ATLAS_CELL);
+  const size=small?ATLAS_CELL/2:ATLAS_CELL;
+  const dx=small?(detail.variant&1)*size:0,dy=small?(detail.variant>>1)*size:0;
+  ctx.drawImage(atlas,source,0,ATLAS_CELL,ATLAS_CELL,x*ATLAS_CELL+dx,y*ATLAS_CELL+dy,size,size);
 }
 
 function hash(seed:number,x:number,y:number):number{
@@ -53,10 +65,15 @@ function hash(seed:number,x:number,y:number):number{
 
 /** `shore` means the tile touches a water/land transition. */
 export function terrainDetailAt(biome:Biome,x:number,y:number,
-  seed:number,elevation:number,shore=false):TerrainDetail{
+  seed:number,elevation:number,shore=false,cover?:number):TerrainDetail{
   const n=hash(seed,x,y),variant=(n>>>6&3) as TerrainDetail['variant'];
   let motif:TerrainMotif='none';
-  if(biome==='forest'){
+  if(cover!==undefined&&(biome==='forest'||biome==='plains')){
+    motif=(n&1023)/1024<cover*.9?
+      elevation>=140||n%3===0?'pine':'oak':
+      shore&&n%4<2?'reeds':cover>.32&&n%3===0?'fern':
+        n%5===0?'flowers':n%3===0?'grass':'none';
+  }else if(biome==='forest'){
     motif=n%9===0?'fern':elevation>=140||n%3===0?'pine':'oak';
   }else if(biome==='plains'){
     motif=shore&&n%4<2?'reeds':n%8===0?'pebbles':

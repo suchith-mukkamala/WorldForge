@@ -3,20 +3,20 @@
 import type {Biome,Species} from './engine';
 
 const fract=(n:number)=>n-Math.floor(n);
-const hash=(x:number,y:number,seed:number)=>{
+export const terrainHash=(x:number,y:number,seed:number)=>{
   let v=(seed^Math.imul(x,374761393)^Math.imul(y,668265263))>>>0;
   v=Math.imul(v^(v>>>13),1274126177);
   return ((v^(v>>>16))>>>0)/4294967295;
 };
 const smooth=(v:number)=>v*v*(3-2*v);
-function noise(x:number,y:number,scale:number,seed:number):number{
+export function terrainNoise(x:number,y:number,scale:number,seed:number):number{
   const fx=x/scale,fy=y/scale,ix=Math.floor(fx),iy=Math.floor(fy);
   const u=smooth(fx-ix),v=smooth(fy-iy);
-  const a=hash(ix,iy,seed),b=hash(ix+1,iy,seed),
-    c=hash(ix,iy+1,seed),d=hash(ix+1,iy+1,seed);
+  const a=terrainHash(ix,iy,seed),b=terrainHash(ix+1,iy,seed),
+    c=terrainHash(ix,iy+1,seed),d=terrainHash(ix+1,iy+1,seed);
   return ((a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v)*2-1;
 }
-const climatePhase=(seed:number)=>hash(seed,11,2077)*Math.PI*2;
+const climatePhase=(seed:number)=>terrainHash(seed,11,2077)*Math.PI*2;
 /** Rotate regional cultures around the continent by seed, not by species ID. */
 export function biomeHome(seed:number,species:Species):[number,number]{
   if(species==='human')return [.5,.5];
@@ -26,21 +26,27 @@ export function biomeHome(seed:number,species:Species):[number,number]{
 }
 const distance=(u:number,v:number,p:[number,number])=>
   Math.hypot(u-p[0],v-p[1]);
+export function terrainHumidity(x:number,y:number,scale:number,seed:number):number{
+  return terrainNoise(x+31,y-17,scale*.26,seed+241)*.68+
+    terrainNoise(x,y,scale*.09,seed+307)*.32;
+}
+export function terrainTemperature(x:number,y:number,scale:number,v:number,seed:number):number{
+  return .53+.24*Math.sin((v+fract(seed*.00071))*Math.PI*2)+
+    terrainNoise(x-7,y+41,scale*.29,seed+619)*.21;
+}
 export function seededBiome(x:number,y:number,w:number,h:number,seed:number):Biome{
   const u=(x+.5)/w,v=(y+.5)/h;
   const elf=distance(u,v,biomeHome(seed,'elf'));
   const dwarf=distance(u,v,biomeHome(seed,'dwarf'));
   const demon=distance(u,v,biomeHome(seed,'demon'));
   const scale=Math.max(6,Math.min(w,h));
-  const broad=noise(x,y,scale*.31,seed+17);
-  const patches=noise(x,y,scale*.12,seed+83);
-  const detail=noise(x,y,scale*.042,seed+139);
-  const humidity=noise(x+31,y-17,scale*.26,seed+241)*.68+
-    noise(x,y,scale*.09,seed+307)*.32;
-  const ridge=Math.abs(noise(x+11,y-19,scale*.34,seed+401))*.55+
+  const broad=terrainNoise(x,y,scale*.31,seed+17);
+  const patches=terrainNoise(x,y,scale*.12,seed+83);
+  const detail=terrainNoise(x,y,scale*.042,seed+139);
+  const humidity=terrainHumidity(x,y,scale,seed);
+  const ridge=Math.abs(terrainNoise(x+11,y-19,scale*.34,seed+401))*.55+
     patches*.38+detail*.15;
-  const temperature=.53+.24*Math.sin((v+fract(seed*.00071)) * Math.PI*2)+
-    noise(x-7,y+41,scale*.29,seed+619)*.21;
+  const temperature=terrainTemperature(x,y,scale,v,seed);
   // Small archipelagos have different river directions and meanders.
   const angle=climatePhase(seed),river=
     .5+.18*Math.sin(u*5+angle)+.06*Math.sin(u*14-angle)+

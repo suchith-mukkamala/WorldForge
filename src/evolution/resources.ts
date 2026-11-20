@@ -3,6 +3,7 @@
  * regeneration takes place once per simulated year, regardless of visibility.
  */
 import type {Biome,World} from './engine';
+import {woodlandCover,woodlandHabitat} from './woodland';
 
 export const RESOURCE_KINDS=['tree','stone','clay','coal','copper','iron','gold'] as const;
 export type ResourceKind=typeof RESOURCE_KINDS[number];
@@ -41,23 +42,42 @@ function noise(seed:number,index:number,salt:number):number{
   n=Math.imul(n^(n>>>13),3266489917)>>>0;
   return ((n^(n>>>16))>>>0)/4294967296;
 }
+const depositCapacity=(kind:ResourceKind,seed:number,index:number)=>
+  CAPACITY[kind]*(.75+noise(seed,index,0xc072)*.5);
+const timberCapacity=(seed:number,index:number,cover:number)=>
+  round(depositCapacity('tree',seed,index)*(.02+.98*cover));
+
 export function depositAt(seed:number,index:number,biome:Biome):ResourceDeposit|undefined{
   const choice=noise(seed,index,0x751a),weights=WEIGHTS[biome];
   let threshold=0;
   for(const kind of RESOURCE_KINDS){
     threshold+=weights[kind]??0;
     if(choice>=threshold)continue;
-    const factor=.75+noise(seed,index,0xc072)*.5;
-    const capacity=round(CAPACITY[kind]*factor);
+    const capacity=round(depositCapacity(kind,seed,index));
     return {index,kind,capacity,
       amount:round(capacity*(.65+noise(seed,index,0xb793)*.35))};
   }
   return undefined;
 }
-export function createDeposits(w:Pick<World,'tiles'|'settings'>):ResourceDeposit[]{
+function terrainDeposit(w:Pick<World,'tiles'|'settings'|'woodland'>,
+  index:number):ResourceDeposit|undefined{
+  const biome=w.tiles[index].biome,seed=w.settings.seed;
+  const deposit=depositAt(seed,index,biome);
+  if(deposit?.kind==='tree'&&woodlandHabitat(biome)){
+    const cover=woodlandCover(w.woodland,index);
+    if(cover!==undefined){
+      const capacity=timberCapacity(seed,index,cover);
+      deposit.amount=round(deposit.amount*capacity/deposit.capacity);
+      deposit.capacity=capacity;
+    }
+  }
+  return deposit;
+}
+
+export function createDeposits(w:Pick<World,'tiles'|'settings'|'woodland'>):ResourceDeposit[]{
   const result:ResourceDeposit[]=[];
   for(let index=0;index<w.tiles.length;index++){
-    const deposit=depositAt(w.settings.seed,index,w.tiles[index].biome);
+    const deposit=terrainDeposit(w,index);
     if(deposit)result.push(deposit);
   }
   return result;
@@ -65,11 +85,29 @@ export function createDeposits(w:Pick<World,'tiles'|'settings'>):ResourceDeposit
 export function prepareDeposits(w:World):void{
   w.deposits??=createDeposits(w);
 }
-export function regrowDeposits(w:World):void{
+export function regrowDeposits(w:World,newForests:readonly number[]=[]):void{
   prepareDeposits(w);
+  if(newForests.length){
+    const occupied=new Set(w.deposits!.map(d=>d.index));
+    const seed=w.settings.seed;
+    for(const index of newForests){
+      if(occupied.has(index)||noise(seed,index,0x67ce)>=WEIGHTS.forest.tree!)continue;
+      const capacity=timberCapacity(seed,index,woodlandCover(w.woodland,index)!);
+      w.deposits!.push({index,kind:'tree',capacity,amount:0});
+    }
+  }
   for(const deposit of w.deposits!){
+    let growth=REGENERATION[deposit.kind]*w.settings.resourceLevel;
+    if(w.woodland!==undefined&&deposit.kind==='tree'&&
+      woodlandHabitat(w.tiles[deposit.index].biome)){
+      const cover=woodlandCover(w.woodland,deposit.index)!;
+      const target=timberCapacity(w.settings.seed,deposit.index,cover);
+      deposit.capacity=round(deposit.capacity+
+        Math.max(-.65,Math.min(.65,target-deposit.capacity)));
+      growth*=cover;
+    }
     deposit.amount=round(Math.min(deposit.capacity,
-      deposit.amount+REGENERATION[deposit.kind]*w.settings.resourceLevel));
+      deposit.amount+growth));
   }
 }
 export function harvestDeposit(d:ResourceDeposit,request:number):number{
@@ -80,7 +118,7 @@ export function harvestDeposit(d:ResourceDeposit,request:number):number{
 export function editDeposit(w:World,index:number):void{
   if(!w.deposits)return; // Older saves start depositing on their first tick.
   w.deposits=w.deposits.filter(d=>d.index!==index);
-  const d=depositAt(w.settings.seed,index,w.tiles[index].biome);
+  const d=terrainDeposit(w,index);
   if(d)w.deposits.push(d);
 }
 export function validDeposits(w:World):boolean{

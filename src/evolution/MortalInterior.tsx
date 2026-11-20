@@ -1,15 +1,18 @@
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,type ReactNode} from 'react';
 import type {World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS} from './construction';
 import {paintPerson} from './pixelArt';
 import {personName} from './identity';
 import {lifeStage} from './development';
 import {livingHousehold} from './livingHouseholds';
-import {atInteriorDoor,INTERIOR_DOOR,INTERIOR_TEMPLATES,
+import {INTERIOR_DOOR,INTERIOR_TEMPLATES,
   ROOM_HEIGHT,ROOM_WIDTH,type InteriorPosition} from './mortalInteriors';
 import type {MortalAction,MortalBuilding} from './mortalGameplay';
+import {ADVENTURE_TILE as CELL} from './adventureArt';
+import {adventureCamera,adventureFrameSize} from './adventureCamera';
+import {motionFrame,samePoint,type Facing,type Motion,type Point} from './motion';
 
-const CELL=28,OX=78,OY=74,CW=520,CH=374;
+const OX=24,OY=60,CW=ROOM_WIDTH*CELL+2*OX,CH=OY+ROOM_HEIGHT*CELL+24;
 const rect=(ctx:CanvasRenderingContext2D,c:string,x:number,y:number,
   w:number,h:number)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
 
@@ -95,25 +98,39 @@ export function drawMortalRoom(ctx:CanvasRenderingContext2D,
   }
   for(const x of [2,9]){
     rect(ctx,'#384a51',OX+x*CELL-2,OY-30,39,23);
-    rect(ctx,'#b3d5c5',OX+x*CELL+2,OY-27,30,15);
-    rect(ctx,'#6b9a9b',OX+x*CELL+17,OY-27,2,15);
+    rect(ctx,'#b8d8c8',OX+x*CELL+2,OY-27,30,15);
+    rect(ctx,'#93b9a6',OX+x*CELL+2,OY-18,30,6);
+    rect(ctx,'#615850',OX+x*CELL+16,OY-27,2,15);
+    rect(ctx,'#615850',OX+x*CELL+2,OY-21,30,2);
     rect(ctx,'#9b8c6b',OX+x*CELL,OY-9,36,3);
+    rect(ctx,style.roof,OX+x*CELL-4,OY-34,7,25);
+    rect(ctx,style.roof,OX+x*CELL+31,OY-34,7,25);
+    rect(ctx,style.trim,OX+x*CELL-4,OY-18,7,2);
+    rect(ctx,style.trim,OX+x*CELL+31,OY-18,7,2);
   }
   rect(ctx,style.wall,OX-13,OY,13,ROOM_HEIGHT*CELL);
   rect(ctx,style.wall,OX+ROOM_WIDTH*CELL,OY,13,ROOM_HEIGHT*CELL);
   rect(ctx,template.floor,OX,OY,ROOM_WIDTH*CELL,ROOM_HEIGHT*CELL);
   for(let y=0;y<ROOM_HEIGHT;y++)for(let x=0;x<ROOM_WIDTH;x++){
     const px=OX+x*CELL,py=OY+y*CELL;
-    rect(ctx,(x+y)%2?'#ffffff09':'#0000000b',px,py,CELL,CELL);
-    rect(ctx,'#2b303420',px,py+CELL-1,CELL,1);
-    rect(ctx,'#e9d9b022',px+2,py+2,9,1);
+    const light=(x*13+y*19)%5;
+    rect(ctx,light<2?'#00000010':light===4?'#fff6bc14':'#ffffff07',px,py,CELL,CELL);
+    for(let row=0;row<3;row++){
+      const seam=px+5+(x*3+y*5+row*9)%17;
+      rect(ctx,'#2b303429',px,py+8+row*9,CELL,1);
+      rect(ctx,'#2b30341b',seam,py+row*9,1,8);
+      rect(ctx,'#e9d9b021',px+2,py+1+row*9,9,1);
+    }
+  }
+  for(const x of [2,9])for(let ray=0;ray<5;ray++){
+    rect(ctx,'#f8d9a217',OX+x*CELL+ray*3,OY+ray*6,35,6);
   }
   // The exit is a consistent visible feature of every template.
   rect(ctx,'#443e42',OX+INTERIOR_DOOR.x*CELL-7,
     OY+ROOM_HEIGHT*CELL-4,CELL+14,11);
   rect(ctx,'#d5b578',OX+INTERIOR_DOOR.x*CELL-4,
     OY+ROOM_HEIGHT*CELL-1,CELL+8,7);
-  for(const item of template.props){
+  for(const item of template.props.filter(p=>p.kind==='rug'||p.kind==='net')){
     furniture(ctx,item.kind,OX+item.x*CELL+CELL/2,
       OY+item.y*CELL+CELL/2);
   }
@@ -121,17 +138,17 @@ export function drawMortalRoom(ctx:CanvasRenderingContext2D,
     ROOM_WIDTH*CELL+36,6);
 }
 
-type Motion={from:InteriorPosition;to:InteriorPosition;start:number};
-
-export function MortalInterior({world,site,position,running,message,
-  targetId=null,onSelectResident,onTalk,onCloseConversation,
-  onExit,onToggleTime,onAscend}:{world:World;site:MortalBuilding;
-  position:InteriorPosition;running:boolean;message:string;
+export function MortalInterior({world,site,position,message,facing='north',marked=null,compact=false,
+  targetId=null,onSelectResident,onSelectTile,onTalk,onCloseConversation,
+  onExit,children}:{world:World;site:MortalBuilding;
+  position:InteriorPosition;message:string;
+  facing?:Facing;marked?:Point|null;compact?:boolean;
   targetId?:number|null;onSelectResident?:(id:number)=>void;
+  onSelectTile?:(point:Point)=>void;
   onTalk?:(action:MortalAction)=>void;onCloseConversation?:()=>void;
-  onExit:()=>void;onToggleTime:()=>void;onAscend:()=>void}){
+  onExit:()=>void;children?:ReactNode}){
   const canvas=useRef<HTMLCanvasElement>(null);
-  const motion=useRef<Motion>({from:position,to:position,start:0});
+  const camera=useRef<Point>({x:0,y:0});
   const person=world.agents.find(a=>a.id===world.descent?.agentId);
   const household=site.building.householdId===undefined?undefined:
     world.households?.find(h=>h.id===site.building.householdId);
@@ -139,101 +156,125 @@ export function MortalInterior({world,site,position,running,message,
   const near=(p:InteriorPosition)=>Math.max(Math.abs(p.x-position.x),
     Math.abs(p.y-position.y))<=1;
   const active=life.present.find(p=>p.agent.id===targetId&&near(p.position));
+  const view={person,life,site,position,facing,active,marked};
+  const latest=useRef(view);
+  latest.current=view;
   const nameOf=(id:number)=>personName(world,
     world.lineage.find(p=>p.id===id)??{
       id,species:world.agents.find(a=>a.id===id)?.species??'human'});
   useEffect(()=>{
-    const element=canvas.current,ctx=element?.getContext('2d');
-    if(!ctx||!person)return;
-    const previous=motion.current,now=performance.now();
-    const fraction=Math.max(0,Math.min(1,(now-previous.start)/150));
-    const from={x:previous.from.x+(previous.to.x-previous.from.x)*fraction,
-      y:previous.from.y+(previous.to.y-previous.from.y)*fraction};
-    const next:Motion={from,to:position,start:now};
-    motion.current=next;
+    const element=canvas.current,ctx=element?.getContext('2d',{alpha:false});
+    if(!element||!ctx)return;
     const staticArt=document.createElement('canvas');
     staticArt.width=CW;staticArt.height=CH;
     const staticCtx=staticArt.getContext('2d');
-    if(staticCtx)drawMortalRoom(staticCtx,site.building.type,site.building.culture);
-    const occupants=livingHousehold(world,site).present;
+    if(!staticCtx)return;
+    const initial=latest.current;
+    const motion:Motion={from:initial.position,to:initial.position,start:0,duration:1,
+      facing:initial.facing};
+    let frameSize={width:312,height:184};
+    const resize=()=>{
+      const {width,height}=element.getBoundingClientRect();
+      if(width>0&&height>0)frameSize=adventureFrameSize(width,height);
+    };
+    const observer=new ResizeObserver(resize);
+    observer.observe(element);resize();
     let frame=0,lastPaint=-Infinity;
+    let lastView:typeof view|undefined;
+    let lastArt='';
     const paint=(time:number)=>{
-      // Keep idle family scenes alive without repainting at 60 FPS.
       frame=requestAnimationFrame(paint);
-      if(time-lastPaint<95)return;
+      const current=latest.current;
+      if(!current.person)return;
+      if(time-lastPaint<(lastView!==current||motionFrame(motion,time).walking?25:125))return;
       lastPaint=time;
-      const progress=Math.max(0,Math.min(1,(time-next.start)/150));
-      const x=from.x+(position.x-from.x)*progress;
-      const y=from.y+(position.y-from.y)*progress;
-      ctx.clearRect(0,0,CW,CH);
-      ctx.drawImage(staticArt,0,0);
-      // Render genuine nearby residents and the player in floor-depth order.
-      // All sprites use the same appearance code and fixed scale as outdoors.
-      const sprites=[...occupants.map(resident=>({
-        person:resident.agent,x:resident.position.x,y:resident.position.y,
-        facing:'south' as const,walking:false,
-        selected:resident.agent.id===targetId})),{
-        person,x,y,facing:(y>from.y?'south':y<from.y?'north':
-          x>from.x?'east':x<from.x?'west':'south') as
-          'north'|'south'|'east'|'west',walking:progress<1,selected:false}];
-      sprites.sort((a,b)=>a.y-b.y||a.x-b.x);
-      for(const sprite of sprites){
-        const bob=!sprite.walking&&sprite.person.id!==person.id&&
-          Math.floor((time+sprite.person.id*131)/680)%2===0?1:0;
-        const px=OX+sprite.x*CELL+CELL/2-8,
-          py=OY+sprite.y*CELL+CELL/2-17+bob;
-        paintPerson(ctx,sprite.person,px,py,sprite.facing,
-          sprite.walking?1:0,sprite.walking?'walk':'idle');
-        if(sprite.selected){
-          ctx.strokeStyle='#f2d28e';ctx.lineWidth=1;
-          ctx.strokeRect(px-3,py-5,22,28);
-        }
+      const b=current.site.building,art=b.type+':'+b.culture;
+      if(art!==lastArt){drawMortalRoom(staticCtx,b.type,b.culture);lastArt=art;}
+      if(!samePoint(motion.to,current.position)){
+        motion.from=motionFrame(motion,time);motion.to=current.position;
+        motion.start=time;motion.duration=136;
       }
+      motion.facing=current.facing;
+      const player=motionFrame(motion,time);
+      if(element.width!==frameSize.width||element.height!==frameSize.height){
+        element.width=frameSize.width;element.height=frameSize.height;
+        ctx.imageSmoothingEnabled=false;
+      }
+      const offset=adventureCamera({x:OX+(player.x+.5)*CELL,y:OY+(player.y+.84)*CELL},
+        frameSize,{width:CW,height:CH});
+      camera.current=offset;
+      rect(ctx,'#111e27',0,0,element.width,element.height);
+      ctx.save();
+      ctx.translate(-offset.x,-offset.y);
+      ctx.drawImage(staticArt,0,0);
+      const mark=current.active?.position??current.marked;
+      if(mark){
+        ctx.strokeStyle='#ffe4a1';ctx.lineWidth=1;
+        ctx.strokeRect(OX+mark.x*CELL+2.5,OY+mark.y*CELL+2.5,CELL-5,CELL-5);
+      }
+      const drawables=INTERIOR_TEMPLATES[b.type].props
+        .filter(prop=>prop.kind!=='rug'&&prop.kind!=='net')
+        .map(prop=>({y:prop.y,paint:()=>furniture(ctx,prop.kind,
+          OX+prop.x*CELL+CELL/2,OY+prop.y*CELL+CELL/2)}));
+      for(const {agent,position:at} of current.life.present){
+        const bob=Math.floor((time+agent.id*131)/680)%2===0?1:0;
+        drawables.push({y:at.y,paint:()=>paintPerson(ctx,agent,
+          OX+at.x*CELL+4,OY+at.y*CELL-2+bob,'south',0,'idle')});
+      }
+      const person=current.person;
+      drawables.push({y:player.y,paint:()=>{
+        const x=Math.round(OX+player.x*CELL),y=Math.round(OY+player.y*CELL);
+        rect(ctx,'#f1cc7fbd',x+5,y+18,14,3);
+        rect(ctx,'#284035',x+7,y+19,10,1);
+        paintPerson(ctx,person,x+4,y-2,player.facing,player.stride,player.walking?'walk':'idle');
+      }});
+      for(const drawable of drawables.sort((a,b)=>a.y-b.y))drawable.paint();
+      ctx.restore();
+      lastView=current;
     };
     frame=requestAnimationFrame(paint);
-    return ()=>cancelAnimationFrame(frame);
-  },[world,site.building.type,site.building.culture,person,targetId,
-    position.x,position.y]);
+    return ()=>{cancelAnimationFrame(frame);observer.disconnect();};
+  },[]);
   return <section className="evo-interior" aria-label="Enterable building interior">
     <header className="evo-interior-header">
-      <div><small>INSIDE {site.settlementName.toUpperCase()}</small>
-        <strong>⌂ {BUILDING_LABELS[site.building.type]}</strong>
+      <div>{!compact&&<strong>{BUILDING_LABELS[site.building.type]}</strong>}
         <span>{ARCHITECTURE[site.building.culture].name} ·
           {' '}{Math.round(site.building.condition)}% condition</span></div>
       <div className="evo-interior-actions">
-        <button onClick={onToggleTime}>{running?'Ⅱ PAUSE':'▶ RESUME'}</button>
-        <button onClick={onExit}>↙ EXIT BUILDING</button>
-        <button onClick={onAscend}>↑ ASCEND</button>
+        <button onClick={onExit}>← Exit building</button>
       </div>
     </header>
-    <canvas ref={canvas} width={CW} height={CH}
-      aria-label={`${INTERIOR_TEMPLATES[site.building.type].name} with walkable floor, furniture and an exit`}/>
-    <div className="evo-interior-footer">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move inside ·
-        {' '}<kbd>E</kbd> Talk nearby / Exit at door ·
-        {' '}<kbd>Esc</kbd> Close / Leave</span>
-      {message&&<span role="status" className="evo-interior-message">{message}</span>}
-    </div>
-    {active&&<aside className="evo-interior-dialogue"
+    <div className="adventure-picture room-picture">
+      <canvas ref={canvas} className="adventure-canvas" width={312} height={184}
+        aria-label={`${INTERIOR_TEMPLATES[site.building.type].name} with walkable floor, furniture and an exit`}
+        onClick={event=>{
+          const element=event.currentTarget,box=element.getBoundingClientRect();
+          onSelectTile?.({
+            x:Math.floor((camera.current.x-OX+(event.clientX-box.left)*element.width/box.width)/CELL),
+            y:Math.floor((camera.current.y-OY+(event.clientY-box.top)*element.height/box.height)/CELL),
+          });
+        }}/>
+      {active&&<aside className="adventure-dialogue room-dialogue"
       aria-label="Speak with a resident inside this home">
-      <div className="evo-interior-dialogue-head">
-        <strong>◈ {nameOf(active.agent.id)}</strong>
-        {onCloseConversation&&<button onClick={onCloseConversation}
-          aria-label="Close household conversation">✕</button>}
-      </div>
-      <p>{active.agent.dailyLife?.reason??'Spending time at home.'}</p>
-      <small>{active.action} · Energy {Math.round(active.agent.energy)}
-        {' '}· Morale {Math.round(active.agent.dailyLife?.morale??60)}</small>
-      {onTalk&&<div className="evo-interior-talk-actions">
-        <button onClick={()=>onTalk('greet')}>GREET</button>
-        {lifeStage(active.agent)!=='infant'&&<button
-          onClick={()=>onTalk('ask')}>ASK ABOUT LIFE</button>}
-        <button onClick={()=>onTalk('help')}>
-          {lifeStage(active.agent)==='infant'?'OFFER CARE':'OFFER HELP'}</button>
-      </div>}
-    </aside>}
-    {household&&<aside className="evo-interior-household">
-      <strong>HOUSEHOLD · {life.members.length} LIVING RESIDENT{life.members.length===1?'':'S'}</strong>
+        <div className="adventure-dialogue-copy">
+          <strong>{nameOf(active.agent.id)}</strong>
+          <p aria-live="polite">{message||active.agent.dailyLife?.reason||active.action}</p>
+          {onTalk&&<div className="adventure-dialogue-actions">
+            <button onClick={()=>onTalk('greet')}>GREET</button>
+            {lifeStage(active.agent)!=='infant'&&<button
+              onClick={()=>onTalk('ask')}>ASK ABOUT LIFE</button>}
+            <button onClick={()=>onTalk('help')}>
+              {lifeStage(active.agent)==='infant'?'OFFER CARE':'OFFER HELP'}</button>
+          </div>}
+        </div>
+        {onCloseConversation&&<button className="adventure-close" onClick={onCloseConversation}
+          aria-label="Close household conversation">×</button>}
+      </aside>}
+    </div>
+    {children}
+    {!active&&message&&<p role="status" className="evo-interior-message">{message}</p>}
+    {household&&<details className="evo-interior-household">
+      <summary>Household · {life.members.length} resident{life.members.length===1?'':'s'}</summary>
       <p>{life.present.length?`${life.present.length} at home`:
         'The other residents are away right now.'}
         {life.away.length?` · ${life.away.length} away`:''}
@@ -251,8 +292,6 @@ export function MortalInterior({world,site,position,running,message,
       </ul>}
       {life.away.length>0&&<small>Away: {life.away.slice(0,5).map(a=>
         nameOf(a.id)).join(' · ')}{life.away.length>5?' and others':''}</small>}
-      <small>Real family members rest, care for children, and share food when
-        they meet at home. Their routines continue while you are away.</small>
-    </aside>}
+    </details>}
   </section>;
 }

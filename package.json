@@ -1,7 +1,7 @@
 {
   "name": "worldforge",
   "private": true,
-  "version": "2.6.2",
+  "version": "2.14.1",
   "type": "module",
   "scripts": {
     "dev": "vite",

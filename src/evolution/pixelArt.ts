@@ -238,13 +238,19 @@ export function pixelRectsFor(person:PixelPerson,facing:Facing='south',
 }
 
 export function paintTerrain(ctx:CanvasRenderingContext2D,biome:string,
-  color:string,x:number,y:number,seed:number):void{
+  color:string,x:number,y:number,seed:number,cover?:number):void{
   const px=x*6,py=y*6,h=hash(seed+x*919+y*1733);
   const p=(c:string,dx:number,dy:number,w:number,h:number)=>{
     ctx.fillStyle=c;ctx.fillRect(px+dx,py+dy,w,h);
   };
   p(color,0,0,6,6);
-  if(biome==='forest'){
+  if(cover!==undefined){
+    // The canopy palette and sparse undergrowth describe mixed woodland.
+    if(h%3===0){
+      p(cover>.45?'#4b8168':'#9ba978',h%4,4,2,1);
+      p(cover>.45?'#38675b':'#6e916e',1+h%3,1,1,2);
+    }
+  }else if(biome==='forest'){
     p('#275643',1,2,4,4);p('#438d64',1,1,4,3);
     p('#76b177',2,0,2,2);p('#745b43',3,4,1,2);
     if(h%3===0)p('#b0ce8a',1,2,1,1);

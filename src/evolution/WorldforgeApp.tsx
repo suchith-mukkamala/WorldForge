@@ -7,10 +7,11 @@ import {DepthCanvas} from './DepthCanvas';
 import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
+import {TradePanel} from './TradePanel';
+import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
+import {settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
-import {ADVENTURE_PITCH,cameraVerticalAnchor,enterAdventureZoom,enterAtlasZoom,
-  type MortalCameraMode} from './adventureCamera';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
@@ -23,29 +24,25 @@ import {elevationAt} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
-import {cameraScrollTarget} from './motion';
+import type {Point} from './motion';
+import {ATLAS_PLACE_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {AtlasPlacePicker,AtlasSettlementMarkers} from './AtlasPlaces';
+import {AtlasTownCard} from './AtlasTownCard';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
 import {DivineDescentCreator} from './DivineDescentCreator';
-import {MortalHUD} from './MortalHUD';
-import {MortalInterior} from './MortalInterior';
-import {livingHousehold,nearestIndoorResident} from './livingHouseholds';
-import {atInteriorDoor,canEnterMortalBuilding,findInteriorBuilding,
-  INTERIOR_DOOR,moveInside,type InteriorPosition} from './mortalInteriors';
 import {createMortal,setDescentMode,type MortalCreation} from './divineDescent';
-import {interactWithMortal,mortalDirection,mortalMovementDelay,
-  nearbyMortalBuildings,nearbyMortals,walkMortalWithAssist,
-  type MortalAction,type MortalBuilding,type MortalKey} from './mortalGameplay';
 import {freshWorldSeed} from './worldSeeds';
+import {DEFAULT_WORLD_LAYOUT,geographyForSeed,isMultiIslandLayout,
+  WORLD_LAYOUT_NAMES} from './worldGeography';
 import {EvolutionHistory} from './EvolutionHistory';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
-import {TOPIC_INFO} from './knowledge';
+import {ancientSiteName,TOPIC_INFO} from './knowledge';
 import {DivinePowers} from './DivinePowers';
-import {settlementStage} from './construction';
-import {SPECIALTY_LABELS} from './economy';
+import {BUILDING_LABELS} from './construction';
 import {RESOURCE_LABELS,RESOURCE_COLORS} from './resources';
 import {intervene,type DivineAction} from './divine';
 import {personName,isPersonFavorite,renamePerson,togglePersonFavorite,
@@ -56,6 +53,7 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
+const MortalAdventure=lazy(()=>import('./MortalAdventure').then(m=>({default:m.MortalAdventure})));
 import {compactWorld,loadBrowserWorld,loadBrowserWorldSnapshot,readSavedWorld,WORLD_STORAGE_KEY,
   WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld} from './storage';
@@ -74,8 +72,9 @@ function initialWorld():World{
     }catch{/* Restricted storage: continue with an in-memory world. */}
   }
   // First-time visitors get their own world; existing local saves always win.
-  return createWorld(typeof window==='undefined'?DEFAULT_SETTINGS:{
-    ...DEFAULT_SETTINGS,seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
+  return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
+    livingBiomes:true,regionalGeography:true,
+    seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
@@ -131,6 +130,30 @@ function saveSnapshot(world:World):Promise<void>{
   return pending;
 }
 
+async function growSettlements(world:World):Promise<World>{
+  const days=365*6;
+  let worker:Worker|undefined;
+  try{
+    worker=new Worker(new URL('./simulation.worker.ts',import.meta.url),{type:'module'});
+    const session=worker;
+    return await new Promise<World>((resolve,reject)=>{
+      session.onmessage=(event:MessageEvent<SimulationReply>)=>{
+        const reply=event.data;
+        if(reply.id!==1)return;
+        if(reply.kind==='advanced')resolve(reply.world);
+        else reject(Error(reply.message));
+      };
+      session.onerror=reject;
+      const request:SimulationRequest={kind:'advance',id:1,world,days};
+      session.postMessage(request);
+    });
+  }catch{
+    // Same simulated time and world rules in browsers without workers.
+    await new Promise(resolve=>window.setTimeout(resolve,32));
+    return advanceWorldDays(world,days);
+  }finally{worker?.terminate();}
+}
+
 export function WorldforgeApp(){
   const [world,reactSetWorld]=useState<World>(initialWorld);
   // A generation is incremented on EVERY player edit/import/command. A stale
@@ -180,7 +203,7 @@ export function WorldforgeApp(){
   const orbitYawRef=useRef(orbitYaw);
   orbitYawRef.current=orbitYaw;
   const [cameraPitch,setCameraPitch]=useState<CameraPitch>('classic');
-  const [zoom,setZoom]=useState(mapView==='depth'?1.5:1);
+  const [zoom,setZoom]=useState(1);
   const [advancedView,setAdvancedView]=useState(false);
   const [toolPanel,setToolPanel]=useState(false);
   useEffect(()=>{
@@ -190,27 +213,13 @@ export function WorldforgeApp(){
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
-  const restoredDescentRef=useRef<number|null>(null);
-  const [mortalRunning,setMortalRunning]=useState(true);
-  const [mortalCameraMode,setMortalCameraMode]=useState<MortalCameraMode>('adventure');
-  const adventureView=world.descent?.mode==='mortal'&&
-    mortalCameraMode==='adventure'&&mapView==='depth';
-  const activeCameraPitch=adventureView?ADVENTURE_PITCH:CAMERA_PITCHES[cameraPitch];
-  const divineCameraRef=useRef<{view:'depth'|'overhead';zoom:number;
-    yaw:number;pitch:CameraPitch;overlay:MapOverlay}|null>(null);
-  const [mortalTargetId,setMortalTargetId]=useState<number|null>(null);
-  const [mortalBuildingTarget,setMortalBuildingTarget]=useState<string|null>(null);
-  const [interiorRef,setInteriorRef]=useState<{
-    settlementId:number;buildingId:number}|null>(null);
-  const [interiorPosition,setInteriorPosition]=useState<InteriorPosition>(INTERIOR_DOOR);
-  const [interiorTargetId,setInteriorTargetId]=useState<number|null>(null);
-  const interiorPositionRef=useRef(interiorPosition);
-  interiorPositionRef.current=interiorPosition;
-  const [interiorMessage,setInteriorMessage]=useState('');
-  const [mortalMessage,setMortalMessage]=useState('');
+  const isMortal=world.descent?.mode==='mortal';
+  const activeCameraPitch=CAMERA_PITCHES[cameraPitch];
+  const [startingDescent,setStartingDescent]=useState(false);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
-  const [mapFocus,setMapFocus]=useState<number|null>(null);
+  const [mapFocus,setMapFocus]=useState<number|Point|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
+  const mapSheetRef=useRef<HTMLDivElement>(null);
   const orbitFocusRef=useRef<{x:number;y:number}|null>(null);
   const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
@@ -220,77 +229,38 @@ export function WorldforgeApp(){
   currentWorld.current=world;
   const tabRef=useRef(tab);
   tabRef.current=tab;
-  const cameraFollowRef=useRef<{target:{left:number;top:number};frame:number}|null>(null);
+  const projection=useMemo(()=>createDepthProjector({width:world.width,height:world.height},
+    RELIEF_LEVELS[reliefLevel],{yaw:orbitYaw,pitch:activeCameraPitch}),
+  [world.width,world.height,reliefLevel,orbitYaw,activeCameraPitch]);
   const cameraPosition=useCallback((x:number,y:number)=>{
-    const viewport=mapScrollRef.current;
-    if(!viewport)return null;
-    const w=currentWorld.current.width,h=currentWorld.current.height;
+    const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
+    if(!viewport||!sheet)return null;
+    const current=currentWorld.current;
+    const w=current.width,h=current.height;
+    let fx=(x+.5)/w,fy=(y+.5)/h;
     if(mapView==='depth'){
-      const current=currentWorld.current;
-      const projector=createDepthProjector(current,RELIEF_LEVELS[reliefLevel],
-        {yaw:orbitYaw,pitch:activeCameraPitch});
-      const elevation=interpolatedGroundHeight(
-        topographyForWorld(current).heights,w,h,x,y);
-      const point=projector.projectSmooth(x,y,elevation);
-      const scaleX=viewport.scrollWidth/projector.size.width;
-      const scaleY=viewport.scrollHeight/projector.size.height;
-      const verticalAnchor=cameraVerticalAnchor(adventureView?'adventure':'atlas');
-      return {left:Math.max(0,Math.min(point.x*scaleX-viewport.clientWidth/2,
-          viewport.scrollWidth-viewport.clientWidth)),
-        top:Math.max(0,Math.min(point.y*scaleY-viewport.clientHeight*verticalAnchor,
-          viewport.scrollHeight-viewport.clientHeight))};
+      const elevation=interpolatedGroundHeight(topographyForWorld(current).heights,w,h,x,y);
+      const point=projection.projectSmooth(x,y,elevation);
+      fx=point.x/projection.size.width;fy=point.y/projection.size.height;
     }
-    return cameraScrollTarget({x,y},{x:w,y:h},
-      {x:viewport.scrollWidth,y:viewport.scrollHeight},
-      {x:viewport.clientWidth,y:viewport.clientHeight});
-  },[mapView,reliefLevel,orbitYaw,activeCameraPitch,adventureView]);
-  const toggleMortalCamera=useCallback(()=>{
-    const id=currentWorld.current.descent?.mode==='mortal'?
-      currentWorld.current.descent.agentId:null;
-    if(id===null)return;
-    const next=mortalCameraMode==='adventure'?'atlas':'adventure';
-    setMortalCameraMode(next);
-    setZoom(next==='adventure'?enterAdventureZoom:enterAtlasZoom);
-    setMapView('depth');setFollowId(id);setMapFocus(id);
-  },[mortalCameraMode]);
+    return {left:Math.max(0,Math.min(sheet.offsetLeft+fx*sheet.offsetWidth-
+        viewport.clientWidth/2,viewport.scrollWidth-viewport.clientWidth)),
+      top:Math.max(0,Math.min(sheet.offsetTop+fy*sheet.offsetHeight-
+        viewport.clientHeight/2,viewport.scrollHeight-viewport.clientHeight))};
+  },[mapView,projection]);
   const centerCamera=useCallback((x:number,y:number)=>{
     const viewport=mapScrollRef.current,target=cameraPosition(x,y);
     if(!viewport||!target)return;
     viewport.scrollLeft=target.left;
     viewport.scrollTop=target.top;
   },[cameraPosition]);
-  const followMortalCamera=useCallback((x:number,y:number)=>{
-    const target=cameraPosition(x,y);
-    if(!target||!mapScrollRef.current)return;
-    const tracking=cameraFollowRef.current;
-    if(tracking){tracking.target=target;return;}
-    const state={target,frame:0};
-    cameraFollowRef.current=state;
-    const ease=()=>{
-      const viewport=mapScrollRef.current;
-      if(!viewport||tabRef.current!=='world'){
-        cameraFollowRef.current=null;return;
-      }
-      const dx=state.target.left-viewport.scrollLeft;
-      const dy=state.target.top-viewport.scrollTop;
-      if(Math.abs(dx)<.8&&Math.abs(dy)<.8){
-        viewport.scrollLeft=state.target.left;
-        viewport.scrollTop=state.target.top;
-        cameraFollowRef.current=null;
-        return;
-      }
-      viewport.scrollLeft+=dx*.22;
-      viewport.scrollTop+=dy*.22;
-      state.frame=requestAnimationFrame(ease);
-    };
-    state.frame=requestAnimationFrame(ease);
-  },[cameraPosition]);
-  useEffect(()=>()=>{
-    if(cameraFollowRef.current){
-      cancelAnimationFrame(cameraFollowRef.current.frame);
-      cameraFollowRef.current=null;
-    }
-  },[tab,mapView,world.descent?.mode]);
+  const zoomAtlas=useCallback((change:(zoom:number)=>number,pointer?:Point)=>{
+    const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
+    if(!viewport||!sheet)return;
+    pendingZoomAnchor.current=captureWorldZoomAnchor(atlasScrollGeometry(viewport,sheet),
+      pointer??{x:viewport.clientWidth/2,y:viewport.clientHeight/2});
+    setZoom(value=>boundedMapZoom(change(value)));
+  },[]);
   // A trackpad pinch is a ctrl+wheel gesture on Chrome/Firefox. It changes
   // only the map scale; regular two-finger scrolling pans both axes natively.
   // Safari emits gesturechange, handled separately with the same anchor.
@@ -302,12 +272,11 @@ export function WorldforgeApp(){
       const rect=viewport.getBoundingClientRect();
       const x=Number.isFinite(clientX)?clientX-rect.left:rect.width/2;
       const y=Number.isFinite(clientY)?clientY-rect.top:rect.height/2;
-      pendingZoomAnchor.current=captureWorldZoomAnchor(viewport,{
+      setFollowId(null);
+      zoomAtlas(value=>value*factor,{
         x:Math.max(0,Math.min(rect.width,x)),
         y:Math.max(0,Math.min(rect.height,y)),
       });
-      if(!adventureView)setFollowId(null);
-      setZoom(value=>boundedMapZoom(value*factor));
     };
     const wheel=(event:WheelEvent)=>{
       if(!event.ctrlKey){
@@ -321,6 +290,18 @@ export function WorldforgeApp(){
         event.clientX,event.clientY);
     };
     let lastSafariScale=1;
+    let touchDistance=0;
+    const touchPinch=(event:TouchEvent)=>{
+      if(event.touches.length!==2){touchDistance=0;return;}
+      const [a,b]=Array.from(event.touches);
+      const distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      if(!distance)return;
+      if(event.cancelable)event.preventDefault();
+      if(touchDistance)requestZoom(distance/touchDistance,
+        (a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);
+      touchDistance=distance;
+    };
+    const endTouch=()=>{touchDistance=0;};
     const startGesture=(event:Event)=>{
       event.preventDefault();
       lastSafariScale=1;
@@ -329,19 +310,28 @@ export function WorldforgeApp(){
       const pinch=event as Event&{scale?:number;clientX?:number;clientY?:number};
       if(!pinch.scale||pinch.scale<=0)return;
       event.preventDefault();
+      if(touchDistance)return;
       requestZoom(pinch.scale/lastSafariScale,
         pinch.clientX??NaN,pinch.clientY??NaN);
       lastSafariScale=pinch.scale;
     };
     viewport.addEventListener('wheel',wheel,{passive:false});
+    viewport.addEventListener('touchstart',touchPinch,{passive:false});
+    viewport.addEventListener('touchmove',touchPinch,{passive:false});
+    viewport.addEventListener('touchend',endTouch);
+    viewport.addEventListener('touchcancel',endTouch);
     viewport.addEventListener('gesturestart',startGesture,{passive:false});
     viewport.addEventListener('gesturechange',safariGesture,{passive:false});
     return ()=>{
       viewport.removeEventListener('wheel',wheel);
+      viewport.removeEventListener('touchstart',touchPinch);
+      viewport.removeEventListener('touchmove',touchPinch);
+      viewport.removeEventListener('touchend',endTouch);
+      viewport.removeEventListener('touchcancel',endTouch);
       viewport.removeEventListener('gesturestart',startGesture);
       viewport.removeEventListener('gesturechange',safariGesture);
     };
-  },[tab,storageReady,adventureView]);
+  },[tab,storageReady,isMortal,zoomAtlas]);
   // Left-button navigation uses mouse events on the window so a quick drag
   // remains reliable even when it crosses the viewport edge. A small wobble
   // remains a real click for the canvas inspector.
@@ -395,7 +385,7 @@ export function WorldforgeApp(){
       viewport.removeEventListener('mousedown',down);
       viewport.removeEventListener('click',clickCapture,true);
     };
-  },[tab]);
+  },[tab,storageReady,isMortal]);
   // Right-drag orbits the raised view in 15° steps, without interfering with
   // native two-finger scrolling or left-button panning.
   useEffect(()=>{
@@ -424,10 +414,13 @@ export function WorldforgeApp(){
       const w=currentWorld.current;
       const projector=createDepthProjector(w,RELIEF_LEVELS[reliefLevel],
         {yaw:orbitYawRef.current,pitch:activeCameraPitch});
-      const scaleX=viewport.scrollWidth/projector.size.width;
-      const scaleY=viewport.scrollHeight/projector.size.height;
-      const cx=(viewport.scrollLeft+viewport.clientWidth/2)/Math.max(.001,scaleX);
-      const cy=(viewport.scrollTop+viewport.clientHeight/2)/Math.max(.001,scaleY);
+      const sheet=mapSheetRef.current;
+      if(!sheet)return;
+      const geometry=atlasScrollGeometry(viewport,sheet);
+      const cx=(geometry.scrollLeft+viewport.clientWidth/2)*
+        projector.size.width/Math.max(1,geometry.scrollWidth);
+      const cy=(geometry.scrollTop+viewport.clientHeight/2)*
+        projector.size.height/Math.max(1,geometry.scrollHeight);
       const heights=topographyForWorld(w).heights;
       let nearest={x:Math.floor(w.width/2),y:Math.floor(w.height/2)};
       let best=Infinity;
@@ -441,7 +434,7 @@ export function WorldforgeApp(){
         startYaw:orbitYawRef.current};
       viewport.classList.add('is-orbit-dragging');
       viewport.setPointerCapture(event.pointerId);
-      if(currentWorld.current.descent?.mode!=='mortal')setFollowId(null);
+      setFollowId(null);
     };
     const move=(event:PointerEvent)=>{
       if(!drag||event.pointerId!==drag.pointerId)return;
@@ -465,17 +458,17 @@ export function WorldforgeApp(){
       viewport.removeEventListener('pointercancel',finish);
       viewport.removeEventListener('contextmenu',contextMenu);
     };
-  },[tab,mapView,reliefLevel,activeCameraPitch]);
+  },[tab,mapView,reliefLevel,activeCameraPitch,storageReady,isMortal]);
   // After the canvas changes size, restore the exact world point below the
   // fingers instead of jumping to the top-left of the projected panorama.
   useLayoutEffect(()=>{
     const anchor=pendingZoomAnchor.current;
-    const viewport=mapScrollRef.current;
-    if(!anchor||!viewport)return;
+    const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
+    if(!anchor||!viewport||!sheet)return;
     pendingZoomAnchor.current=null;
-    const scroll=restoreWorldZoomAnchor(anchor,viewport);
-    viewport.scrollLeft=scroll.x;
-    viewport.scrollTop=scroll.y;
+    const scroll=restoreWorldZoomAnchor(anchor,atlasScrollGeometry(viewport,sheet));
+    viewport.scrollLeft=scroll.x+sheet.offsetLeft;
+    viewport.scrollTop=scroll.y+sheet.offsetTop;
   },[zoom]);
   useEffect(()=>{
     let active=true;
@@ -657,13 +650,11 @@ export function WorldforgeApp(){
     if(playing&&world.descent?.mode==='mortal')setPlaying(false);
   },[world.agents.length,world.year,world.descent?.mode,playing]);
   const counts=useMemo(()=>population(world),[world]);
-  const mortalNearby=useMemo(()=>world.descent?.mode==='mortal'?
-    nearbyMortals(world):[],[world]);
-  const mortalBuildings=useMemo(()=>world.descent?.mode==='mortal'?
-    nearbyMortalBuildings(world):[],[world]);
-  const activeMortalBuilding=mortalBuildings.find(site=>
-    `${site.settlementId}:${site.building.id}`===mortalBuildingTarget)??null;
-  const interiorSite=interiorRef?findInteriorBuilding(world,interiorRef):null;
+  const mortal=isMortal?world.agents.find(a=>a.id===world.descent?.agentId):undefined;
+  const changeMortalWorld=useCallback((next:World)=>{
+    currentWorld.current=next;
+    setWorld(next);
+  },[setWorld]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -672,222 +663,36 @@ export function WorldforgeApp(){
       setNotice('The person you were following is no longer alive. Camera follow ended.');
     }
   },[followId,world.agents]);
-  // A saved mortal opens centered on their own life, rather than an empty
-  // corner of the map. Reapply only when entering descent, not every year.
   useEffect(()=>{
-    if(!storageReady)return;
-    const id=world.descent?.mode==='mortal'?world.descent.agentId:null;
-    if(id===null){restoredDescentRef.current=null;return;}
-    const mortal=world.agents.find(a=>a.id===id);
-    if(!mortal){
-      setMortalRunning(false);setMortalTargetId(null);
-      setMortalBuildingTarget(null);setFollowId(null);
-      setWorld(w=>setDescentMode(w,'divine'));
-      setNotice('Your mortal has passed away. You have returned to god mode.');
-      return;
-    }
-    if(restoredDescentRef.current===id)return;
-    restoredDescentRef.current=id;
-    setPlaying(false);setMortalRunning(true);
-    setMortalCameraMode('adventure');
-    setMapView('depth');setZoom(enterAdventureZoom);
-    setOverlay('terrain');
-    setSelected({x:mortal.x,y:mortal.y});setSelectedAgentId(id);
-    setFollowId(id);setMapFocus(id);setTab('world');
-  },[storageReady,world.descent?.agentId,world.descent?.mode,world.agents,
-    setWorld,setPlaying]);
-  // The living world keeps its day/week/month routines while the player is
-  // walking. This is deliberately much slower than god-mode fast-forward;
-  // one day per two seconds keeps individual actions meaningful and avoids
-  // throwing large yearly calculations at the browser every few frames.
-  useEffect(()=>{
-    if(!storageReady||tab!=='world'||world.descent?.mode!=='mortal'||
-      !mortalRunning)return;
-    const timer=window.setInterval(()=>{
-      const current=currentWorld.current;
-      if(current.descent?.mode!=='mortal'||current.year>=9999)return;
-      const next=advanceWorldDays(current,1);
-      if(next!==current){currentWorld.current=next;setWorld(next);}
-    },2000);
-    return ()=>window.clearInterval(timer);
-  },[storageReady,tab,world.descent?.mode,mortalRunning,setWorld]);
-  // Window-level input works without forcing the canvas to hold keyboard
-  // focus. Text boxes, shortcuts and other tabs continue to behave normally.
-  useEffect(()=>{
-    if(!storageReady||tab!=='world'||world.descent?.mode!=='mortal'||
-      interiorRef)return;
-    const held=new Set<MortalKey>();
-    let lastMove=0;
-    const move=()=>{
-      const current=currentWorld.current;
-      const id=current.descent?.mode==='mortal'?current.descent.agentId:null;
-      const actor=id===null?undefined:current.agents.find(a=>a.id===id);
-      if(!actor||!held.size)return;
-      const now=performance.now();
-      if(now-lastMove<mortalMovementDelay(actor))return;
-      const direction=mapView==='overhead'?{
-        dx:Number(held.has('d'))-Number(held.has('a')),
-        dy:Number(held.has('s'))-Number(held.has('w')),
-      }:mortalDirection(held,{yaw:orbitYawRef.current,
-        pitch:activeCameraPitch});
-      if(!direction||!direction.dx&&!direction.dy)return;
-      lastMove=now;
-      const result=walkMortalWithAssist(current,direction.dx,direction.dy);
-      if(result.moved){
-        currentWorld.current=result.world;
-        setWorld(result.world);
-        const moved=result.world.agents.find(a=>a.id===id)!;
-        setSelected({x:moved.x,y:moved.y});
-        setSelectedAgentId(id);setFollowId(id);
-        setMortalTargetId(null);setMortalBuildingTarget(null);
-        setMortalMessage('');
-      }else if(result.reason)setMortalMessage(result.reason);
-    };
-    const editable=(event:KeyboardEvent)=>{
-      const target=event.target;
-      return target instanceof HTMLElement&&(
-        target.isContentEditable||!!target.closest('input,textarea,select'));
-    };
-    const down=(event:KeyboardEvent)=>{
-      if(event.altKey||event.ctrlKey||event.metaKey||editable(event))return;
-      const key=event.key.toLowerCase();
-      if(key==='w'||key==='a'||key==='s'||key==='d'){
-        event.preventDefault();held.add(key);move();return;
-      }
-      if(event.repeat)return;
-      if(key==='v'){
-        event.preventDefault();toggleMortalCamera();
-      }else if(key==='e'){
-        event.preventDefault();
-        if(mortalBuildingTarget!==null){
-          const site=nearbyMortalBuildings(currentWorld.current).find(s=>
-            `${s.settlementId}:${s.building.id}`===mortalBuildingTarget);
-          if(site&&canEnterMortalBuilding(currentWorld.current,site)){
-            setInteriorRef({settlementId:site.settlementId,buildingId:site.building.id});
-            setInteriorPosition(INTERIOR_DOOR);setInteriorMessage('');
-            setInteriorTargetId(null);
-            setMortalBuildingTarget(null);setFollowId(null);
-          }else setMortalMessage('This entrance is not ready for exploration.');
-          return;
-        }
-        if(mortalTargetId!==null){
-          setMortalTargetId(null);setMortalBuildingTarget(null);return;
-        }
-        const nearby=nearbyMortals(currentWorld.current);
-        const buildings=nearbyMortalBuildings(currentWorld.current);
-        const atDoor=buildings.find(site=>site.distance===0);
-        const picked=nearby.find(a=>a.id===selectedAgentId)??nearby[0];
-        const approach=atDoor??(!picked?buildings.find(b=>b.distance<=1):undefined);
-        if(approach){setMortalBuildingTarget(
-          `${approach.settlementId}:${approach.building.id}`);
-          setMortalMessage('');}
-        else if(picked){setMortalTargetId(picked.id);setMortalMessage('');}
-        else setMortalMessage('No one nearby. Approach a person or a doorway.');
-      }else if(key==='p'){
-        event.preventDefault();setMortalRunning(r=>!r);
-      }else if(key==='escape'){
-        setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
-      }
-    };
-    const up=(event:KeyboardEvent)=>held.delete(event.key.toLowerCase() as MortalKey);
-    const clear=()=>held.clear();
-    const timer=window.setInterval(move,45);
-    window.addEventListener('keydown',down);
-    window.addEventListener('keyup',up);
-    window.addEventListener('blur',clear);
-    return ()=>{
-      window.clearInterval(timer);
-      window.removeEventListener('keydown',down);
-      window.removeEventListener('keyup',up);
-      window.removeEventListener('blur',clear);
-    };
-  },[storageReady,tab,world.descent?.mode,world.descent?.agentId,
-    activeCameraPitch,mapView,selectedAgentId,mortalTargetId,
-    mortalBuildingTarget,interiorRef,setWorld,toggleMortalCamera]);
-  // Indoor navigation is a local presentation state. The actual mortal
-  // remains at the doorway in the same authoritative world simulation.
-  useEffect(()=>{
-    if(!interiorRef||!storageReady||tab!=='world'||!interiorSite)return;
-    const held=new Set<MortalKey>();
-    let last=0;
-    const move=()=>{
-      if(!held.size)return;
-      const now=performance.now();
-      if(now-last<150)return;
-      const dx=Number(held.has('d'))-Number(held.has('a'));
-      const dy=Number(held.has('s'))-Number(held.has('w'));
-      if(!dx&&!dy)return;
-      last=now;
-      const occupied=new Set(livingHousehold(currentWorld.current,interiorSite)
-        .present.map(p=>`${p.position.x}:${p.position.y}`));
-      const next=moveInside(interiorSite.building.type,
-        interiorPositionRef.current,dx,dy,occupied);
-      if(next!==interiorPositionRef.current){
-        interiorPositionRef.current=next;setInteriorPosition(next);
-        setInteriorMessage('');setInteriorTargetId(null);
-      }
-    };
-    const down=(event:KeyboardEvent)=>{
-      const target=event.target;
-      if(event.altKey||event.metaKey||event.ctrlKey||
-        target instanceof HTMLElement&&
-        (target.isContentEditable||!!target.closest('input,textarea,select')))return;
-      const key=event.key.toLowerCase();
-      if(key==='w'||key==='a'||key==='s'||key==='d'){
-        event.preventDefault();held.add(key);move();return;
-      }
-      if(event.repeat)return;
-      if(key==='escape'){
-        event.preventDefault();
-        if(interiorTargetId!==null){setInteriorTargetId(null);setInteriorMessage('');}
-        else exitInterior();
-      }
-      if(key==='e'){
-        event.preventDefault();
-        if(atInteriorDoor(interiorPositionRef.current))exitInterior();
-        else {
-          const nearby=nearestIndoorResident(currentWorld.current,
-            interiorSite,interiorPositionRef.current);
-          if(nearby){setInteriorTargetId(nearby.agent.id);setInteriorMessage('');}
-          else setInteriorMessage(
-            interiorSite.building.type==='house'||interiorSite.building.type==='shelter'?
-              'Move next to a resident to talk, or return to the doorway to leave.':
-              'Return to the lit doorway to leave this building.');
-        }
-      }
-      if(key==='p'){event.preventDefault();setMortalRunning(r=>!r);}
-    };
-    const up=(event:KeyboardEvent)=>held.delete(event.key.toLowerCase() as MortalKey);
-    const clear=()=>held.clear();
-    const timer=window.setInterval(move,40);
-    window.addEventListener('keydown',down);
-    window.addEventListener('keyup',up);
-    window.addEventListener('blur',clear);
-    return ()=>{window.clearInterval(timer);
-      window.removeEventListener('keydown',down);
-      window.removeEventListener('keyup',up);
-      window.removeEventListener('blur',clear);};
-  },[interiorRef,interiorSite?.building.type,interiorTargetId,tab,storageReady]);
-  useEffect(()=>{
-    if(interiorRef&&!interiorSite){setInteriorRef(null);
-      setInteriorMessage('');setInteriorTargetId(null);
-      setMortalMessage('The building is no longer accessible.');}
-  },[interiorRef,interiorSite]);
+    if(!storageReady||!isMortal||mortal)return;
+    setWorld(w=>setDescentMode(w,'divine'));
+    setFollowId(null);
+    setNotice('Your mortal has passed away. You have returned to God Mode.');
+  },[storageReady,isMortal,mortal,setWorld]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
   const drainage=displayed?hydrologyForWorld(world):null;
   const drainageIndex=displayed?displayed.y*world.width+displayed.x:-1;
+  const treeCover=tile&&woodlandHabitat(tile.biome)?
+    woodlandCover(world.woodland,drainageIndex):undefined;
   const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
   const receiving=drainageIndex>=0?drainage?.basin[drainageIndex]??-1:-1;
   const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
   const resource=displayed?world.deposits?.find(d=>d.index===
     displayed.y*world.width+displayed.x):undefined;
+  const detail=atlasLevel(zoom),closeup=detail!=='world';
   const settlement=displayed?world.settlements.find(s=>(s.x===displayed.x&&
-    s.y===displayed.y)||s.infrastructure?.buildings.some(b=>b.x===displayed.x&&
+    s.y===displayed.y)||closeup&&s.infrastructure?.buildings.some(b=>b.x===displayed.x&&
     b.y===displayed.y))??null:null;
+  const building=closeup&&displayed&&!agent?settlement?.infrastructure?.buildings.find(
+    b=>b.x===displayed.x&&b.y===displayed.y):undefined;
   const ancientSite=displayed?world.ancientSites?.find(s=>
     s.x===displayed.x&&s.y===displayed.y):undefined;
+  const mapAspect=mapView==='depth'?projection.size.width/projection.size.height:
+    world.width/world.height;
+  const mapHeights=!closeup&&mapView==='depth'&&world.settlements.length?
+    topographyForWorld(world).heights:null;
   const latest=world.history.at(-1);
   const hybrids=useMemo(()=>world.agents.filter(a=>hybridFraction(a.ancestry)>.01).length,
     [world.agents]);
@@ -905,13 +710,19 @@ export function WorldforgeApp(){
   const favoriteSettlement=(id:number)=>setWorld(w=>toggleSettlementFavorite(w,id));
   const giveName=(id:number,name:string)=>setWorld(w=>renamePerson(w,id,name));
   const renamePlace=(id:number,name:string)=>setWorld(w=>renameSettlement(w,id,name));
+  const locateAtlasPoint=(point:Point,minimumZoom:number)=>{
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setFollowId(null);setSelectedAgentId(null);setSelected(point);
+    setBrush({kind:'inspect'});setZoom(value=>Math.max(minimumZoom,value));
+    setTab('world');setMapFocus(point);
+  };
+  const focusMap=()=>mapSheetRef.current?.querySelector('canvas')?.focus({preventScroll:true});
   const findSettlement=(id:number)=>{
-    const place=knownSettlements(world).find(s=>s.id===id);
+    const place=world.settlements.find(s=>s.id===id)??knownSettlements(world).find(s=>s.id===id);
     if(!place)return;
-    setPlaying(false);
-    setFollowId(null);
-    setSelected({x:place.x,y:place.y});setSelectedAgentId(null);
-    setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
+    if(tab!=='world')setPlaying(false);
+    locateAtlasPoint({x:place.x,y:place.y},ATLAS_PLACE_ZOOM);
+    focusMap();
   };
   const openSettlement=(id:number)=>{
     setSelectedSettlementId(id);setTab('settlements');
@@ -919,18 +730,30 @@ export function WorldforgeApp(){
   const findOnMap=(id:number)=>{
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
+    pendingZoomAnchor.current=null;
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
     setZoom(v=>Math.max(2,v));setFollowId(id);
     setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
-    setPlaying(false);setSelected({x,y});setSelectedAgentId(null);
-    setFollowId(null);setZoom(v=>Math.max(1.5,v));setTab('world');setMapFocus(-1);
+    if(tab!=='world')setPlaying(false);
+    locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
+    focusMap();
   };
-  useEffect(()=>{
+  const fitAtlas=()=>{
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setFollowId(null);setSelectedAgentId(null);setZoom(1);
+    setMapFocus({x:world.width/2-.5,y:world.height/2-.5});
+  };
+  const changePerspective=(next:'overhead'|'depth')=>{
+    if(mapView===next)return;
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setFollowId(null);setMapView(next);
+    setMapFocus(displayed??{x:world.width/2-.5,y:world.height/2-.5});
+  };
+  useLayoutEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
-    const target=mapFocus===-1?selected:
-      world.agents.find(a=>a.id===mapFocus);
+    const target=typeof mapFocus==='number'?world.agents.find(a=>a.id===mapFocus):mapFocus;
     if(target)centerCamera(target.x,target.y);
     setMapFocus(null);
   },[tab,mapFocus,zoom,centerCamera]);
@@ -946,71 +769,20 @@ export function WorldforgeApp(){
     });
     return ()=>window.cancelAnimationFrame(frame);
   },[storageReady,tab,mapView,world.width,world.height,world.settings.seed,
-    centerCamera]);
+    centerCamera,isMortal]);
   useEffect(()=>{
     const target=followId===null?null:world.agents.find(a=>a.id===followId);
     if(tab==='world'&&target)centerCamera(target.x,target.y);
-  },[followId,tab,zoom,world.settings.seed,centerCamera]);
+  },[followId,tab,zoom,world.settings.seed,centerCamera,isMortal]);
   const chooseTile=(x:number,y:number)=>{
     orbitFocusRef.current=null;
     setSelected({x,y});
-    const individual=world.agents.find(a=>a.x===x&&a.y===y);
+    const onBuilding=closeup&&world.settlements.some(town=>
+      town.infrastructure?.buildings.some(b=>b.x===x&&b.y===y));
+    const individual=(detail==='street'||followId!==null)&&!onBuilding?
+      world.agents.find(a=>a.x===x&&a.y===y):undefined;
     setSelectedAgentId(individual?.id??null);
-    if(world.descent?.mode==='mortal'){
-      const target=mortalNearby.find(a=>a.id===individual?.id);
-      if(target){setMortalBuildingTarget(null);
-        setMortalTargetId(target.id);setMortalMessage('');}
-      setFollowId(world.descent.agentId);
-      return;
-    }
     if(followId!==null)setFollowId(individual?.id??null);
-  };
-  const mortalAction=(action:MortalAction)=>{
-    if(mortalTargetId===null)return;
-    const result=interactWithMortal(currentWorld.current,mortalTargetId,action);
-    if(result.world!==currentWorld.current){
-      currentWorld.current=result.world;setWorld(result.world);
-    }
-    setMortalMessage(result.message);
-  };
-  const inspectMortalBuilding=(site:MortalBuilding)=>{
-    setMortalTargetId(null);setMortalMessage('');
-    setMortalBuildingTarget(`${site.settlementId}:${site.building.id}`);
-  };
-  const enterInterior=(site:MortalBuilding)=>{
-    if(!canEnterMortalBuilding(currentWorld.current,site)){
-      setMortalMessage('Move to the entrance of a completed building first.');return;
-    }
-    setInteriorRef({settlementId:site.settlementId,buildingId:site.building.id});
-    setInteriorPosition(INTERIOR_DOOR);setInteriorMessage('');
-    setInteriorTargetId(null);
-    setMortalBuildingTarget(null);setMortalTargetId(null);
-    setMortalMessage('');setFollowId(null);
-  };
-  const exitInterior=()=>{
-    setInteriorRef(null);setInteriorPosition(INTERIOR_DOOR);
-    setInteriorMessage('');setInteriorTargetId(null);
-    const actorId=currentWorld.current.descent?.agentId;
-    if(actorId!==undefined){setFollowId(actorId);setMapFocus(actorId);}
-  };
-  const talkInside=(action:MortalAction)=>{
-    if(interiorTargetId===null||!interiorSite)return;
-    const nearby=livingHousehold(currentWorld.current,interiorSite).present
-      .find(p=>p.agent.id===interiorTargetId&&
-        Math.max(Math.abs(p.position.x-interiorPositionRef.current.x),
-          Math.abs(p.position.y-interiorPositionRef.current.y))<=1);
-    // A resident who has left, or one now too far away, cannot be addressed
-    // from a stale dialogue panel. The same outdoor social rules still apply.
-    if(!nearby||nearby.agent.id!==interiorTargetId){
-      setInteriorTargetId(null);
-      setInteriorMessage('They have moved away. Approach them again.');return;
-    }
-    const result=interactWithMortal(currentWorld.current,interiorTargetId,
-      action,'home');
-    if(result.world!==currentWorld.current){
-      currentWorld.current=result.world;setWorld(result.world);
-    }
-    setInteriorMessage(result.message);
   };
   const brushAt=(x:number,y:number)=>{
     if(world.descent?.mode==='mortal'){
@@ -1033,9 +805,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
-    restoredDescentRef.current=null;
-    setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
-    setZoom(mapView==='depth'?1.5:1);
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setZoom(1);
     setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
@@ -1051,8 +822,8 @@ export function WorldforgeApp(){
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
-    restoredDescentRef.current=null;
-    setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setZoom(1);
     setNotice('World replayed from the same starting seed.');
   };
   const importWorld=async(event:ChangeEvent<HTMLInputElement>)=>{
@@ -1070,9 +841,9 @@ export function WorldforgeApp(){
       setSavedDate(null);
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
-      restoredDescentRef.current=null;
-      setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
-      setZoom(mapView==='depth'?1.5:1);setBrush({kind:'inspect'});
+      pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+      setZoom(1);
+      setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
@@ -1085,53 +856,32 @@ export function WorldforgeApp(){
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
-    if(next==='powers'&&currentWorld.current.descent?.mode==='mortal'){
-      setWorld(w=>setDescentMode(w,'divine'));setFollowId(null);
-      setMortalRunning(false);setMortalTargetId(null);setMortalBuildingTarget(null);
-    }
     setTab(next);setNotice('');
   };
-  const enterMortalView=(id:number)=>{
-    const person=currentWorld.current.agents.find(a=>a.id===id);
-    if(!person){setNotice('That mortal is no longer alive.');return;}
-    divineCameraRef.current={view:mapView,zoom,yaw:orbitYaw,
-      pitch:cameraPitch,overlay};
-    setPlaying(false);setMortalRunning(true);
-    setMortalTargetId(null);setMortalBuildingTarget(null);setMortalMessage('');
-    setWorld(w=>setDescentMode(w,'mortal'));
-    setMortalCameraMode('adventure');
-    setMapView('depth');setZoom(enterAdventureZoom);setOverlay('terrain');
-    setSelected({x:person.x,y:person.y});setSelectedAgentId(id);
-    setFollowId(id);setMapFocus(id);setBrush({kind:'inspect'});
-    setTab('world');setNotice('Adventure view ready. WASD walk, V changes view, E interacts.');
+  const enterMortalView=()=>{
+    const before=currentWorld.current;
+    if(!before.agents.some(a=>a.id===before.descent?.agentId)){
+      setNotice('That mortal is no longer alive.');return;
+    }
+    setPlaying(false);setTab('world');setNotice('');
+    changeMortalWorld(setDescentMode(before,'mortal'));
   };
-  const createDescent=(options:MortalCreation)=>{
+  const createDescent=async(options:MortalCreation,settledStart:boolean)=>{
+    const before=currentWorld.current;
     try{
-      const result=createMortal(currentWorld.current,options);
-      divineCameraRef.current={view:mapView,zoom,yaw:orbitYaw,
-        pitch:cameraPitch,overlay};
-      setWorld(result.world);
-      // State has not committed yet; use the newly created agent directly.
-      setMortalRunning(true);setMortalTargetId(null);
-      setMortalBuildingTarget(null);setMortalMessage('');
-      setPlaying(false);setMortalCameraMode('adventure');
-      setMapView('depth');setZoom(enterAdventureZoom);setOverlay('terrain');
-      setSelected({x:result.agent.x,y:result.agent.y});
-      setSelectedAgentId(result.agent.id);setFollowId(result.agent.id);
-      setMapFocus(result.agent.id);setBrush({kind:'inspect'});
-      setTab('world');setNotice('A new mortal enters the world. WASD walk, V changes view.');
+      setStartingDescent(true);
+      const startingWorld=settledStart?await growSettlements(before):before;
+      if(currentWorld.current!==before||tabRef.current!=='descent')return;
+      const result=createMortal(startingWorld,options);
+      setPlaying(false);setTab('world');setNotice('');
+      changeMortalWorld(result.world);
     }catch(error){setNotice(error instanceof Error?error.message:
       'Unable to create your mortal.');}
+    finally{setStartingDescent(false);}
   };
   const leaveMortalView=()=>{
-    setPlaying(false);setWorld(w=>setDescentMode(w,'divine'));
-    setMortalRunning(false);setMortalTargetId(null);
-    setMortalBuildingTarget(null);setMortalMessage('');
-    const previous=divineCameraRef.current;
-    if(previous){setMapView(previous.view);setZoom(previous.zoom);
-      setOrbitYaw(previous.yaw);setCameraPitch(previous.pitch);
-      setOverlay(previous.overlay);divineCameraRef.current=null;}
-    setFollowId(null);setTab('world');setNotice('Returned to god mode.');
+    setPlaying(false);setTab('world');setNotice('');
+    changeMortalWorld(setDescentMode(currentWorld.current,'divine'));
   };
   const applyDivine=(action:DivineAction)=>{
     setPlaying(false);
@@ -1144,11 +894,17 @@ export function WorldforgeApp(){
   };
   if(!storageReady)return <div className="evo-app evo-loading-world" role="status">
     Restoring your saved world…</div>;
+  if(mortal)return <Suspense fallback={<div className="evo-app evo-loading-world"
+    role="status">Opening your adventure…</div>}>
+    <MortalAdventure key={world.settings.seed+':'+mortal.id}
+      world={world} actor={mortal} notice={notice}
+      onChange={changeMortalWorld} onAscend={leaveMortalView}/>
+  </Suspense>;
   return <div className="evo-app">
     <header className="evo-lab-nav">
       <div className="evo-lab-brand">
         <span>✦</span>
-        <div><strong>WORLDFORGE</strong><small>AN AUTONOMOUS LIVING WORLD</small></div>
+        <strong>WORLDFORGE</strong>
       </div>
       <nav aria-label="WorldForge main navigation" className="evo-lab-tabs">
         <button aria-current={tab==='world'?'page':undefined}
@@ -1184,8 +940,8 @@ export function WorldforgeApp(){
           {' '}{savedDate.day}</small>}</div>
     </header>
     {tab==='descent'?<DivineDescentCreator world={world} error={notice}
-      onCreate={createDescent}
-      onResume={()=>world.descent&&enterMortalView(world.descent.agentId)}
+      onCreate={createDescent} starting={startingDescent}
+      onResume={enterMortalView}
       onReturn={leaveMortalView}/>:
     tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
       current={world.settings} onCreate={startWorld} onReturn={()=>navigate('world')}/>:
@@ -1221,27 +977,11 @@ export function WorldforgeApp(){
       selectedTile={selected} onApply={applyDivine} onOpenPerson={openPerson}
       onFindOnMap={findOnMap}/>
       {notice&&<p className="evo-notice" role="status">{notice}</p>}</>:
-    <main className={'evo-playground'+(world.descent?.mode==='mortal'?' is-mortal':'')+
-      (adventureView?' is-adventure':'')}>
-      {world.descent?.mode==='mortal'&&!interiorRef&&<MortalHUD world={world}
-        nearby={mortalNearby} buildings={mortalBuildings}
-        targetId={mortalTargetId} selectedBuilding={activeMortalBuilding}
-        message={mortalMessage} running={mortalRunning}
-        cameraMode={mortalCameraMode} onToggleCamera={toggleMortalCamera}
-        onTalk={mortalAction}
-        onInspectBuilding={inspectMortalBuilding}
-        onEnterBuilding={enterInterior}
-        onSelect={id=>{setMortalBuildingTarget(null);
-          setMortalTargetId(id);setMortalMessage('');}}
-        onClose={()=>{setMortalTargetId(null);setMortalBuildingTarget(null);
-          setMortalMessage('');}}
-        onToggleTime={()=>setMortalRunning(r=>!r)} onLeave={leaveMortalView}/>}
+    <main className="evo-playground world-atlas">
       <header className="evo-playground-heading">
         <div>
-          <span className="evo-overline">YOUR LIVING WORLD</span>
-          <h1>Watch history <em>unfold.</em></h1>
-          <p>People make their own decisions. Press Play, choose someone on the
-            map, and see where their story goes.</p>
+          <h1>World atlas</h1>
+          <p>Watch civilizations grow, or descend to explore them on foot.</p>
         </div>
         <div className="evo-sim-controls">
           <button className="evo-new-world-button" onClick={()=>navigate('creator')}>
@@ -1250,41 +990,25 @@ export function WorldforgeApp(){
             disabled={!world.agents.length||world.year>=9999||
               world.descent?.mode==='mortal'}
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
-          <div className="evo-step-actions" role="group"
-            aria-label="Advance the world clock">
-            <button onClick={()=>step(365)} disabled={world.descent?.mode==='mortal'}
-              title="Advance one simulated year">+YEAR</button>
-            <details className="evo-more-steps">
-              <summary aria-label="More time advances">OTHER STEPS</summary>
-              <div className="evo-extra-steps">
-                <button onClick={()=>step(1)}>+DAY</button>
-                <button onClick={()=>step(7)}>+WEEK</button>
-                <button onClick={()=>step(30)}>+MONTH</button>
-                <button onClick={()=>step(3650)} title="Advance ten years">+10Y</button>
+          <button onClick={()=>step(365)} title="Advance one year">+YEAR</button>
+          <details className="evo-time-settings">
+            <summary>Time settings</summary>
+            <div className="evo-time-settings-panel">
+              <div role="group" aria-label="Advance the world clock">
+                <small>Advance</small>
+                {([[1,'+DAY'],[7,'+WEEK'],[30,'+MONTH'],[3650,'+10Y']] as const)
+                  .map(([days,label])=><button key={days} onClick={()=>step(days)}>
+                    {label}</button>)}
               </div>
-            </details>
-          </div>
-          <div className="evo-pace-panel" role="group" aria-label="Playback pace">
-            <small>PACE</small>
-            {TIME_RATES.filter(rate=>['month','year','four'].includes(rate.id))
-              .map(rate=><button key={rate.id}
-              className={timeRate===rate.id?'is-on':''}
-              aria-pressed={timeRate===rate.id}
-              title={rate.label}
-              onClick={()=>setTimeRate(rate.id)}>
-                {rate.id==='four'?'4Y/S':rate.id==='year'?'1Y/S':'MONTH'}
-              </button>)}
-            <details className="evo-more-steps evo-more-pace">
-              <summary aria-label="More playback speeds">MORE</summary>
-              <div className="evo-extra-steps">
-                {TIME_RATES.filter(rate=>!['month','year','four'].includes(rate.id))
-                  .map(rate=><button key={rate.id}
-                    className={timeRate===rate.id?'is-on':''}
-                    aria-pressed={timeRate===rate.id}
-                    onClick={()=>setTimeRate(rate.id)}>{rate.label}</button>)}
+              <div role="group" aria-label="Playback pace">
+                <small>Playback speed</small>
+                {TIME_RATES.map(rate=><button key={rate.id}
+                  className={timeRate===rate.id?'is-on':''}
+                  aria-pressed={timeRate===rate.id}
+                  onClick={()=>setTimeRate(rate.id)}>{rate.label}</button>)}
               </div>
-            </details>
-          </div>
+            </div>
+          </details>
         </div>
       </header>
       <section className="evo-stats" aria-label="Live world statistics">
@@ -1297,9 +1021,9 @@ export function WorldforgeApp(){
           <span>{latest?.births??0} births · {latest?.deaths??0} deaths this year</span>
         </div>
         <div className="evo-stat"><small>SETTLEMENTS</small>
-          <strong>{world.settlements.length}</strong><span>Founded by local groups</span></div>
+          <strong>{world.settlements.length}</strong></div>
         <details className="evo-extra-stats">
-          <summary>✧ MORE WORLD STATISTICS <span>HYBRIDS · BONDS · EXPEDITIONS · DISCOVERIES</span></summary>
+<summary>More statistics</summary>
           <div className="evo-extra-stat-grid">
         <div className="evo-stat"><small>LIVING HYBRIDS</small>
           <strong>{hybrids}</strong><span>Mixed-species ancestry</span></div>
@@ -1315,52 +1039,46 @@ export function WorldforgeApp(){
         </details>
       </section>
       <div className="evo-playground-layout">
-        <section className="evo-map-card">
-          {adventureView&&<div className="evo-adventure-banner" aria-hidden="true">
-            ✧ ADVENTURE CAMERA
-            <small>WASD WALK · RIGHT-DRAG ORBIT · V ATLAS</small>
-          </div>}
+        <section className="evo-map-card" aria-label="World map" data-map-detail={detail}>
           <div className="evo-card-heading evo-map-heading">
-            <div><strong>◈ LIVING WORLD</strong>
-              <small>{world.width} × {world.height} TILES · {world.settings.size.toUpperCase()} WORLD</small>
+            <div className="atlas-map-title" aria-live="polite">
+              <strong>{closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
+                (detail==='street'?'Street map':'Local map')):'World map'}</strong>
+              <small>{building?BUILDING_LABELS[building.type]:
+                detail==='street'?'Buildings & people':detail==='town'?'Buildings':
+                  isMultiIslandLayout(world.settings.layout)?
+                    WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]:
+                    'Settlement overview'}</small>
             </div>
             <div className="evo-map-actions">
-              <button className={'evo-follow-camera'+(followId!==null?' is-on':'')}
-                aria-pressed={followId!==null} disabled={!agent}
-                title={followId!==null?'Stop following the selected person':
-                  'Follow the selected person while they travel'}
+              <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}/>
+              <button type="button" onClick={fitAtlas} aria-label="Fit world view">World</button>
+              <button type="button" className="atlas-trade-toggle" aria-pressed={overlay==='trade'}
                 onClick={()=>{
-                  if(followId!==null){setFollowId(null);return;}
-                  if(!agent)return;
-                  setFollowId(agent.id);setZoom(v=>Math.max(mapView==='depth'?2:3,v));
-                  setMapFocus(agent.id);
-                }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
-              <button onClick={()=>setShowDiagnostics(v=>!v)}
-                aria-pressed={showDiagnostics}
-                title="Toggle simulation and rendering diagnostics">
-                {showDiagnostics?'◉ STATS':'◌ STATS'}
-              </button>
-              <button onClick={()=>setZoom(v=>boundedMapZoom(v-.5))}
-                disabled={zoom<=1} title="Zoom out">−</button>
-              <button onClick={()=>setZoom(1)} title="Reset map zoom to 1×">⌖ FIT</button>
-              <button onClick={()=>setZoom(v=>boundedMapZoom(v+.5))}
-                disabled={zoom>=8} title="Zoom in">+</button>
+                  setOverlay(overlay==='trade'?'terrain':'trade');
+                  setBrush({kind:'inspect'});
+                }}>Trade</button>
+              <button type="button" onClick={()=>zoomAtlas(v=>v-.5)}
+                disabled={zoom<=1} aria-label="Zoom out">−</button>
+              <button type="button" onClick={()=>zoomAtlas(v=>v+.5)}
+                disabled={zoom>=8} aria-label="Zoom in">+</button>
             </div>
           </div>
+          <details className="evo-map-settings">
+            <summary>Map options{brush.kind!=='inspect'?' · edit tool active':''}</summary>
           <div className="evo-map-toolbar evo-map-commandbar">
             <div className="evo-view-switch" role="group" aria-label="Map perspective">
               <button className={mapView==='depth'?'is-on':''}
                 aria-pressed={mapView==='depth'}
-                onClick={()=>{setMapView('depth');
-                  setFollowId(null);setZoom(1.5);}}>
+                onClick={()=>changePerspective('depth')}>
                 ◈ 2.5D WORLD</button>
               <button className={mapView==='overhead'?'is-on':''}
                 aria-pressed={mapView==='overhead'}
-                onClick={()=>{setMapView('overhead');setZoom(1);}}>
+                onClick={()=>changePerspective('overhead')}>
                 ▦ OVERHEAD</button>
             </div>
             <details className="evo-layer-menu">
-              <summary>▤ LAYERS{overlay==='terrain'?'':' · '+overlay.toUpperCase()}</summary>
+              <summary>▤ LAYERS{overlay==='terrain'||overlay==='trade'?'':' · '+overlay.toUpperCase()}</summary>
               <div className="evo-layer-chips" role="group" aria-label="Map layers">
                 {([['terrain','WORLD'],['resources','FOOD'],
                   ['deposits','RESOURCES'],['elevation','HEIGHT'],
@@ -1375,6 +1093,23 @@ export function WorldforgeApp(){
               </div>
             </details>
             <div className="evo-toolbar-drawers">
+              <button className={'evo-follow-camera'+(followId!==null?' is-on':'')}
+                aria-pressed={followId!==null} disabled={!agent}
+                title={followId!==null?'Stop following the selected person':
+                  'Follow the selected person while they travel'}
+                onClick={()=>{
+                  if(followId!==null){setFollowId(null);return;}
+                  if(!agent)return;
+                  pendingZoomAnchor.current=null;
+                  setFollowId(agent.id);setZoom(v=>Math.max(mapView==='depth'?2:3,v));
+                  setMapFocus(agent.id);
+                }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
+              <button onClick={()=>setShowDiagnostics(v=>!v)}
+                aria-pressed={showDiagnostics}
+                title="Toggle simulation and rendering diagnostics">
+                {showDiagnostics?'◉ STATS':'◌ STATS'}
+              </button>
+
               {mapView==='depth'&&<button className={advancedView?'is-on':''}
                 aria-expanded={advancedView} aria-controls="evo-camera-panel"
                 onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
@@ -1451,13 +1186,20 @@ export function WorldforgeApp(){
             <p>Choose a tool, then click a world tile. Inspect is the default;
               terrain edits and spawning remain entirely optional.</p>
           </div>}
-          {overlay!=='terrain'&&<MapLayerLegend overlay={overlay}/>}
           {overlay==='terrain'&&<div className="evo-season-visual" role="note"
             aria-label="Visual world season">
             <span className="evo-season-icon" aria-hidden="true">✦</span>
             <span><strong>{sceneAtmosphere(world.dayOfYear??0).season.toUpperCase()}</strong>
               <small>Seasonal light · layered scenery · pixel atmosphere</small></span>
             <span className="evo-season-dot" aria-hidden="true"/>
+          </div>}
+          {!world.settings.livingBiomes&&<div className="evo-terrain-upgrade">
+            <div><strong>Living biome borders</strong>
+              <span>Grassland and woodland can blend and shift over the years.</span></div>
+            <button onClick={()=>{
+              setWorld(enableLivingBiomes);
+              setNotice('Living biome borders are active. Advance time to watch the tree cover change.');
+            }}>Enable living biomes</button>
           </div>}
           {!hasPhysicalTerrain(world)&&<div className="evo-terrain-upgrade" role="note">
             <div><strong>CLASSIC TERRAIN RULES</strong>
@@ -1471,59 +1213,56 @@ export function WorldforgeApp(){
               setNotice('Physical terrain enabled. Your existing world was preserved.');
             }}>ENABLE PHYSICAL TERRAIN</button>
           </div>}
-          {interiorSite?<MortalInterior world={world} site={interiorSite}
-            position={interiorPosition} message={interiorMessage}
-            targetId={interiorTargetId}
-            onSelectResident={id=>{
-              if(livingHousehold(currentWorld.current,interiorSite).present
-                .some(p=>p.agent.id===id&&
-                  Math.max(Math.abs(p.position.x-interiorPositionRef.current.x),
-                    Math.abs(p.position.y-interiorPositionRef.current.y))<=1)){
-                setInteriorTargetId(id);setInteriorMessage('');
-              }
-            }}
-            onTalk={talkInside}
-            onCloseConversation={()=>{setInteriorTargetId(null);
-              setInteriorMessage('');}}
-            running={mortalRunning} onExit={exitInterior}
-            onToggleTime={()=>setMortalRunning(r=>!r)}
-            onAscend={()=>{exitInterior();leaveMortalView();}}/>:
-          <div className="evo-map-scroll" ref={mapScrollRef}>
-            {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
-              overlay={overlay} zoom={zoom}
-              speed={speed} followId={followId}
-              onFollowPosition={world.descent?.mode==='mortal'?followMortalCamera:centerCamera}
-              selected={displayed} onSelect={chooseTile} onEdit={brushAt}
-              onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
-              <DepthCanvas world={world} brush={brush} overlay={overlay}
-                zoom={zoom} speed={speed} selected={displayed} onSelect={chooseTile}
-                onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
-                camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
-                adventure={adventureView}
-                followId={followId}
-                onFollowPosition={world.descent?.mode==='mortal'?followMortalCamera:centerCamera}/>}
-          </div>}
+          </details>
+          {overlay!=='terrain'&&<MapLayerLegend overlay={overlay}/>}
+          <div className="evo-map-scroll atlas-viewport" ref={mapScrollRef}>
+            <div className="atlas-sheet" ref={mapSheetRef}
+              style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*mapAspect+'))'}}>
+              {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
+                overlay={overlay} zoom={zoom} speed={speed} fillWidth
+                followId={followId} personId={selectedAgentId} onFollowPosition={centerCamera}
+                selected={displayed} onSelect={chooseTile} onEdit={brushAt}
+                onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
+                <DepthCanvas world={world} brush={brush} overlay={overlay}
+                  zoom={zoom} speed={speed} fillWidth selected={displayed} onSelect={chooseTile}
+                  onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
+                  camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
+                  followId={followId} personId={selectedAgentId}
+                  onFollowPosition={centerCamera}/>}
+              {!closeup&&world.settlements.length>0&&
+                <AtlasSettlementMarkers towns={world.settlements}
+                  position={town=>{
+                    if(!mapHeights)return {x:(town.x+.5)/world.width,y:(town.y+.5)/world.height};
+                    const point=projection.project(town.x,town.y,mapHeights[town.y*world.width+town.x]);
+                    return {x:point.x/projection.size.width,y:point.y/projection.size.height};
+                  }}
+                  selected={settlement?.id} onChoose={findSettlement} interactive={brush.kind==='inspect'}/>}
+            </div>
+          </div>
           {[0,world.width-1,world.width*(world.height-1),
             world.tiles.length-1].some(i=>world.tiles[i]?.biome!=='water')&&
             <div className="evo-terrain-upgrade" role="note">
               <strong>LEGACY RECTANGULAR WORLD</strong>
-              <span>This saved world's original geography is preserved.
-                Irregular coastlines appear in newly generated worlds.</span>
-              <button onClick={()=>navigate('creator')}>CREATE AN ISLAND WORLD</button>
+              <span>This saved world uses its original geography.
+                New worlds can have multiple landmasses and navigable seas.</span>
+              <button onClick={()=>navigate('creator')}>NEW WORLD</button>
             </div>}
           <div className="evo-map-footer">
-            <div className="evo-species-legend">
-              {SPECIES.map(s=><span key={s}>
-                <i style={{background:SPECIES_INFO[s].color}}/>{SPECIES_INFO[s].name}
-                <b>{counts[s]}</b>
-              </span>)}
-            </div>
+            <span className="atlas-map-tip">{brush.kind!=='inspect'?'Click a tile to apply the active tool.':
+              overlay==='trade'?'Choose a shipment to see where it is.':
+              detail==='world'?(world.settlements.length?'Select a town to see its buildings.':
+                'Advance time to see the first settlements.'):'Select a building to inspect it.'}</span>
             <details className="evo-map-help">
               <summary>⌖ MAP CONTROLS & HELP</summary>
-              <p>CLICK TO INSPECT · {brush.kind==='inspect'?
-                'ARROW KEYS TO MOVE SELECTION':'CLICK TO APPLY TOOL'} ·
+              <p>ARROW KEYS TO MOVE SELECTION ·
                 {mapView==='overhead'?'LEFT-DRAG TO PAN · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON':
                   'LEFT-DRAG TO PAN · RIGHT-DRAG TO ORBIT · PINCH TO ZOOM · TWO-FINGER SCROLL TO PAN · FOLLOW A SELECTED PERSON'}</p>
+              <div className="evo-species-legend">
+                {SPECIES.map(s=><span key={s}>
+                  <i style={{background:SPECIES_INFO[s].color}}/>{SPECIES_INFO[s].name}
+                  <b>{counts[s]}</b>
+                </span>)}
+              </div>
             </details>
           </div>
           {showDiagnostics&&<section className="evo-diagnostics" role="status"
@@ -1545,59 +1284,28 @@ export function WorldforgeApp(){
           {notice&&<div className="evo-notice" role="status">{notice}</div>}
         </section>
         <aside className="evo-world-sidebar">
-          <section className="evo-section-card evo-inspector-card">
+          {overlay==='trade'&&<TradePanel world={world} town={settlement} onLocate={index=>{
+            locateAtlasPoint({x:index%world.width,y:Math.floor(index/world.width)},1);
+            mapScrollRef.current?.scrollIntoView({block:'nearest'});
+            focusMap();
+          }}/>}
+          {(overlay!=='trade'||displayed)&&<section className="evo-section-card evo-inspector-card">
             <div className="evo-card-heading">
-              <strong>{displayed?'◉ SELECTED LOCATION':'✧ START HERE'}</strong>
-              <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:'NO SELECTION'}</span>
+              <strong>{displayed?'Place details':'✧ START HERE'}</strong>
+              <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:''}</span>
             </div>
             {!displayed||!tile?<div className="evo-welcome-guide">
-              <strong>It's their world. You're watching it grow.</strong>
-              <ol>
-                <li><b>Press Play.</b><span>Time passes; people choose how to live.</span></li>
-                <li><b>Click a person or town.</b><span>Follow their story.</span></li>
-                <li><b>Explore when you're ready.</b><span>Try Civilizations or God Mode.</span></li>
-              </ol>
-              <p>Everything else is optional. People make their own decisions.</p>
+              <p><b>Press Play.</b> People make their own decisions as time passes.
+                Select a person or place on the map to learn more.</p>
+              <button className="evo-guide-descend" onClick={()=>navigate('descent')}>
+                {world.descent?'Resume adventure':'Start an adventure'} ↗</button>
             </div>:<>
-              <div className="evo-biome-info">
-                <span className="evo-biome-swatch"
-                  style={{background:BIOME_INFO[tile.biome].color}}/>
-                <div><strong>{BIOME_INFO[tile.biome].name}</strong>
-                  <small>Food available: {tile.food.toFixed(1)} units
-                    {altitude!==null?' · Elevation '+altitude+'/255':''}</small></div>
-              </div>
-              {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
-                <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
-                <div><strong>PHYSICAL TERRAIN</strong>
-                  <small>Steepest adjacent rise/drop: {Math.round(terrainRuggedness(
-                    world,displayed.y*world.width+displayed.x))} height units</small>
-                  <small>Farm suitability: {Math.round(terrainFarmFactor(
-                    world,displayed.y*world.width+displayed.x)*100)}% · slopes
-                    affect travel, farming and building.</small>
-                </div>
-              </div>}
-              {drainage&&<div className="evo-biome-info">
-                <span className="evo-biome-swatch" style={{background:'#4aadd0'}}/>
-                <div><strong>{tile.biome==='water'?'Existing water body':
-                  streamTier===3?'River':streamTier===2?'Stream':
-                    streamTier===1?'Creek':'Drainage slope'}</strong>
-                  <small>Contributing area: {drainage.catchment[drainageIndex]}
-                    {' tiles · drains to '+(receiverIsWater?'existing water':'world edge')}
-                    {drainage.pondDepth[drainageIndex]>=6?
-                      ' · Potential depression':''}</small>
-                  <small>Creek runoff can improve farm yields in v2.0 worlds.
-                    Ships still require real water tiles.</small>
-                </div>
-              </div>}
-              {resource&&<div className="evo-biome-info">
-                <span className="evo-biome-swatch" style={{background:
-                  RESOURCE_COLORS[resource.kind]}}/>
-                <div><strong>{RESOURCE_LABELS[resource.kind]}</strong>
-                  <small>{resource.amount.toFixed(1)} / {resource.capacity.toFixed(1)}
-                    {' units · renewable deposit'}</small></div>
-              </div>}
+              {settlement&&<AtlasTownCard town={settlement} building={building}
+                landform={settlementGeography(world,settlement.y*world.width+settlement.x).landform}
+                onOpen={()=>openSettlement(settlement.id)}
+                onBuilding={plot=>locateAtlasPoint({x:plot.x,y:plot.y},ATLAS_TOWN_ZOOM)}/>}
               {ancientSite&&<div className="evo-selected-settlement">
-                <strong>✧ {ancientSite.name??'ANCIENT '+ancientSite.kind.toUpperCase()+' #'+ancientSite.id}</strong>
+                <strong>{ancientSiteName(ancientSite)}</strong>
                 <span>Risk {ancientSite.danger}/100 ·
                   {' '}{ancientSite.visits??ancientSite.visitors.length} previous expeditions</span>
                 {ancientSite.origin==='collapsed'&&<span>
@@ -1671,25 +1379,51 @@ export function WorldforgeApp(){
                   Knowledge: {agent.knowledge.map(k=>TOPIC_INFO[k.topic].name).join(', ')}.
                 </p>}
                 </details>
-              </div>:<div className="evo-inspector-empty small">
-                No individual currently occupies this tile.
-              </div>}
-              {settlement&&<div className="evo-selected-settlement">
-                <strong>⌂ {settlement.name}</strong>
-                <span>{SPECIES_INFO[settlement.species].name} ·
-                  {settlementStage(settlement)} · Founded Y{settlement.founded}</span>
-                <span>{settlement.population} nearby people · {settlement.stores.toFixed(0)} stores</span>
-                <span>{settlement.infrastructure?.buildings.filter(b=>b.stage==='complete').length??0}
-                  {' completed buildings · '+(settlement.infrastructure?.roads.length??0)+' road tiles'}</span>
-                <span>{settlement.economy?.specialty?
-                  SPECIALTY_LABELS[settlement.economy.specialty]:'Emerging economy'}
-                  {' · '+(world.tradeRelations??[]).filter(r=>
-                    (r.a===settlement.id||r.b===settlement.id)&&
-                    r.completed>=3&&r.trust>=47).length+' trusted trade links'}</span>
-                <button onClick={()=>openSettlement(settlement.id)}>⌂ VIEW LOCAL ECONOMY & CONSTRUCTION ↗</button>
-              </div>}
+              </div>:null}
+              <details className="atlas-terrain-details" open={(!settlement&&!ancientSite&&!agent)||undefined}>
+                <summary>Terrain & resources</summary>
+                <div className="evo-biome-info">
+                  <span className="evo-biome-swatch"
+                    style={{background:BIOME_INFO[tile.biome].color}}/>
+                  <div><strong>{BIOME_INFO[tile.biome].name}</strong>
+                    <small>Food available: {tile.food.toFixed(1)} units
+                      {altitude!==null?' · Elevation '+altitude+'/255':''}</small>
+                    {treeCover!==undefined&&<small>Tree cover {Math.round(treeCover*100)}%</small>}
+                  </div>
+                </div>
+                {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
+                  <div><strong>PHYSICAL TERRAIN</strong>
+                    <small>Steepest adjacent rise/drop: {Math.round(terrainRuggedness(
+                      world,displayed.y*world.width+displayed.x))} height units</small>
+                    <small>Farm suitability: {Math.round(terrainFarmFactor(
+                      world,displayed.y*world.width+displayed.x)*100)}% · slopes
+                      affect travel, farming and building.</small>
+                  </div>
+                </div>}
+                {drainage&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:'#4aadd0'}}/>
+                  <div><strong>{tile.biome==='water'?'Existing water body':
+                    streamTier===3?'River':streamTier===2?'Stream':
+                      streamTier===1?'Creek':'Drainage slope'}</strong>
+                    <small>Contributing area: {drainage.catchment[drainageIndex]}
+                      {' tiles · drains to '+(receiverIsWater?'existing water':'world edge')}
+                      {drainage.pondDepth[drainageIndex]>=6?
+                        ' · Potential depression':''}</small>
+                    <small>Creek runoff can improve farm yields in v2.0 worlds.
+                      Ships still require real water tiles.</small>
+                  </div>
+                </div>}
+                {resource&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:
+                    RESOURCE_COLORS[resource.kind]}}/>
+                  <div><strong>{RESOURCE_LABELS[resource.kind]}</strong>
+                    <small>{resource.amount.toFixed(1)} / {resource.capacity.toFixed(1)}
+                      {' units · renewable deposit'}</small></div>
+                </div>}
+              </details>
             </>}
-          </section>
+          </section>}
           <details className="evo-section-card evo-world-actions evo-disclosure">
             <summary>⇩ SAVE, IMPORT & REPLAY</summary>
             <div className="evo-actions-buttons">
@@ -1713,13 +1447,6 @@ export function WorldforgeApp(){
             </div>)}
           </details>
         </aside>
-      </div>
-      <div className="evo-future-note">
-        <strong>V2.4.3: PLAGUES &amp; PUBLIC HEALTH</strong>
-        <span>Every new world begins with fresh geography unless you choose
-          to reuse a seed. Explore a cleaner world view, follow a mortal,
-          and open advanced controls only when you need them. All existing
-          worlds, timelines and divine tools remain available.</span>
       </div>
     </main>}
   </div>;

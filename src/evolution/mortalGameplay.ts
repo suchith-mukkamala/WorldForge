@@ -3,8 +3,6 @@
 import type {Agent,World} from './engine';
 import {BUILDING_LABELS,buildingAppearance,
   type Building} from './construction';
-import {createDepthProjector,type DepthCamera} from './depthProjection';
-import {SEA_LEVEL} from './topography';
 import {terrainStepEffort} from './terrainPhysics';
 import {cloneCognition} from './mindII';
 import {cloneDailyLife,initialDailyLife,
@@ -15,36 +13,16 @@ import {rememberSocialEpisode} from './socialMemory';
 import {personName} from './identity';
 import {traitProfile} from './family';
 
-export type MortalKey='w'|'a'|'s'|'d';
 export type MortalAction='greet'|'ask'|'help';
 export type MortalStep={world:World;moved:boolean;reason?:string};
 export type MortalTalk={world:World;accepted:boolean;message:string};
 export type MortalBuilding={settlementId:number;settlementName:string;
   building:Building;entrance:{x:number;y:number};distance:number};
+type MovementBoundary=(x:number,y:number)=>boolean;
 const clamp=(value:number,min:number,max:number)=>
   Math.max(min,Math.min(max,value));
 const range=(a:{x:number;y:number},b:{x:number;y:number})=>
   Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
-
-/** Translate screen-space WASD to eight neighboring world cells. Orbit yaw
- * changes the visual axes, but never the saved tile coordinates or physics. */
-export function mortalDirection(keys:ReadonlySet<MortalKey>,camera:DepthCamera):
-  {dx:number;dy:number}|null{
-  const sx=Number(keys.has('d'))-Number(keys.has('a'));
-  const sy=Number(keys.has('s'))-Number(keys.has('w'));
-  if(!sx&&!sy)return null;
-  const projection=createDepthProjector({width:4,height:4},1,camera);
-  const origin=projection.project(0,0,SEA_LEVEL);
-  let best=-Infinity,chosen={dx:0,dy:0};
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    if(!dx&&!dy)continue;
-    const p=projection.project(dx,dy,SEA_LEVEL);
-    const vx=p.x-origin.x,vy=p.y-origin.y;
-    const dot=(vx*sx+vy*sy)/Math.hypot(vx,vy);
-    if(dot>best){best=dot;chosen={dx,dy};}
-  }
-  return chosen;
-}
 
 /** Equivalent to density.tileCapacity at a single destination without
  * allocating and scanning the whole world grid on every key press. */
@@ -61,12 +39,17 @@ export function mortalTileCapacity(w:World,x:number,y:number):number{
 /** Only constructed physical structures occupy a solid plot. Farms and
  * unbuilt foundations remain traversable; houses are not enlarged to match
  * their decorative pixel-art roofs. */
+export function isMortalSolidBuilding(b:Building):boolean{
+  return b.stage!=='foundation'&&b.type!=='farm'&&b.type!=='well'&&b.type!=='dock';
+}
+
+export const isOpenBuilding=(building:Building)=>
+  building.stage==='complete'&&building.condition>0;
+
 function solidBuildingAt(w:World,x:number,y:number):Building|undefined{
   for(const settlement of w.settlements){
-    if(Math.abs(settlement.x-x)>14||Math.abs(settlement.y-y)>14)continue;
     const building=settlement.infrastructure?.buildings.find(b=>
-      b.x===x&&b.y===y&&b.stage!=='foundation'&&b.type!=='farm'&&
-      b.type!=='well'&&b.type!=='dock');
+      b.x===x&&b.y===y&&isMortalSolidBuilding(b));
     if(building)return building;
   }
   return undefined;
@@ -92,7 +75,8 @@ export function mortalBuildingEntrance(w:World,
   candidates.sort((a,b)=>
     Number(road.has(b.y*w.width+b.x))-Number(road.has(a.y*w.width+a.x))||
     range(a,settlement)-range(b,settlement)||a.index-b.index);
-  return candidates[0]??{x:building.x,y:building.y};
+  const door=candidates[0]??building;
+  return {x:door.x,y:door.y};
 }
 
 /** Local, read-only points of interest. No separate fake building state. */
@@ -128,26 +112,31 @@ export function describeMortalBuilding(w:World,site:MortalBuilding):string{
   return `${description} in ${site.settlementName}.${family}`;
 }
 
-export function walkMortal(w:World,dx:number,dy:number):MortalStep{
+export function walkMortal(w:World,dx:number,dy:number,
+  withinScene?:MovementBoundary):MortalStep{
   const id=w.descent?.mode==='mortal'?w.descent.agentId:null;
   const actor=id===null?undefined:w.agents.find(a=>a.id===id);
   if(!actor)return {world:w,moved:false,reason:'Descend into a living mortal first.'};
+  if(w.descent?.interior)return {world:w,moved:false,reason:'Leave the room before walking outside.'};
   if(!Number.isInteger(dx)||!Number.isInteger(dy)||
     Math.abs(dx)>1||Math.abs(dy)>1||!dx&&!dy)
     return {world:w,moved:false,reason:'Invalid movement direction.'};
   const x=actor.x+dx,y=actor.y+dy;
   if(x<0||y<0||x>=w.width||y>=w.height)
     return {world:w,moved:false,reason:'You have reached the edge of the world.'};
+  if(withinScene&&!withinScene(x,y))
+    return {world:w,moved:false,reason:'Follow a marked exit to leave this area.'};
   const to=y*w.width+x,from=actor.y*w.width+actor.x;
   const bridged=w.transport?.bridges.some(b=>b.index===to&&b.condition>25);
   if(w.tiles[to].biome==='water'&&!bridged)
     return {world:w,moved:false,reason:'Deep water blocks your path.'};
   if(solidBuildingAt(w,x,y))return {world:w,moved:false,
-    reason:'A building occupies this plot. Walk around to its doorway and press E.'};
+    reason:'The building blocks your path. Walk to the marked doorway.'};
   // Two solid plots cannot be traversed through their shared diagonal
   // corner, even when the destination itself is clear.
-  if(dx&&dy&&!walkablePlot(w,actor.x+dx,actor.y)&&
-    !walkablePlot(w,actor.x,actor.y+dy))
+  const canPass=(px:number,py:number)=>
+    (!withinScene||withinScene(px,py))&&walkablePlot(w,px,py);
+  if(dx&&dy&&!canPass(actor.x+dx,actor.y)&&!canPass(actor.x,actor.y+dy))
     return {world:w,moved:false,reason:'The corner is too narrow to pass.'};
   const occupants=w.agents.filter(a=>a.id!==id&&a.x===x&&a.y===y);
   // A populated street should not become an impassable wall. Let one nearby
@@ -175,8 +164,9 @@ export function walkMortal(w:World,dx:number,dy:number):MortalStep{
 /** Gentle corner assistance for a held direction. Only try adjacent headings
  * that still have forward progress; never pathfind through water or walls or
  * convert an invalid input into a move. The canonical move stays grid-based. */
-export function walkMortalWithAssist(w:World,dx:number,dy:number):MortalStep{
-  const direct=walkMortal(w,dx,dy);
+export function walkMortalWithAssist(w:World,dx:number,dy:number,
+  withinScene?:MovementBoundary):MortalStep{
+  const direct=walkMortal(w,dx,dy,withinScene);
   if(direct.moved||!direct.reason||
     !/(building|blocked|corner)/i.test(direct.reason)||
     !Number.isInteger(dx)||!Number.isInteger(dy)||
@@ -184,7 +174,7 @@ export function walkMortalWithAssist(w:World,dx:number,dy:number):MortalStep{
   const alternatives=dx&&dy?[[dx,0],[0,dy]]:
     dx?[[dx,1],[dx,-1]]:[[1,dy],[-1,dy]];
   for(const [ax,ay] of alternatives){
-    const attempt=walkMortal(w,ax,ay);
+    const attempt=walkMortal(w,ax,ay,withinScene);
     if(attempt.moved)return attempt;
   }
   return direct;
