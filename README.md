@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.16.0 — Block Landscapes** adds sharper mountain ridges, river valleys and stepped highlands. Choose **Varied highlands**, **Alpine ranges** or **Rolling hills** under **New World → Relief**. Trees, roofs, walls, fields, rocks and landmarks are built from little cubes in both atlas views and outdoor Descend scenes. Orbit the raised atlas to see different faces of the same structures. Existing worlds keep their saved terrain and gain the new scenery.
+
 - **v2.15.0 — Material Terrain** divides terrain into four-by-four groups of small squares with their own elevations and layers of soil, sand or stone. Water runs downhill, pools and erodes sediment. Soft ground affects travel, and damp soil helps crops and woodland. Select a tile to inspect its cells and choose **Zoom to terrain cells** to see the steps around it. New worlds start with terrain cells enabled. Existing saves can enable them under **Map options**.
 
 - **v2.14.1 — Finer Pixel Tiles** uses smaller square textures in the overhead atlas and gives the 2.5D map stepped tile tops. Zoom into a settlement to see full-size trees, rocks and building sprites.

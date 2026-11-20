@@ -6,7 +6,7 @@ import {SEA_LEVEL,topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt} from './terrainDetails';
 import {woodlandCover,woodlandHabitat} from './woodland';
-import {ATLAS_SEA,TILE_SHADE,TILE_SHEEN,atlasRivers,atlasTileGrain,occupiedScenery,
+import {ATLAS_SEA,TILE_SHADE,TILE_SHEEN,atlasRivers,atlasTileGrain,highlandColor,occupiedScenery,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {depthTileQuarters,pickTerrainFace,
   terrainRiverEdge,type DepthPicking} from './depthTerrain';
@@ -19,12 +19,11 @@ import {paintDepthRoads,paintDepthSurfaceDetail,depthRoadSignature,
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
 import {buildingVisualScale,depthArtDetail,depthRenderDensity,depthSceneryDensity,
-  paintDepthBuilding,paintDepthPerson,paintDepthTree,
-  paintDepthSettlementHub,
+  paintDepthPerson,
   type DepthArtDetail,type PersonSpriteCache} from './depthSprites';
 import {depthStructureSignature,uncrowdedDistrictBuildings,
   visibleDistrictBuildings} from './depthPerformance';
-import {buildingTier,settlementStage,type Building} from './construction';
+import {settlementStage,type Building} from './construction';
 import type {Agent} from './engine';
 import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
@@ -33,11 +32,14 @@ import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,interpolatedGroundHeight,
   type DepthCamera} from './depthProjection';
 import {atlasLevel} from './atlasMap';
-import {atlasBuildingAt,cacheBuildingArt,paintAtlasBuilding,
+import {atlasBuildingAt,paintAtlasBuilding,
   type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
-import {paintAncientSite} from './pixelArt';
+import {blockBuilding,blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
+import {BLOCK_ANCHOR,blockBuildingArt,blockStampScale,depthBlockView,
+  paintBlockScenery} from './blockScenery';
 import {TERRAIN_CELL_SIDE,type TerrainCell} from './terrainCells';
 import {terrainCellColor,terrainCellPatch} from './terrainCellArt';
+import {useTerrainFocus} from './useTerrainFocus';
 
 const BASINS=['#385e60','#4a6758','#536072','#637056',
   '#42637c','#6c695e','#456f68','#606d77'];
@@ -138,28 +140,14 @@ function tileColor(w:World,index:number,overlay:MapOverlay,height:number,
   }
   return PALETTE[tile.biome].top;
 }
-type TreeSpriteCache=Map<string,HTMLCanvasElement>;
-function paintCachedTree(ctx:CanvasRenderingContext2D,p:Pt,pine:boolean,
-  variant:number,detail:DepthArtDetail,cache:TreeSpriteCache){
-  const key=[pine,variant,detail].join(':');
-  let sprite=cache.get(key);
-  if(!sprite){
-    sprite=document.createElement('canvas');
-    sprite.width=64;sprite.height=64;
-    const painter=sprite.getContext('2d');
-    if(painter){painter.imageSmoothingEnabled=false;
-      paintDepthTree(painter,{x:32,y:54},pine,variant,detail);}
-    cache.set(key,sprite);
-  }
-  ctx.drawImage(sprite,Math.round(p.x)-32,Math.round(p.y)-54);
-}
+type SceneryView=ReturnType<typeof depthBlockView>;
 
 /** Static terrain is drawn rear-to-front, so even vast worlds can be rendered
  * in one inexpensive 2D canvas without allocating thousands of SVG nodes.
  */
 function renderTerrain(w:World,overlay:MapOverlay,
   ctx:CanvasRenderingContext2D,hit:DepthPicking,
-  projector:Projector,detailTier:DepthArtDetail,trees:TreeSpriteCache,
+  projector:Projector,blockView:SceneryView,
   sceneryDensity:number,showBuildings:boolean,street:boolean,cellFocus:Pt|null){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights,seed=w.settings.seed;
   const drainage=overlay==='watersheds'||overlay==='terrain'?
@@ -208,8 +196,9 @@ function renderTerrain(w:World,overlay:MapOverlay,
         if(fy>0)edge(2,3,y===H-1?SEA_LEVEL:heights[index+W],palette.left);
         if(fy<0)edge(0,1,y===0?SEA_LEVEL:heights[index-W],palette.right);
       }
+      const upland=tiled&&w.settings.landforms?highlandColor(biome,height,grain):undefined;
       const color=ocean?(biome==='water'?OCEAN_TONES[ocean[index]]:
-        surfaceColor(biome,x,y,seed,cover)):tileColor(w,index,overlay,height,drainage);
+        upland??surfaceColor(biome,x,y,seed,cover)):tileColor(w,index,overlay,height,drainage);
       if(cells&&patch)paintSmallTerrainTile(ctx,hit,projector,w,index,heights,cellOrder,patch,cells);
       else paintSurface(ctx,hit,corners,color,index,ocean?atlasTileGrain(biome,ocean[index],grain):undefined);
       if(!cells)for(const {other,tier,downstream} of waterLinks.get(index)??[]){
@@ -231,26 +220,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
         showBuildings?showAtlasScenery(biome,x,y,seed,street,cover):grain%8===0;
       if(occupied&&!occupied.has(index)&&scenery){
         const detail=terrainDetailAt(biome,x,y,seed,height,false,cover);
-        if(detail.motif==='oak'||detail.motif==='pine'){
-          paintCachedTree(ctx,p,detail.motif==='pine',
-            (grain>>>5)%3,detailTier,trees);
-        }else if(showBuildings&&['boulder','snowstone','crystal','basalt'].includes(detail.motif)){
-          const span=detail.variant+3,rise=detail.variant%3+2;
-          const left=Math.round(p.x-span/2),base=Math.round(p.y);
-          const crystal=detail.motif==='crystal',dark=detail.motif==='basalt';
-          ctx.fillStyle='rgba(10,25,35,.27)';
-          ctx.fillRect(left-1,base,span+2,1);
-          ctx.fillStyle=crystal?'#6bb0ae':dark?'#534b58':'#7b8c91';
-          ctx.fillRect(left,base-rise,span,rise);
-          ctx.fillStyle=crystal?'#a7d8d2':dark?'#786672':'#abb6b4';
-          ctx.fillRect(left+1,base-rise-1,span-2,2);
-        }else if(showBuildings&&['flowers','grass','reeds','fern','scrub'].includes(detail.motif)){
-          ctx.fillStyle=biome==='wasteland'?'#9c9279':'#427b5d';
-          ctx.fillRect(p.x-2,p.y-2,5,2);
-          ctx.fillStyle=detail.motif==='flowers'?'#e9c88a':
-            detail.motif==='reeds'?'#bad6a0':'#83b98b';
-          ctx.fillRect(p.x-1,p.y-4,1,3);
-          ctx.fillRect(p.x+2,p.y-3,1,2);
+        const prop=upland&&height>=175?'snowstone':terrainBlockProp(detail.motif);
+        const tree=prop==='oak'||prop==='pine';
+        if(prop&&(tree||showBuildings)){
+          paintBlockScenery(ctx,blockProp(prop,detail.variant),p,blockView,
+            tree?(showBuildings?1.05:.73):.74);
         }else{
           paintDepthSurfaceDetail(ctx,biome,p,x,y,seed);
         }
@@ -264,7 +238,12 @@ function renderTerrain(w:World,overlay:MapOverlay,
     if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
     for(const site of w.ancientSites??[]){
       const p=projector.project(site.x,site.y,heights[site.y*W+site.x]);
-      paintAncientSite(ctx,site.kind,p.x-3,p.y-5,(site.visits??site.visitors.length)>0);
+      paintBlockScenery(ctx,blockLandmark(site.kind,(site.visits??site.visitors.length)>0),
+        p,blockView,1.1);
+    }
+    for(const ruin of w.ruins??[]){
+      const p=projector.project(ruin.x,ruin.y,heights[ruin.y*W+ruin.x]);
+      paintBlockScenery(ctx,blockLandmark('ruin'),p,blockView,1.18);
     }
   }
   if(overlay==='deposits')for(const d of w.deposits??[]){
@@ -279,7 +258,7 @@ type DepthActor={order:number;paint:()=>void};
 /** Geometry and structures are immutable throughout an animation. Build
  * projected actors only when the world or camera changes. */
 function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
-  projector:Projector,cache:Map<string,BuildingArt>,detail:DepthArtDetail){
+  projector:Projector,blockView:SceneryView,cache:Map<string,BuildingArt>,detail:DepthArtDetail){
   const heights=topographyForWorld(w).heights,actors:DepthActor[]=[];
   const plots:AtlasBuilding[]=[];
   const projected:{building:Building;x:number;y:number;p:Pt}[]=[];
@@ -287,8 +266,8 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
     const buildings=s.infrastructure?.buildings??[];
     if(!buildings.length){
       const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
-      actors.push({order:p.y+.2,paint:()=>paintDepthSettlementHub(
-        ctx,p,settlementStage(s),s.species)});
+      const hub=blockSettlement(settlementStage(s),s.species);
+      actors.push({order:p.y+.2,paint:()=>paintBlockScenery(ctx,hub,p,blockView,1.1)});
     }
     for(const building of buildings){
       const p=projector.project(building.x,building.y,
@@ -299,13 +278,12 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
   const district=uncrowdedDistrictBuildings(visibleDistrictBuildings(projected,detail));
   district.sort((a,b)=>a.y-b.y);
   for(const {building:b,p} of district){
-    const key=[b.type,b.stage,b.culture,buildingTier(b),detail].join(':');
-    const art=cacheBuildingArt(cache,key,64,painter=>paintDepthBuilding(
-      painter,b,{x:32,y:54},detail));
+    const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,w.settings.seed));
+    const art=blockBuildingArt(cache,model,blockView,1.2);
     if(!art)continue;
-    const scale=buildingVisualScale(b.type);
+    const scale=blockStampScale(buildingVisualScale(b.type));
     const plot={building:b,art,scale,
-      x:Math.round(p.x-32*scale),y:Math.round(p.y-54*scale)};
+      x:p.x-BLOCK_ANCHOR.x*scale,y:p.y-BLOCK_ANCHOR.y*scale};
     plots.push(plot);
     actors.push({order:p.y+.4,paint:()=>paintAtlasBuilding(ctx,plot)});
   }
@@ -361,7 +339,6 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<DepthPicking|null>(null);
   const buildingSpritesRef=useRef<Map<string,BuildingArt>>(new Map());
-  const treeSpritesRef=useRef<TreeSpriteCache>(new Map());
   const personSpritesRef=useRef<PersonSpriteCache>(new Map());
   const populationSceneRef=useRef<{signature:string;seed:number;
     width:number;height:number;scene:PopulationScene}|null>(null);
@@ -388,7 +365,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
   const zoomDetailTier=depthArtDetail(zoom);
   const level=atlasLevel(zoom);
   const showBuildings=level!=='world',showResidents=level==='street';
-  const cellFocus=overlay==='terrain'&&world.terrainCells&&showResidents?selected:null;
+  const fineTerrain=overlay==='terrain'&&!!world.terrainCells&&showResidents;
+  const terrainFocus=useTerrainFocus(canvasRef,fineTerrain,world.width,world.height,(x,y)=>{
+    const hit=pickingRef.current;
+    if(hit?.width!==size.width||hit.height!==size.height||x<0||x>=1||y<0||y>=1)return null;
+    const index=hit.ids[Math.floor(y*size.height)*size.width+Math.floor(x*size.width)]-1;
+    return index>=0?{x:index%world.width,y:Math.floor(index/world.width)}:null;
+  },[camera.yaw,camera.pitch,relief].join(':'));
+  const cellFocus=fineTerrain?(terrainFocus??selected):null;
   const cellTile=cellFocus?cellFocus.y*world.width+cellFocus.x:-1;
   const terrainCells=cellFocus?world.terrainCells:undefined;
   const density=depthRenderDensity(zoom,size);
@@ -416,10 +400,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const roadKey=showBuildings&&overlay==='terrain'?depthRoadSignature(world):0;
     const structureKey=depthStructureSignature(world.settlements);
+    const blockView=depthBlockView(camera);
     const occupiedKey=showBuildings&&overlay==='terrain'?structureKey:'';
     const regional=!!world.settings.regionalGeography;
-    const siteKey=showBuildings?(world.ancientSites??[]).map(site=>
-      [site.id,site.x,site.y,site.kind,!!(site.visits??site.visitors.length)].join(':')).join('|'):'';
+    const siteKey=showBuildings?[
+      ...(world.ancientSites??[]).map(site=>
+        [site.id,site.x,site.y,site.kind,!!(site.visits??site.visitors.length)].join(':')),
+      ...(world.ruins??[]).map(ruin=>[ruin.id,ruin.x,ruin.y,'collapsed'].join(':')),
+    ].join('|'):'';
     const landChanged=stamp?.tiles!==world.tiles&&(!stamp||
       overlay==='resources'||stamp.tiles.length!==world.tiles.length||
       stamp.tiles.some((t,i)=>t.biome!==world.tiles[i].biome));
@@ -436,8 +424,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       stamp.pitch!==camera.pitch||
       overlay==='deposits'&&stamp.deposits!==world.deposits){
       backdrop.setTransform(sceneryDensity,0,0,sceneryDensity,0,0);
-      renderTerrain(world,overlay,backdrop,picking,projector,
-        zoomDetailTier,treeSpritesRef.current,sceneryDensity,showBuildings,showResidents,cellFocus);
+      renderTerrain(world,overlay,backdrop,picking,projector,blockView,
+        sceneryDensity,showBuildings,showResidents,cellFocus);
     }
     stampRef.current={tiles:world.tiles,topography:world.topography,woodland,
       cellTile,terrainCells,
@@ -489,7 +477,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,
       structureCache.relief===relief&&structureCache.yaw===camera.yaw&&
       structureCache.pitch===camera.pitch&&
       structureCache.detail===zoomDetailTier?structureCache.structures:
-      prepareDepthStructures(ctx,world,projector,buildingSpritesRef.current,
+      prepareDepthStructures(ctx,world,projector,blockView,buildingSpritesRef.current,
         zoomDetailTier);
     structureCacheRef.current=showBuildings?{signature:structureKey,
       topography:world.topography,seed:world.settings.seed,

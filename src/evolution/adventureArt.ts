@@ -1,5 +1,7 @@
 import type {Biome,World} from './engine';
-import {ARCHITECTURE,buildingTier,type Building} from './construction';
+import type {Building} from './construction';
+import {blockBuilding,blockLandmark,blockProp} from './blockModels';
+import {DESCENT_BLOCK_VIEW,paintBlockScenery} from './blockScenery';
 import {pixelTerrainHash} from './depthWorldArt';
 import {adventureDistance,type AdventureLandscape,type AdventureRegion} from './adventureMap';
 import type {Point} from './motion';
@@ -49,38 +51,8 @@ function shadow(ctx:CanvasRenderingContext2D,x:number,y:number,width:number,heig
 }
 
 export function paintAdventureLandmark(ctx:CanvasRenderingContext2D,kind:AncientKind,
-  x:number,y:number,landscape:AdventureLandscape){
-  const [deep,stone,edge]=paving[landscape];
-  shadow(ctx,x+12,y+19,11,3);
-  rect(ctx,deep,x+2,y+17,20,4);
-  rect(ctx,stone,x+4,y+16,16,3);
-  if(kind==='ruin'){
-    rect(ctx,deep,x+4,y+6,6,11);
-    rect(ctx,stone,x+5,y+6,4,10);
-    rect(ctx,edge,x+4,y+5,5,2);
-    rect(ctx,deep,x+15,y+10,5,7);
-    rect(ctx,stone,x+16,y+10,4,7);
-    rect(ctx,edge,x+15,y+9,4,2);
-    rect(ctx,stone,x+11,y+14,3,3);
-  }else{
-    rect(ctx,deep,x+4,y+7,16,10);
-    rect(ctx,'#2b3835',x+9,y+9,6,8);
-    rect(ctx,stone,x+5,y+8,3,9);
-    rect(ctx,stone,x+16,y+8,3,9);
-    rect(ctx,edge,x+5,y+9,1,7);
-    if(kind==='crypt'||kind==='vault'){
-      rect(ctx,stone,x+6,y+5,12,4);
-      rect(ctx,edge,x+9,y+4,6,2);
-      rect(ctx,deep,x+10,y+10,4,1);
-    }else{
-      poly(ctx,stone,[x+3,y+8,x+12,y+2,x+21,y+8]);
-      rect(ctx,edge,x+5,y+7,14,2);
-      rect(ctx,deep,x+11,y+5,2,2);
-    }
-  }
-  rect(ctx,'#58785b',x+3,y+16,5,2);
-  rect(ctx,'#9caa74',x+3,y+15,3,1);
-  rect(ctx,edge,x+17,y+18,4,1);
+  x:number,y:number,visited:boolean){
+  paintBlockScenery(ctx,blockLandmark(kind,visited),{x:x+12,y:y+13},DESCENT_BLOCK_VIEW,1.62);
 }
 
 type ArtMap={
@@ -204,32 +176,6 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
   }
 }
 
-function tree(ctx:CanvasRenderingContext2D,px:number,py:number,pine:boolean,variant:number){
-  shadow(ctx,px+13,py+20,10,4);
-  rect(ctx,'#4d4339',px+11,py+8,4,13);
-  rect(ctx,'#9c7652',px+11,py+11,2,9);
-  if(pine){
-    poly(ctx,'#264e46',[px+12,py-15,px+20,py-2,px+18,py-2,px+25,py+9,
-      px+21,py+9,px+27,py+16,px+3,py+16,px+8,py+8,px+4,py+8,px+9,py]);
-    poly(ctx,variant%2?'#438368':'#3a7457',[px+12,py-12,px+18,py-1,px+15,py-1,
-      px+22,py+8,px+16,py+8,px+22,py+13,px+5,py+13,px+10,py+5,px+7,py+5]);
-    rect(ctx,'#7eaa6b',px+10,py-1,5,2);
-    rect(ctx,'#6a9f73',px+8,py+6,6,2);
-    rect(ctx,'#93b37c',px+13,py+9,4,1);
-    return;
-  }
-  const canopy=variant%3===0?'#54875b':variant%3===1?'#669c66':'#698b52';
-  poly(ctx,'#294d42',[px+6,py-7,px+15,py-10,px+23,py-6,px+26,py+1,
-    px+25,py+11,px+20,py+16,px+9,py+16,px+1,py+11,px,py+4]);
-  poly(ctx,canopy,[px+5,py-3,px+12,py-8,px+20,py-6,px+23,py-1,px+23,py+8,
-    px+18,py+12,px+7,py+12,px+2,py+7,px+2,py+1]);
-  rect(ctx,'#8db573',px+8,py-3,8,2);
-  rect(ctx,'#7ba66a',px+4,py+2,9,3);
-  rect(ctx,'#abd08a',px+11,py+2,4,1);
-  rect(ctx,'#3c6e52',px+16,py+5,6,4);
-  rect(ctx,'#4f8361',px+9,py+9,6,2);
-}
-
 export type AdventureProp='tree'|'pine'|'rocks'|'flowers'|'reeds'|'embers'|'lantern';
 export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
   x:number,y:number):AdventureProp|undefined{
@@ -259,163 +205,17 @@ export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
 }
 export function paintAdventureProp(ctx:CanvasRenderingContext2D,prop:AdventureProp,
   x:number,y:number,variant:number){
-  if(prop==='tree'||prop==='pine'){tree(ctx,x,y,prop==='pine',variant);return;}
-  if(prop==='lantern'){
-    shadow(ctx,x+5,y+20,4,2);
-    rect(ctx,'#463b38',x+4,y+8,2,13);
-    rect(ctx,'#5e493c',x+2,y+2,6,7);
-    rect(ctx,'#f3be6c',x+3,y+4,4,4);
-    rect(ctx,'#ffdf9f',x+4,y+4,2,2);
-    return;
-  }
-  if(prop==='rocks'){
-    shadow(ctx,x+12,y+19,9,3);
-    if(variant%3===0){
-      rect(ctx,'#5b6865',x+3,y+16,7,3);
-      rect(ctx,'#a5a694',x+3,y+15,5,2);
-      rect(ctx,'#5b6865',x+12,y+13,9,5);
-      rect(ctx,'#a5a694',x+13,y+12,6,3);
-      rect(ctx,'#76887a',x+8,y+18,5,2);
-      return;
-    }
-    poly(ctx,'#536063',[x+3,y+16,x+6,y+9,x+11,y+6,x+19,y+10,x+22,y+17,x+17,y+20,x+5,y+19]);
-    poly(ctx,'#969c8d',[x+5,y+15,x+8,y+9,x+13,y+7,x+19,y+10,x+17,y+14,x+10,y+15]);
-    rect(ctx,'#b5b4a1',x+10,y+9,5,2);
-    rect(ctx,'#6e8070',x+14,y+16,6,2);
-    return;
-  }
-  const color=prop==='embers'?'#e0a16b':prop==='reeds'?'#d8be76':
-    ['#e6ba82','#e7a395','#d4d897'][variant%3];
-  for(let k=0;k<3;k++){
-    const dx=5+k*5,dy=(variant+k*3)%5;
-    rect(ctx,prop==='embers'?'#744a4f':'#476b50',x+dx,y+15+dy,2,5);
-    rect(ctx,color,x+dx-1,y+14+dy,3,2);
-  }
+  const kind=prop==='tree'?'oak':prop==='rocks'?'boulder':prop;
+  const large=kind==='oak'||kind==='pine'||kind==='boulder';
+  const anchor={x:x+(kind==='lantern'?5:12),y:y+16};
+  paintBlockScenery(ctx,blockProp(kind,variant),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
 }
 
-function windowLight(ctx:CanvasRenderingContext2D,x:number,y:number){
-  rect(ctx,'#344644',x,y,5,6);rect(ctx,'#f3d292',x+1,y+1,3,3);
-  rect(ctx,'#614944',x+2,y+1,1,4);
-}
 export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
   x:number,y:number,landscape:AdventureLandscape,variant:number,doorSide?:Point){
-  const arch=ARCHITECTURE[b.culture],ink='#3c353a',trim=arch.trim;
-  const roof=landscape==='coast'&&b.culture==='human'?'#4f8a89':arch.roof;
-  const log=b.culture==='human'||b.culture==='elf';
-  shadow(ctx,x+13,y+21,14,4);
-  if(b.stage==='foundation'||b.stage==='abandoned'||b.stage==='ruin'){
-    rect(ctx,ink,x+2,y+9,21,12);
-    rect(ctx,'#907b68',x+4,y+10,17,9);
-    for(let i=0;i<3;i++)rect(ctx,arch.wall,x+4+i*6,y+14-i%2*3,4,5);
-    if(b.stage==='foundation'){
-      rect(ctx,'#d7b886',x+2,y+8,1,12);rect(ctx,'#d7b886',x+21,y+8,1,12);
-    }
-    return;
-  }
-  if(b.type==='farm'){
-    rect(ctx,'#594b3c',x+1,y+4,22,18);
-    for(let row=0;row<3;row++){
-      rect(ctx,'#976f4e',x+2,y+5+row*5,20,3);
-      for(let col=0;col<4;col++){
-        const yy=y+5+row*5,xx=x+4+col*5;
-        rect(ctx,row===2?'#dac073':'#abc177',xx,yy-1,2,3);
-        rect(ctx,'#73874d',xx+1,yy,2,2);
-      }
-    }
-    return;
-  }
-  if(b.type==='well'){
-    rect(ctx,ink,x+5,y+12,14,9);rect(ctx,arch.wall,x+6,y+13,12,7);
-    rect(ctx,'#4f9495',x+8,y+14,8,4);rect(ctx,trim,x+5,y+11,14,2);
-    rect(ctx,ink,x+5,y+4,2,9);rect(ctx,ink,x+17,y+4,2,9);
-    poly(ctx,roof,[x+2,y+6,x+7,y,x+16,y,x+22,y+6]);
-    return;
-  }
-  if(b.type==='dock'){
-    rect(ctx,ink,x+4,y+3,16,20);
-    for(let i=0;i<5;i++)rect(ctx,i%2?'#c29164':'#ddaa76',x+4,y+3+i*4,16,3);
-    for(const xx of [4,18])for(const yy of [4,18])rect(ctx,'#6c5244',x+xx,y+yy,3,5);
-    return;
-  }
-  if(b.type==='market'){
-    rect(ctx,'#594643',x+2,y+6,20,15);
-    rect(ctx,arch.wall,x+3,y+15,18,4);
-    for(let i=0;i<5;i++)rect(ctx,i%2?trim:roof,x+2+i*4,y+4,4,9-i%2*2);
-    for(let i=0;i<3;i++)rect(ctx,['#86b178','#deb071','#c77b65'][i],
-      x+5+i*5,y+14,3,3);
-    return;
-  }
-  const large=b.type==='communal'||buildingTier(b)>=2;
-  const shelter=b.type==='shelter';
-  const left=x+(shelter?4:1),right=x+(shelter?21:24);
-  const roofTop=y-(large?15:shelter?3:9);
-  const eave=y+6;
-  rect(ctx,ink,left,eave,right-left,16);
-  rect(ctx,arch.wall,left+1,eave+1,right-left-2,14);
-  if(log){
-    rect(ctx,trim,left+1,y+10,right-left-2,1);
-    rect(ctx,'#42383b69',left+1,y+16,right-left-2,1);
-  }else{
-    rect(ctx,'#49465690',left+2,y+13,right-left-4,1);
-    rect(ctx,trim,left+2,y+8,right-left-4,1);
-    rect(ctx,'#49465690',left+5,y+14,1,5);
-    rect(ctx,'#49465690',right-6,y+9,1,6);
-  }
-  const mid=Math.round((left+right)/2);
-  if(!doorSide||doorSide.y>0){
-    rect(ctx,ink,mid-3,y+12,6,10);
-    rect(ctx,log?'#82604a':'#54515b',mid-2,y+13,4,8);
-    rect(ctx,'#fbd797',mid+1,y+17,1,1);
-  }else if(doorSide.x){
-    const jamb=doorSide.x>0?right-3:left;
-    rect(ctx,ink,jamb,y+12,3,9);
-    rect(ctx,trim,jamb,y+11,3,1);
-  }else if(shelter)windowLight(ctx,mid-2,y+12);
-  if(!shelter){
-    windowLight(ctx,left+3,y+10);
-    if(large)windowLight(ctx,right-8,y+10);
-  }
-  if(b.stage==='frame'){
-    rect(ctx,trim,left,eave-5,2,14);rect(ctx,trim,right-2,eave-5,2,14);
-    rect(ctx,'#846647',left,eave-5,right-left,2);
-    rect(ctx,'#846647',mid,roofTop,2,eave-roofTop);
-    return;
-  }
-  if(b.culture==='dwarf'){
-    poly(ctx,ink,[left-2,eave+2,left-1,eave-5,left+3,eave-5,left+3,roofTop+4,
-      left+7,roofTop+4,left+7,roofTop,right-7,roofTop,right-7,roofTop+4,
-      right-3,roofTop+4,right-3,eave-5,right+1,eave-5,right+2,eave+2]);
-    rect(ctx,roof,left+1,eave-4,right-left-2,5);
-    rect(ctx,roof,left+4,roofTop+5,right-left-8,eave-roofTop-8);
-    rect(ctx,trim,left+7,roofTop+1,right-left-14,2);
-  }else{
-    const tilt=variant%3-1;
-    poly(ctx,ink,[left-3,eave+2,left+1,eave-5,mid+tilt,roofTop,
-      right-1,eave-5,right+3,eave+2]);
-    poly(ctx,roof,[left-1,eave,left+2,eave-5,mid+tilt,roofTop+2,
-      right-2,eave-5,right+1,eave]);
-    poly(ctx,'#f9d09a50',[left-1,eave,mid+tilt,roofTop+2,mid+2,eave]);
-    if(b.culture==='elf'){
-      rect(ctx,'#a1c986',mid-2,roofTop+5,4,2);
-      rect(ctx,'#83b38a',left+4,eave-3,right-left-8,1);
-    }else{
-      rect(ctx,'#201b2c4f',left+4,eave-4,right-left-8,1);
-      rect(ctx,'#f9d9a244',left+2,eave-1,right-left-4,1);
-    }
-  }
-  if(b.type==='workshop'||b.culture==='demon'){
-    rect(ctx,ink,right-7,roofTop-2,4,10);
-    rect(ctx,b.culture==='demon'?'#eea07e':'#b5907a',right-7,roofTop-3,4,2);
-  }
-  if(b.type==='communal'){
-    rect(ctx,trim,mid-1,roofTop-7,1,8);
-    rect(ctx,accents[landscape],mid,roofTop-7,7,4);
-  }
-  if(b.type==='storage'||b.type==='workshop'){
-    rect(ctx,ink,right-4,y+16,7,6);
-    rect(ctx,'#c69763',right-3,y+16,5,5);
-    rect(ctx,'#826347',right-3,y+18,5,1);
-  }
+  const model=blockBuilding(b,variant,{door:doorSide,coastal:landscape==='coast'});
+  const size=b.type==='communal'?1.6:b.type==='shelter'?1.97:1.82;
+  paintBlockScenery(ctx,model,{x:x+12,y:y+13},DESCENT_BLOCK_VIEW,size);
 }
 
 export function paintDoorstep(ctx:CanvasRenderingContext2D,x:number,y:number,side:Point){

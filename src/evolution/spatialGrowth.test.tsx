@@ -4,7 +4,9 @@ import {describe,expect,it} from 'vitest';
 import {BUILDING_TIER_NAMES,COSTS,buildingAppearance,buildingTier,validConstruction,
   improveBuildings,prepareInfrastructure,settlementStage,
   type Building} from './construction';
-import {paintDepthBuilding,paintDepthPerson,paintDepthTree} from './depthSprites';
+import {paintDepthPerson} from './depthSprites';
+import {blockBuilding,blockProp} from './blockModels';
+import {depthBlockView,paintBlockModel} from './blockScenery';
 import {DepthCanvas} from './DepthCanvas';
 import {createWorld,type Settlement} from './engine';
 import {mortalWorldPoint,DEPTH_FOOTPRINT} from './spatialDetails';
@@ -50,23 +52,32 @@ describe('v2.05 — unequal footprints, free sprite movement and growing homes',
     expect(a.x).toBe(Math.floor(a.x)); // ecology still has exact tile occupancy
   });
 
-  it('renders a person at smaller scale than a tree and a building',()=>{
+  it('projects real block walls and crowns around a much smaller mortal',()=>{
     const w=createWorld({seed:205,size:'small'}),a=w.agents[0];
-    const rectangles:{width:number;kind:string}[]=[];
-    const painter={fillStyle:'',fillRect(_x:number,_y:number,width:number){
-      rectangles.push({width,kind:String(painter.fillStyle)});
-    }} as unknown as CanvasRenderingContext2D;
-    paintDepthPerson(painter,a,{x:22,y:22});
+    const rectangles:number[]=[],faces:string[]=[];
+    const painter={
+      fillStyle:'',strokeStyle:'',lineWidth:1,
+      fillRect(_x:number,_y:number,width:number){rectangles.push(width);},
+      beginPath(){},moveTo(){},lineTo(){},closePath(){},stroke(){},
+      fill(){faces.push(String(painter.fillStyle));},
+    } as unknown as CanvasRenderingContext2D;
+    const anchor={x:22,y:22},view=depthBlockView({yaw:0,pitch:30});
+    paintDepthPerson(painter,a,anchor);
     expect(rectangles.length).toBeGreaterThan(0);
-    expect(rectangles.every(r=>r.width===1)).toBe(true);
-    rectangles.length=0;
-    paintDepthTree(painter,{x:22,y:22},false);
-    expect(rectangles.some(r=>r.width===6)).toBe(true);
-    rectangles.length=0;
+    expect(rectangles.every(width=>width===1)).toBe(true);
+    const tree=blockProp('oak',1);
+    const original=paintBlockModel(painter,tree,anchor,view,1);
+    expect(original.bottom-original.top).toBeGreaterThan(8);
+    expect(original.right-original.left).toBeGreaterThan(5);
+    const before=faces.splice(0);
+    const rotated=paintBlockModel(painter,tree,anchor,depthBlockView({yaw:145,pitch:30}),1);
+    expect(rotated).not.toEqual(original);
+    expect(faces).not.toEqual(before);
     const {s}=readyTown();
-    paintDepthBuilding(painter,s.infrastructure!.buildings[0],{x:22,y:22});
-    expect(rectangles.some(r=>r.width===12)).toBe(true);
-    expect(rectangles.some(r=>r.kind==='rgba(18,37,45,.32)')).toBe(true);
+    const building=blockBuilding(s.infrastructure!.buildings[0],0);
+    const box=paintBlockModel(painter,building,anchor,view,1.2);
+    expect(box.right-box.left).toBeGreaterThan(original.right-original.left);
+    expect(box.top).toBeLessThan(anchor.y-5);
   });
 
   it('uses real surplus materials and builders to upgrade a hut into a stone home',()=>{

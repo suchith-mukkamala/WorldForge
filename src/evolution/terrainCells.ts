@@ -84,7 +84,8 @@ function baseTerrain(w:World):TerrainBase{
   const lowPoint=new Uint32Array(tiles.length);
   for(let tile=0;tile<tiles.length;tile++){
     const x=tile%width,y=Math.floor(tile/width),biome=tiles[tile].biome;
-    const water=biome==='water',rocky=biome==='mountain'||biome==='cave'||biome==='volcanic';
+    const water=biome==='water',rocky=biome==='mountain'||biome==='cave'||biome==='volcanic'||
+      !!w.settings.landforms&&heights[tile]>=169;
     const neighbors=[x>0?tile-1:tile,x<width-1?tile+1:tile,
       y>0?tile-width:tile,y<height-1?tile+width:tile];
     const shore=neighbors.some(i=>tiles[i].biome==='water');

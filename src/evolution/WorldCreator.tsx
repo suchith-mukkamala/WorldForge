@@ -5,7 +5,8 @@ import {freshWorldSeed} from './worldSeeds';
 import {DEFAULT_WORLD_LAYOUT,generateSeedTerrain,landmassCount,WORLD_LAYOUTS,
   WORLD_LAYOUT_NAMES,type WorldLayout} from './worldGeography';
 import {TerrainPreview} from './TerrainPreview';
-import {generateRegionalTopography} from './regionalGeography';
+import {DEFAULT_LANDFORMS,generateRegionalTopography,LANDFORM_NAMES,
+  type LandformProfile} from './regionalGeography';
 import {initialWoodland} from './woodland';
 
 const PRESETS=[
@@ -32,21 +33,22 @@ export function WorldCreator({
     layout:current.layout??DEFAULT_WORLD_LAYOUT,
     livingBiomes:current.livingBiomes??true,
     regionalGeography:true,
+    landforms:current.landforms??DEFAULT_LANDFORMS,
     terrainCells:current.terrainCells??true,
   }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
-  const {seed,layout,livingBiomes}=draft;
+  const {seed,layout,livingBiomes,landforms}=draft;
   const map=useMemo(()=>{
     const terrain=generateSeedTerrain(width,height,seed,layout);
     const tiles=terrain.biomes.map(biome=>({biome,food:0}));
-    const landscape={width,height,tiles,settings:{...DEFAULT_SETTINGS,seed,layout,regionalGeography:true},
-      topography:generateRegionalTopography(width,height,tiles,seed)};
+    const landscape={width,height,tiles,settings:{...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true},
+      topography:generateRegionalTopography(width,height,tiles,seed,landforms)};
     const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined};
     return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
-  },[width,height,seed,layout,livingBiomes]);
+  },[width,height,seed,layout,livingBiomes,landforms]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -68,6 +70,13 @@ export function WorldCreator({
           onChange={event=>update('layout',event.target.value as WorldLayout)}>
           {WORLD_LAYOUTS.map(layout=><option key={layout} value={layout}>
             {WORLD_LAYOUT_NAMES[layout]}</option>)}
+        </select>
+        <label htmlFor="evo-landforms">Relief</label>
+        <select id="evo-landforms" value={landforms??''}
+          onChange={e=>update('landforms',(e.target.value||undefined) as LandformProfile|undefined)}>
+          {Object.entries(LANDFORM_NAMES).map(([value,name])=>
+            <option key={value} value={value}>{name}</option>)}
+          <option value="">Classic terrain</option>
         </select>
         <div className="world-preview-actions">
           <button type="button" onClick={()=>update('seed',freshWorldSeed(draft.seed))}>
@@ -135,7 +144,7 @@ export function WorldCreator({
                   <span aria-hidden="true">⚄</span> RANDOM
                 </button>
                 <button type="button" onClick={()=>setDraft(settings=>({...settings,
-                  seed:current.seed,size:current.size,layout:current.layout}))}
+                  seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms}))}
                   title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>
               <small className="evo-seed-hint">A fresh seed is chosen for each new world.

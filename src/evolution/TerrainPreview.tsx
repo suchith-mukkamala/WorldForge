@@ -1,6 +1,8 @@
 import {useEffect,useRef} from 'react';
-import {atlasRivers,atlasTileGrain,overheadTerrainColor,paintOverheadTerrainTile,type AtlasLand} from './atlasTerrain';
+import {atlasRivers,atlasTileGrain,highlandColor,overheadTerrainColor,paintOverheadTerrainTile,
+  type AtlasLand} from './atlasTerrain';
 import {hydrologyForWorld} from './hydrology';
+import {topographyForWorld} from './topography';
 import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {woodlandCover,woodlandHabitat} from './woodland';
@@ -13,11 +15,14 @@ export function TerrainPreview({world,label}:{world:AtlasLand;label:string}){
     const ctx=ref.current?.getContext('2d');
     if(!ctx)return;
     const depths=coastalDepth(width,height,i=>world.tiles[i].biome==='water');
+    const heights=topographyForWorld(world).heights;
     for(let i=0;i<world.tiles.length;i++){
       const x=i%width,y=Math.floor(i/width),biome=world.tiles[i].biome;
       const cover=woodlandHabitat(biome)?woodlandCover(world.woodland,i):undefined;
-      paintOverheadTerrainTile(ctx,x,y,CELL,overheadTerrainColor(biome,depths[i],cover),
-        atlasTileGrain(biome,depths[i],pixelTerrainHash(x,y,world.settings.seed)));
+      const grain=pixelTerrainHash(x,y,world.settings.seed);
+      const rock=world.settings.landforms?highlandColor(biome,heights[i],grain):undefined;
+      paintOverheadTerrainTile(ctx,x,y,CELL,rock??overheadTerrainColor(biome,depths[i],cover),
+        atlasTileGrain(biome,depths[i],grain));
     }
     ctx.strokeStyle='#70aeb4';
     ctx.lineWidth=.8;

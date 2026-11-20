@@ -11,7 +11,7 @@ import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
 import {enableTerrainCells,terrainCellsIn} from './terrainCells';
 import {TerrainCellPanel} from './TerrainCellPanel';
-import {settlementGeography} from './regionalGeography';
+import {DEFAULT_LANDFORMS,settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
@@ -75,7 +75,7 @@ function initialWorld():World{
   }
   // First-time visitors get their own world; existing local saves always win.
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
-    livingBiomes:true,regionalGeography:true,terrainCells:true,
+    livingBiomes:true,regionalGeography:true,landforms:DEFAULT_LANDFORMS,terrainCells:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }

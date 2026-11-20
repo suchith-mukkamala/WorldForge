@@ -5,7 +5,8 @@ import {createWorld,isWorld} from './engine';
 import {PixelPortrait} from './PixelPortrait';
 import {PeopleDirectory} from './PeopleDirectory';
 import {WorldFamily} from './WorldFamily';
-import {appearanceFor,paintBuilding,paintPerson,paintTerrain,spriteKey} from './pixelArt';
+import {appearanceFor,paintPerson,paintTerrain,spriteKey} from './pixelArt';
+import {blockBuilding} from './blockModels';
 import {BUILDING_TYPES,prepareInfrastructure} from './construction';
 
 describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
@@ -72,23 +73,18 @@ describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
     const b={id:1,type:'market' as const,x:12,y:15,culture:'human' as const,
       stage:'complete' as const,progress:100,condition:100,started:0,
       spent:{wood:11,stone:8,clay:7},labor:19};
-    paintBuilding(fake,b);
-    expect(pixels.length).toBeGreaterThan(spritePixels+10);
+    expect(blockBuilding(b,0).faces.length).toBeGreaterThan(100);
     expect(JSON.stringify(w)).toBe(original);
   });
 
-  it('gives all nine construction types distinct readable pixel silhouettes',()=>{
+  it('gives all nine construction types distinct block geometry',()=>{
     const shapes=new Set<string>();
     for(const type of BUILDING_TYPES){
-      const cells:string[]=[];
-      const brush={fillStyle:'',fillRect(x:number,y:number,width:number,height:number){
-        cells.push([x,y,width,height,brush.fillStyle].join(':'));
-      }};
-      paintBuilding(brush as unknown as CanvasRenderingContext2D,{
+      const model=blockBuilding({
         id:1,type,x:5,y:5,culture:'elf',stage:'complete',progress:100,
-        condition:100,started:0,spent:{wood:1,stone:1,clay:1},labor:10});
-      expect(cells.length).toBeGreaterThan(3);
-      shapes.add(cells.join('|'));
+        condition:100,started:0,spent:{wood:1,stone:1,clay:1},labor:10},0);
+      expect(model.faces.some(f=>f.z>1)).toBe(true);
+      shapes.add(model.faces.map(f=>[f.x,f.y,f.z,f.direction].join(':')).sort().join('|'));
     }
     expect(shapes.size).toBe(BUILDING_TYPES.length);
   });

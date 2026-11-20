@@ -17,6 +17,13 @@ export function overheadTerrainColor(biome:Biome,waterDepth:number,cover?:number
   return cover===undefined?BIOME_INFO[biome].color:canopyColors[Math.round(cover*63)];
 }
 
+const HIGH_GROUND=['#8d9b96','#a5aea6','#bdc7bf','#d5ded3'];
+export function highlandColor(biome:Biome,height:number,grain:number):string|undefined{
+  if(biome==='water'||biome==='volcanic'||biome==='wasteland')return;
+  const band=Math.floor((height-153+(grain&7))/21);
+  return band>=0?HIGH_GROUND[Math.min(HIGH_GROUND.length-1,band)]:undefined;
+}
+
 export function atlasTileGrain(biome:Biome,waterDepth:number,grain:number):number|undefined{
   return biome!=='water'||waterDepth<4||grain%6===0?grain:undefined;
 }
