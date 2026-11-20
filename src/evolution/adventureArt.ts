@@ -1,19 +1,18 @@
 import type {Biome,World} from './engine';
 import type {Building} from './construction';
-import {blockBuilding,blockLandmark,blockProp} from './blockModels';
-import {DESCENT_BLOCK_VIEW,paintBlockScenery} from './blockScenery';
+import {blockProp,type BlockModel} from './blockModels';
+import {DESCENT_BLOCK_VIEW,paintBlockContact,paintBlockScenery} from './blockScenery';
 import {biomeTreeAt,isTreeKind,type TreeKind} from './biomeTrees';
 import {terrainDetailAt} from './terrainDetails';
 import {topographyForWorld} from './topography';
 import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {firstTerrainSquare,shoreColor} from './terrainCellArt';
 import {springFlood} from './riverSeasons';
-import {boardwalkSite,type RegionalBuildingStyle} from './riverArchitecture';
+import {boardwalkSite} from './riverArchitecture';
 import type {VisualSeason} from './sceneAtmosphere';
 import {pixelTerrainHash} from './depthWorldArt';
 import {adventureDistance,type AdventureLandscape,type AdventureRegion} from './adventureMap';
 import type {Point} from './motion';
-import type {AncientKind} from './knowledge';
 
 export const ADVENTURE_TILE=24;
 const T=ADVENTURE_TILE;
@@ -65,9 +64,11 @@ function shadow(ctx:CanvasRenderingContext2D,x:number,y:number,width:number,heig
   ctx.fill();
 }
 
-export function paintAdventureLandmark(ctx:CanvasRenderingContext2D,kind:AncientKind,
-  x:number,y:number,visited:boolean){
-  paintBlockScenery(ctx,blockLandmark(kind,visited),{x:x+12,y:y+13},DESCENT_BLOCK_VIEW,1.62);
+export function paintAdventureStructure(ctx:CanvasRenderingContext2D,model:BlockModel,
+  x:number,y:number,unit=1.62){
+  const p={x:x+T/2,y:y+T/2};
+  paintBlockContact(ctx,model,p,DESCENT_BLOCK_VIEW,unit);
+  paintBlockScenery(ctx,model,p,DESCENT_BLOCK_VIEW,unit);
 }
 
 type ArtMap={
@@ -240,13 +241,6 @@ export function paintAdventureProp(ctx:CanvasRenderingContext2D,prop:AdventurePr
   const large=isTreeKind(kind)||kind==='boulder';
   const anchor={x:x+(kind==='lantern'?5:12),y:y+16};
   paintBlockScenery(ctx,blockProp(kind,variant,season),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
-}
-
-export function paintAdventureBuilding(ctx:CanvasRenderingContext2D,b:Building,
-  x:number,y:number,landscape:AdventureLandscape,variant:number,doorSide?:Point,regional?:RegionalBuildingStyle){
-  const model=blockBuilding(b,variant,{door:doorSide,coastal:landscape==='coast',regional});
-  const size=b.type==='communal'?1.6:b.type==='shelter'?1.97:1.82;
-  paintBlockScenery(ctx,model,{x:x+12,y:y+13},DESCENT_BLOCK_VIEW,size);
 }
 
 export function paintDoorstep(ctx:CanvasRenderingContext2D,x:number,y:number,side:Point){

@@ -2,17 +2,19 @@ import {useEffect,useRef} from 'react';
 import type {Agent,World} from './engine';
 import {adventurePlaceKey} from './adventurePlaces';
 import type {AdventureGate,AdventureMap,AdventureRegion} from './adventureMap';
-import {ADVENTURE_TILE as TILE,adventureProp,paintAdventureBuilding,
+import {ADVENTURE_TILE as TILE,adventureProp,paintAdventureStructure,
   paintAdventureGround,paintAdventureProp,paintAdventureSign,
-  paintAdventureLandmark,paintDoorstep,paintErrandMarker} from './adventureArt';
+  paintDoorstep,paintErrandMarker} from './adventureArt';
 import {actionPose,canAnimate,motionFrame,samePoint,type Facing,type Motion,
   type Point,type SpritePose} from './motion';
 import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {paintPerson} from './pixelArt';
-import {isOpenBuilding,mortalBuildingEntrance,mortalMovementDelay} from './mortalGameplay';
+import {isOpenBuilding,isMortalSolidBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
-import {regionalBuildingStyle} from './riverArchitecture';
+import {blockLandmark,blockSettlement} from './blockModels';
+import {settlementStage} from './construction';
+import {paintStructureApproach,streetStructureUnit,structureForBuilding,structureSite} from './structureGround';
 import {mortalWorldPoint} from './spatialDetails';
 import {coastalLife,fishPose,paintFish,type Fish} from './coastalLife';
 import type {AncientSite} from './knowledge';
@@ -32,27 +34,39 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
   for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+rows);y++){
     for(let x=Math.max(0,origin.x);x<Math.min(world.width,origin.x+cols);x++){
       const index=y*world.width+x,site=map.buildings.get(index),sign=signs.get(index);
-      const ruin=ruins.get(index);
+      const ruin=ruins.get(index),townCenter=region.settlement;
+      const hub=townCenter?.x===x&&townCenter.y===y&&!townCenter.infrastructure?.buildings.length?
+        townCenter:undefined;
       const opacity=region.area.has(index)||site&&site.settlementId===region.settlement?.id?
         1:.72;
       const variant=pixelTerrainHash(x,y,world.settings.seed);
       const depth=y*TILE+20;
       if(site){
         const town=world.settlements.find(s=>s.id===site.settlementId);
-        const door=town&&isOpenBuilding(site.building)?mortalBuildingEntrance(world,town,site.building):undefined;
-        const side=door&&!samePoint(door,site.building)?{x:door.x-x,y:door.y-y}:undefined;
+        const {model,site:ground,door}=structureForBuilding(world,town,site.building);
+        const unit=streetStructureUnit(site.building.type);
+        if(door)scenery.push({x,y,depth:-1,opacity,draw:(ctx,px,py)=>
+          paintStructureApproach(ctx,{x:px+TILE/2,y:py+TILE/2},door,TILE,ground)});
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-          paintAdventureBuilding(ctx,site.building,px,py,region.landscape,variant,side,
-            regionalBuildingStyle(world,site.building))});
-        if(side&&door&&region.area.has(door.y*world.width+door.x))
-          scenery.push({...door,depth:door.y*TILE+12,opacity:1,draw:(ctx,px,py)=>
-            paintDoorstep(ctx,px,py,side)});
+          paintAdventureStructure(ctx,model,px,py,unit)});
+        if(door&&isOpenBuilding(site.building)&&isMortalSolidBuilding(site.building)){
+          const entry={x:x+door.x,y:y+door.y};
+          if(region.area.has(entry.y*world.width+entry.x))
+            scenery.push({...entry,depth:entry.y*TILE+12,opacity:1,draw:(ctx,px,py)=>
+              paintDoorstep(ctx,px,py,door)});
+        }
       }
       if(sign)scenery.push({x,y,depth:depth-7,opacity:1,draw:(ctx,px,py)=>
         paintAdventureSign(ctx,px+6,py-4,sign.direction,region.landscape,!!sign.ferry)});
-      if(ruin)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-        paintAdventureLandmark(ctx,ruin.kind,px,py,(ruin.visits??ruin.visitors.length)>0)});
-      const prop=!ruin&&adventureProp(world,map,region,x,y);
+      if(ruin){
+        const model=blockLandmark(ruin.kind,(ruin.visits??ruin.visitors.length)>0,structureSite(world,ruin));
+        scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py)});
+      }
+      if(hub){
+        const model=blockSettlement(settlementStage(hub),hub.species,structureSite(world,hub));
+        scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py,1.35)});
+      }
+      const prop=!ruin&&!hub&&adventureProp(world,map,region,x,y);
       if(prop)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
         paintAdventureProp(ctx,prop,px,py,variant,waterSeason(world))});
     }

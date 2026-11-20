@@ -20,7 +20,7 @@ import {paintTerrainMosaic} from './terrainCellArt';
 import {VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {AtlasFish} from './AtlasFish';
 import {springFlood,waterSeason} from './riverSeasons';
-import {boardwalkSite,regionalBuildingStyle} from './riverArchitecture';
+import {boardwalkSite} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
 import {paintRiverCourse} from './riverCourseArt';
 import {visibleAtlasSite} from './riverDiscoveries';
@@ -33,15 +33,15 @@ import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
-import {blockBuilding,blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
-import {BLOCK_ANCHOR,OVERHEAD_BLOCK_VIEW,blockBuildingArt,blockStampScale,
-  paintBlockScenery} from './blockScenery';
+import {blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
+import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,blockStampScale,paintBlockContact,
+  paintBlockScenery,type BlockStamp} from './blockScenery';
+import {paintStructureApproach,structureForBuilding,structureSite} from './structureGround';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
 import {wornPathTiles} from './trailNetwork';
 import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
-import {atlasBuildingAt,paintAtlasBuilding,
-  type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
+import {atlasBuildingAt,paintAtlasBuilding,type AtlasBuilding} from './atlasBuildingArt';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -75,7 +75,7 @@ export function WorldCanvas({
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
-  const buildingArtRef=useRef<Map<string,BuildingArt>>(new Map());
+  const buildingArtRef=useRef<Map<string,BlockStamp>>(new Map());
   const buildingPlotsRef=useRef<AtlasBuilding[]>([]);
   const backgroundStamp=useRef<{
     tiles:World['tiles'];topography:World['topography'];woodland:World['woodland'];
@@ -273,34 +273,42 @@ export function WorldCanvas({
     }
     if(showBuildings){
       const center=(x:number,y:number)=>({x:(x+.5)*CELL,y:(y+.5)*CELL});
-      for(const ruin of world.ruins??[])
-        paintBlockScenery(ctx,blockLandmark('ruin'),center(ruin.x,ruin.y),OVERHEAD_BLOCK_VIEW,1.08);
+      for(const ruin of world.ruins??[]){
+        const model=blockLandmark('ruin',false,structureSite(world,ruin)),p=center(ruin.x,ruin.y);
+        paintBlockContact(ctx,model,p,OVERHEAD_BLOCK_VIEW,1.08);
+        paintBlockScenery(ctx,model,p,OVERHEAD_BLOCK_VIEW,1.08);
+      }
       for(const site of world.ancientSites??[]){
         if(!visibleAtlasSite(world,site))continue;
-        const model=blockLandmark(site.kind,(site.visits??site.visitors.length)>0);
-        paintBlockScenery(ctx,model,center(site.x,site.y),OVERHEAD_BLOCK_VIEW,1.08);
+        const model=blockLandmark(site.kind,(site.visits??site.visitors.length)>0,structureSite(world,site));
+        const p=center(site.x,site.y);
+        paintBlockContact(ctx,model,p,OVERHEAD_BLOCK_VIEW,1.08);
+        paintBlockScenery(ctx,model,p,OVERHEAD_BLOCK_VIEW,1.08);
       }
       for(const s of world.settlements){
         if(s.infrastructure?.buildings.length)continue;
-        const model=blockSettlement(settlementStage(s),s.species);
-        paintBlockScenery(ctx,model,center(s.x,s.y),OVERHEAD_BLOCK_VIEW,1);
+        const model=blockSettlement(settlementStage(s),s.species,structureSite(world,s)),p=center(s.x,s.y);
+        paintBlockContact(ctx,model,p,OVERHEAD_BLOCK_VIEW,1);
+        paintBlockScenery(ctx,model,p,OVERHEAD_BLOCK_VIEW,1);
       }
     }
     const plots:AtlasBuilding[]=[];
     if(showBuildings){
-      const buildings=world.settlements.flatMap(s=>s.infrastructure?.buildings??[]);
-      buildings.sort((a,b)=>a.y-b.y);
-      for(const b of buildings){
-        const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,world.settings.seed),
-          {regional:regionalBuildingStyle(world,b)});
+      const buildings=world.settlements.flatMap(town=>
+        (town.infrastructure?.buildings??[]).map(b=>({b,town})));
+      buildings.sort((a,b)=>a.b.y-b.b.y);
+      for(const {b,town} of buildings){
+        const {model,site,door}=structureForBuilding(world,town,b);
         const art=blockBuildingArt(buildingArtRef.current,model,OVERHEAD_BLOCK_VIEW,1.2);
         if(!art)continue;
-        const scale=blockStampScale(buildingVisualScale(b.type));
-        const plot={building:b,art,scale,x:(b.x+.5)*CELL-BLOCK_ANCHOR.x*scale,
-          y:(b.y+.5)*CELL-BLOCK_ANCHOR.y*scale};
+        const unit=buildingVisualScale(b.type),scale=blockStampScale(unit);
+        const p={x:(b.x+.5)*CELL,y:(b.y+.5)*CELL};
+        if(door)paintStructureApproach(ctx,p,door,CELL,site);
+        paintBlockContact(ctx,model,p,OVERHEAD_BLOCK_VIEW,unit*1.2);
+        const plot={building:b,art,scale,x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale};
         plots.push(plot);
-        paintAtlasBuilding(ctx,plot);
       }
+      for(const plot of plots)paintAtlasBuilding(ctx,plot);
     }
     buildingPlotsRef.current=plots;
     backgroundStamp.current={tiles:world.tiles,

@@ -1,4 +1,4 @@
-import {cacheBuildingArt,type BuildingArt} from './atlasBuildingArt';
+import type {BuildingArt} from './atlasBuildingArt';
 import {BLOCK_FACES,type BlockModel} from './blockModels';
 import type {DepthCamera} from './depthProjection';
 import {rasterFace} from './depthTerrain';
@@ -34,8 +34,7 @@ function faceColor(color:string,light:number,tone:number):number{
   return result;
 }
 
-export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
-  p:Point,view:BlockView,unit:number){
+function projectBlock(model:BlockModel,view:BlockView,unit:number){
   const {xx,xy,yx,yy,rise,frontX,frontY,depthX,depthY,depthZ}=view;
   const faces=model.faces.filter(f=>{
     const {dx,dy,dz}=BLOCK_FACES[f.direction];
@@ -45,59 +44,94 @@ export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
     const order=(f.x+dx/2)*depthX+(f.y+dy/2)*depthY+(f.z+dz/2)*depthZ;
     return {f,order};
   }).sort((a,b)=>a.order-b.order);
-  const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
-  const pixels=new Uint32Array(image.data.buffer);
-  let left=p.x,top=p.y,right=p.x,bottom=p.y;
-  for(const {f} of faces){
+  let left=0,top=0,right=0,bottom=0;
+  const projected=faces.map(({f})=>{
     const {quad,light}=BLOCK_FACES[f.direction];
     const grain=(Math.imul(f.x,31)^Math.imul(f.y,17)^Math.imul(f.z,13))&3;
     const color=faceColor(f.color,light,grain);
     const points=quad.map(([u,v,w])=>{
       const x=f.x+u,y=f.y+v,z=f.z+w;
-      const sx=p.x+(x*xx+y*yx)*unit,sy=p.y+(x*xy+y*yy-z*rise)*unit;
+      const sx=(x*xx+y*yx)*unit,sy=(x*xy+y*yy-z*rise)*unit;
       left=Math.min(left,sx);top=Math.min(top,sy);
       right=Math.max(right,sx);bottom=Math.max(bottom,sy);
       return {x:sx,y:sy};
     });
-    rasterFace(image,points,pixels,color);
-  }
+    return {points,color};
+  });
+  return {projected,left,top,right,bottom};
+}
+
+function paintBlockRaster(ctx:CanvasRenderingContext2D,block:ReturnType<typeof projectBlock>,p:Point){
+  const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
+  const pixels=new Uint32Array(image.data.buffer);
+  for(const {points,color} of block.projected)
+    rasterFace(image,points.map(({x,y})=>({x:x+p.x,y:y+p.y})),pixels,color);
   ctx.putImageData(image,0,0);
-  return {left,top,right,bottom};
+  return image.data;
+}
+
+export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
+  p:Point,view:BlockView,unit:number){
+  const block=projectBlock(model,view,unit);
+  paintBlockRaster(ctx,block,p);
+  return {left:block.left+p.x,top:block.top+p.y,right:block.right+p.x,bottom:block.bottom+p.y};
 }
 
 const STAMP_DENSITY=4;
-const STAMP_SIZE=56*STAMP_DENSITY;
-export const BLOCK_ANCHOR={x:STAMP_SIZE/2,y:STAMP_SIZE-15*STAMP_DENSITY};
-const propCache=new Map<string,{image:HTMLCanvasElement;x:number;y:number;w:number;h:number}>();
-const artKey=(model:BlockModel,view:BlockView,unit:number)=>
-  [model.key,view.key,unit].join('|');
+export type BlockStamp=BuildingArt&{anchor:Point};
+const propCache=new Map<string,BlockStamp>();
+
+export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
+  view:BlockView,unit:number):BlockStamp|undefined{
+  const key=[model.key,view.key,unit].join('|'),cached=cache.get(key);
+  if(cached)return cached;
+  const block=projectBlock(model,view,unit*STAMP_DENSITY);
+  // Size the sprite to the real projected geometry, including extended
+  // footings and shore decks beyond their original fixed-size canvas.
+  const anchor={x:1-Math.floor(block.left),y:1-Math.floor(block.top)};
+  const image=document.createElement('canvas');
+  image.width=Math.ceil(block.right)+anchor.x+1;
+  image.height=Math.ceil(block.bottom)+anchor.y+1;
+  const painter=image.getContext('2d');
+  if(!painter)return;
+  const pixels=paintBlockRaster(painter,block,anchor);
+  const bounds={left:0,top:0,right:image.width,bottom:image.height};
+  const art={image,anchor,pixels,bounds};
+  if(cache.size>=200)cache.clear();
+  cache.set(key,art);
+  return art;
+}
 
 export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
   p:Point,view:BlockView,unit:number):void{
-  const key=artKey(model,view,unit);
-  let sprite=propCache.get(key);
-  if(!sprite){
-    const image=document.createElement('canvas');
-    image.width=image.height=STAMP_SIZE;
-    const painter=image.getContext('2d');
-    if(!painter)return;
-    const {left,top,right,bottom}=paintBlockModel(painter,model,BLOCK_ANCHOR,view,unit*STAMP_DENSITY);
-    const x=Math.max(0,Math.floor(left)-1),y=Math.max(0,Math.floor(top)-1);
-    sprite={image,x,y,w:Math.min(STAMP_SIZE,Math.ceil(right)+1)-x,
-      h:Math.min(STAMP_SIZE,Math.ceil(bottom)+1)-y};
-    if(propCache.size>=132)propCache.clear();
-    propCache.set(key,sprite);
-  }
-  const {image,x,y,w,h}=sprite;
-  ctx.drawImage(image,x,y,w,h,
-    p.x+(x-BLOCK_ANCHOR.x)/STAMP_DENSITY,p.y+(y-BLOCK_ANCHOR.y)/STAMP_DENSITY,
-    w/STAMP_DENSITY,h/STAMP_DENSITY);
+  const sprite=blockBuildingArt(propCache,model,view,unit);
+  if(!sprite)return;
+  const {image,anchor}=sprite;
+  ctx.drawImage(image,p.x-anchor.x/STAMP_DENSITY,p.y-anchor.y/STAMP_DENSITY,
+    image.width/STAMP_DENSITY,image.height/STAMP_DENSITY);
 }
 
-export function blockBuildingArt(cache:Map<string,BuildingArt>,model:BlockModel,
-  view:BlockView,unit:number):BuildingArt|undefined{
-  return cacheBuildingArt(cache,artKey(model,view,unit),STAMP_SIZE,painter=>
-    paintBlockModel(painter,model,BLOCK_ANCHOR,view,unit*STAMP_DENSITY));
+const contactBounds=new WeakMap<BlockModel,{left:number;top:number;right:number;bottom:number}>();
+/** A short contact shadow on the ground plane of the overhead scenes. */
+export function paintBlockContact(ctx:CanvasRenderingContext2D,model:BlockModel,
+  p:Point,view:BlockView,unit:number):void{
+  if(!model.feet.length)return;
+  let bounds=contactBounds.get(model);
+  if(!bounds){
+    const xs=model.feet.map(f=>f.x),ys=model.feet.map(f=>f.y);
+    bounds={left:Math.min(...xs)-.35,top:Math.min(...ys)-.35,
+      right:Math.max(...xs)+1.35,bottom:Math.max(...ys)+1.35};
+    contactBounds.set(model,bounds);
+  }
+  const {left,top,right,bottom}=bounds;
+  ctx.fillStyle='#192b2370';
+  ctx.beginPath();
+  for(const [i,[x,y]] of [[left,top],[right,top],[right,bottom],[left,bottom]].entries()){
+    const px=p.x+(x*view.xx+y*view.yx)*unit,py=p.y+(x*view.xy+y*view.yy)*unit;
+    if(i)ctx.lineTo(px,py);
+    else ctx.moveTo(px,py);
+  }
+  ctx.closePath();ctx.fill();
 }
 
 /** Art and alpha picking use the same source-pixel transform. */
