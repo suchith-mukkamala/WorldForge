@@ -21,27 +21,33 @@ export function terrainRiverEdge(heights:readonly number[],projector:Projector,
 
 export type DepthPicking={width:number;height:number;ids:Uint32Array};
 
-/** Rasterize visible convex faces in draw order. Each pixel has one tile ID,
- * so anti-aliased edges can't mix two IDs into some unrelated location. */
-export function pickTerrainFace(picking:DepthPicking,points:readonly Point[],index:number,
-  pixels?:Uint32Array,color=0):void{
+/** Fill a convex face at pixel centers. Shared edges use half-open spans so
+ * adjacent faces meet without mixing their colors or leaving a seam. */
+export function rasterFace({width,height}:{width:number;height:number},points:readonly Point[],
+  pixels:Uint32Array|undefined,color:number,ids?:Uint32Array,id=0):void{
   let top=Infinity,bottom=-Infinity;
   for(const {y} of points){top=Math.min(top,y);bottom=Math.max(bottom,y);}
-  const lastRow=Math.min(picking.height,Math.ceil(bottom-.5));
+  const lastRow=Math.min(height,Math.ceil(bottom-.5));
   for(let y=Math.max(0,Math.ceil(top-.5));y<lastRow;y++){
     const scan=y+.5;
     let left=Infinity,right=-Infinity;
     for(let i=0;i<points.length;i++){
       const a=points[i],b=points[(i+1)%points.length];
-      if(scan<Math.min(a.y,b.y)||scan>=Math.max(a.y,b.y))continue;
-      const x=a.x+(b.x-a.x)*(scan-a.y)/(b.y-a.y);
+      const upper=a.y<=b.y?a:b,lower=upper===a?b:a;
+      if(scan<upper.y||scan>=lower.y)continue;
+      const x=upper.x+(lower.x-upper.x)*(scan-upper.y)/(lower.y-upper.y);
       left=Math.min(left,x);right=Math.max(right,x);
     }
-    const start=Math.max(0,Math.ceil(left-.5)),end=Math.min(picking.width,Math.ceil(right-.5));
+    const start=Math.max(0,Math.ceil(left-.5)),end=Math.min(width,Math.ceil(right-.5));
     if(start<end){
-      const offset=y*picking.width;
-      picking.ids.fill(index+1,offset+start,offset+end);
+      const offset=y*width;
+      ids?.fill(id,offset+start,offset+end);
       pixels?.fill(color,offset+start,offset+end);
     }
   }
+}
+
+export function pickTerrainFace(picking:DepthPicking,points:readonly Point[],index:number,
+  pixels?:Uint32Array,color=0):void{
+  rasterFace(picking,points,pixels,color,picking.ids,index+1);
 }

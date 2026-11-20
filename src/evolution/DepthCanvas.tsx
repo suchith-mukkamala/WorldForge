@@ -458,10 +458,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       // zoom; additional pixels resolve the atlas instead of enlarging it.
       ctx.setTransform(density,0,0,density,0,0);
       ctx.clearRect(0,0,size.width,size.height);
-      ctx.imageSmoothingEnabled=density<sceneryDensity;
-      ctx.imageSmoothingQuality='high';
-      ctx.drawImage(scenery,0,0,size.width,size.height);
       ctx.imageSmoothingEnabled=false;
+      ctx.drawImage(scenery,0,0,size.width,size.height);
       if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
       if(overlay==='trade'){
         ctx.fillStyle='rgba(12,29,33,.26)';
