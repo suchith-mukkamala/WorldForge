@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.19.0 — Coastal Life** sharpens the 2.5D atlas, block scenery and outdoor Descend view. Look for coral clusters in warm shallows and little fish that wander near shore and occasionally jump. Zoom into a coast or explore it on foot to see the fish. Existing worlds gain the same coastal details.
+
 - **v2.18.0 — Riverlands** sharpens the overhead and raised maps and uses the same eight-by-eight pattern of terrain squares at every zoom. Sand, mud, shallows and gravel follow the coast and the riverbanks. Open **Rivers** to trace a course, then **Descend at headwaters** to walk downstream past falls, wooded valleys and fords. Explore new worlds for glacial lakes, canyons, calderas and barrier islands, and survey uncharted landmarks on foot. River settlements can build watermills and fishing docks, with stilt homes, boardwalks, terraces and markets shaped by their surroundings. Spring floods cover low trails, summer exposes gravel bars, and larches turn gold in autumn. Existing saved maps gain the sharper rendering. Generate a new Riverlands world for the new landforms and landmarks.
 
 - **v2.17.0 — Biome Atlas** uses one four-by-four terrain grid across the entire map in both atlas views. Zoom and pan anywhere to inspect the same size of ground squares. New worlds add taiga spruce and larch, wetland willows, and savanna acacias and baobabs. Explore standing stones and a weathered watchtower in **Places**. Settlements farming in the new biomes can build raised granaries to store more food.

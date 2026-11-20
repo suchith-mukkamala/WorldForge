@@ -34,7 +34,7 @@ export function terrainSwatches(color:string,water:boolean):Uint32Array{
     const tint=materials[i>>2],weight=water?0:i>>2===1?.055:.14;
     const mix=(shift:number)=>Math.round((base>>>shift&255)*(1-weight)+(tint>>>shift&255)*weight);
     const mixed=(255<<24|mix(16)<<16|mix(8)<<8|mix(0))>>>0;
-    palette[i]=shadeTerrainPixel(mixed,1+((i&3)-1.5)*(water?.016:.026));
+    palette[i]=shadeTerrainPixel(mixed,1+((i&3)-1.5)*(water?.016:.020));
   }
   palette.set(['#67a6a4','#509798','#43798f'].map(terrainPixel),12);
   colors.set(key,palette);
@@ -42,7 +42,7 @@ export function terrainSwatches(color:string,water:boolean):Uint32Array{
 }
 
 const shoreColors=['','#b39771','#c9b087','#448398','#407d93',
-  '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4'];
+  '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4','#667d99','#aa7894','#c6999b'];
 export const shoreColor=(type:number)=>shoreColors[type];
 const shoreline=shoreColors.map(color=>color?terrainPixel(color):0);
 export function cellPixel(grid:SurfaceGrid,index:number,palette:Uint32Array,grain:number):number{

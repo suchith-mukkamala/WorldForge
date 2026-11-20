@@ -527,6 +527,7 @@
 }
 .atlas-sheet { position: relative; margin-inline: auto; overflow: hidden; }
 .atlas-sheet .evo-world-canvas { image-rendering: auto; }
+.atlas-fish { position: absolute; pointer-events: none; }
 .atlas-river-guide {
   display: grid;
   gap: 7px;

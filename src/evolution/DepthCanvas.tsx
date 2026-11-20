@@ -11,6 +11,7 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain';
 import {paintDepthCells} from './depthCellTerrain';
+import {AtlasFish} from './AtlasFish';
 import {waterSeason} from './riverSeasons';
 import {regionalBuildingStyle} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
@@ -457,8 +458,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       // zoom; additional pixels resolve the atlas instead of enlarging it.
       ctx.setTransform(density,0,0,density,0,0);
       ctx.clearRect(0,0,size.width,size.height);
-      ctx.imageSmoothingEnabled=false;
+      ctx.imageSmoothingEnabled=density<sceneryDensity;
+      ctx.imageSmoothingQuality='high';
       ctx.drawImage(scenery,0,0,size.width,size.height);
+      ctx.imageSmoothingEnabled=false;
       if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
       if(overlay==='trade'){
         ctx.fillStyle='rgba(12,29,33,.26)';
@@ -537,7 +540,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       if(brush.kind!=='inspect')onEdit(x,y);
     }else onSelect(x,y);
   };
-  return <canvas ref={canvasRef} className="evo-world-canvas evo-depth-canvas"
+  return <><canvas ref={canvasRef} className="evo-world-canvas evo-depth-canvas"
     width={size.width*density} height={size.height*density}
     style={{width:fillWidth?'100%':(zoom*100)+'%'}}
     role="grid" tabIndex={0}
@@ -545,5 +548,16 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       world.height+' world cells. Click a raised tile to '+
       (brush.kind==='inspect'?'inspect it':'apply the selected map tool')+
       '. Arrow keys move the selection; Enter applies the brush.'}
-    onClick={click} onKeyDown={keyboard}/>;
+    onClick={click} onKeyDown={keyboard}/>
+    {fillWidth&&overlay==='terrain'&&showBuildings&&
+      <AtlasFish world={world} width={size.width} height={size.height} square={1.5} project={p=>{
+        const index=Math.floor(p.y)*world.width+Math.floor(p.x);
+        const elevation=topographyForWorld(world).heights[index];
+        const point=projector.projectSmooth(p.x-.5,p.y-.5,elevation);
+        const hit=pickingRef.current;
+        if(!hit)return;
+        const x=Math.floor(point.x/size.width*hit.width),y=Math.floor(point.y/size.height*hit.height);
+        if(hit.ids[y*hit.width+x]===index+1)return point;
+      }}/>}
+  </>;
 }

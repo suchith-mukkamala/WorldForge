@@ -14,6 +14,7 @@ import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
 import {regionalBuildingStyle} from './riverArchitecture';
 import {mortalWorldPoint} from './spatialDetails';
+import {coastalLife,fishPose,paintFish,type Fish} from './coastalLife';
 import type {AncientSite} from './knowledge';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;facing:Facing;
@@ -76,13 +77,15 @@ export function AdventureCanvas(props:Props){
     let origin={x:Infinity,y:Infinity};
     let foreground:Scenery[]=[];
     let people:Agent[]=[];
+    let swimmers:Fish[]=[];
     let frameSize={width:312,height:184},density=1;
     let frame=0;
+    const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
     const resize=()=>{
       const {width,height}=element.getBoundingClientRect();
       if(width<=0||height<=0)return;
       frameSize=adventureFrameSize(width,height);
-      density=Math.min(5,Math.max(2,Math.ceil(width/frameSize.width*window.devicePixelRatio)));
+      density=Math.min(6,Math.max(3,Math.ceil(width/frameSize.width*window.devicePixelRatio)));
     };
     const observer=new ResizeObserver(resize);
     observer.observe(element);
@@ -93,7 +96,7 @@ export function AdventureCanvas(props:Props){
       const scene=adventurePlaceKey(region.place);
       const changed=previous!==view;
       const active=now-actorMotion.start<actorMotion.duration;
-      if(now-lastFrame<(active||changed?25:125))return;
+      if(now-lastFrame<(active||changed?25:swimmers.length&&!reducedMotion.matches?55:125))return;
       lastFrame=now;
       actorMotion.facing=view.facing;
       if(scene!==lastKey||!samePoint(actorMotion.to,actor)){
@@ -118,7 +121,7 @@ export function AdventureCanvas(props:Props){
       const grid={x:Math.floor(x/TILE)-1,y:Math.floor(y/TILE)-1};
       const cols=Math.ceil(nativeWidth/TILE)+4,rows=Math.ceil(nativeHeight/TILE)+4;
       const restage=!samePoint(grid,origin)||previous?.map!==map||previous?.region!==region||
-        previous&&(waterSeason(previous.world)!==waterSeason(world)||
+        previous&&(previous.world.topography!==world.topography||waterSeason(previous.world)!==waterSeason(world)||
           previous.world.terrainCells!==world.terrainCells);
       if(restage){
         origin=grid;
@@ -126,8 +129,17 @@ export function AdventureCanvas(props:Props){
         ground.setTransform(density,0,0,density,0,0);
         paintAdventureGround(ground,world,region,map,origin,cols,rows);
         foreground=sceneScenery(view,origin,cols,rows);
+        swimmers=coastalLife(world).fish.filter(fish=>fish.x+fish.width>=grid.x&&
+          fish.x<grid.x+cols&&fish.y+fish.height>=grid.y&&fish.y<grid.y+rows);
       }
       ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y,cols*TILE,rows*TILE);
+      for(const fish of swimmers){
+        const pose=fishPose(fish,reducedMotion.matches?0:now);
+        const tile=Math.floor(pose.y)*world.width+Math.floor(pose.x);
+        if(map.bridges.has(tile))continue;
+        paintFish(ctx,fish,{x:pose.x*TILE-x,y:pose.y*TILE-y},3,
+          reducedMotion.matches?0:pose.lift,1/density);
+      }
       if(restage||previous?.world.agents!==world.agents){
         people=world.agents.filter(a=>a.id!==actor.id&&a.x>=origin.x&&
           a.x<origin.x+cols&&a.y>=origin.y&&a.y<origin.y+rows&&
