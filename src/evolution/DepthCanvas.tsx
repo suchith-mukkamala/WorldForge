@@ -69,7 +69,9 @@ function seatAt(world:World,grid:SurfaceGrid|undefined,at:Point,model:BlockModel
   projector:Projector,view:SceneryView,unit:number){
   const fitted=grid&&fitStructure(grid,model,at,unit,unit*view.rise*DEPTH_RISE/projector.riseScale,site);
   const height=fitted?fitted.height:topographyForWorld(world).heights[at.y*world.width+at.x];
-  return {p:projector.projectSmooth(at.x,at.y,height),model:fitted?fitted.model:model};
+  const position=fitted?.at??at;
+  return {p:projector.projectSmooth(position.x,position.y,height),model:fitted?.model??model,
+    scale:fitted?.scale??1};
 }
 
 function addDepthApproach(paths:Map<string,Path2D>,grid:SurfaceGrid,projector:Projector,
@@ -239,14 +241,14 @@ function renderTerrain(w:World,overlay:MapOverlay,
     for(const site of w.ancientSites??[]){
       if(!visibleAtlasSite(w,site))continue;
       const habitat=structureSite(w,site),art=blockLandmark(site.kind,(site.visits??site.visitors.length)>0,habitat);
-      const {p,model}=seatAt(w,ground,site,art,habitat,projector,blockView,1.1);
-      paintBlockScenery(ctx,model,p,blockView,1.1);
+      const {p,model,scale}=seatAt(w,ground,site,art,habitat,projector,blockView,1.1);
+      paintBlockScenery(ctx,model,p,blockView,1.1*scale);
     }
     for(const ruin of w.ruins??[]){
       const habitat=structureSite(w,ruin);
-      const {p,model}=seatAt(w,ground,ruin,blockLandmark('ruin',false,habitat),
+      const {p,model,scale}=seatAt(w,ground,ruin,blockLandmark('ruin',false,habitat),
         habitat,projector,blockView,1.18);
-      paintBlockScenery(ctx,model,p,blockView,1.18);
+      paintBlockScenery(ctx,model,p,blockView,1.18*scale);
     }
   }
   if(overlay==='deposits')for(const d of w.deposits??[]){
@@ -271,8 +273,8 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
     const buildings=s.infrastructure?.buildings??[];
     if(!buildings.length){
       const site=structureSite(w,s),hub=blockSettlement(settlementStage(s),s.species,site);
-      const {p,model}=seatAt(w,ground,s,hub,site,projector,blockView,1.1);
-      actors.push({order:p.y+.2,paint:()=>paintBlockScenery(ctx,model,p,blockView,1.1)});
+      const {p,model,scale}=seatAt(w,ground,s,hub,site,projector,blockView,1.1);
+      actors.push({order:p.y+.2,paint:()=>paintBlockScenery(ctx,model,p,blockView,1.1*scale)});
     }
     for(const building of buildings){
       const height=ground?surfaceHeightAt(ground,building.x,building.y):heights[building.y*w.width+building.x];
@@ -283,10 +285,10 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
   const candidates=visibleDistrictBuildings(projected,detail).flatMap(entry=>{
     const {building:b,town}=entry,look=structureForBuilding(w,town,b);
     const unit=buildingVisualScale(b.type);
-    const {p,model}=seatAt(w,ground,b,look.model,look.site,projector,blockView,1.2*unit);
+    const {p,model,scale:fit}=seatAt(w,ground,b,look.model,look.site,projector,blockView,1.2*unit);
     const art=blockBuildingArt(cache,model,blockView,1.2);
     if(!art)return [];
-    const scale=blockStampScale(unit);
+    const scale=blockStampScale(unit*fit);
     const plot={building:b,art,scale,
       x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale};
     return [{...entry,door:look.door,site:look.site,plot,p,x:p.x,y:p.y,bounds:atlasBuildingBounds(plot)}];

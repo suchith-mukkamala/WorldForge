@@ -35,15 +35,30 @@ describe('Grounded structures',()=>{
       expect(structure.feet.length).toBeGreaterThan(0);
       const fitted=fitStructure(grid,structure,at,unit,elevation,site);
       expect(fitted.model.faces.some(face=>face.z<0)).toBe(true);
+      const span=unit*fitted.scale/6,block=elevation*fitted.scale;
       for(const [i,foot] of structure.feet.entries()){
         const surfaces=[0.001,.999].flatMap(y=>[0.001,.999].map(x=>
-          surfaceHeightAt(grid,at.x+(foot.x+x)*unit/6,at.y+(foot.y+y)*unit/6)));
-        const base=fitted.height-fitted.depths[i]*elevation;
+          surfaceHeightAt(grid,fitted.at.x+(foot.x+x)*span,fitted.at.y+(foot.y+y)*span)));
+        const base=fitted.height-fitted.depths[i]*block;
         expect(base).toBeLessThanOrEqual(Math.min(...surfaces));
-        expect(base).toBeGreaterThan(Math.min(...surfaces)-elevation-.001);
+        expect(base).toBeGreaterThan(Math.min(...surfaces)-block-.001);
         expect(fitted.height).toBeGreaterThanOrEqual(Math.max(...surfaces));
       }
     }
+  });
+
+  it('finds a nearby ledge when a footprint crosses a cliff',()=>{
+    const columns=88,rows=88,size=columns*rows,side=8;
+    const grid:SurfaceGrid={columns,rows,ground:Uint16Array.from({length:size},(_,i)=>
+      i%columns>=(at.x+.5)*side?640:300),water:new Uint8Array(size),
+      material:new Uint8Array(size),shore:new Uint8Array(size)};
+    const site=structureSite(habitat('mountain'),at);
+    const model=blockBuilding(house(),0,{site});
+    const fitted=fitStructure(grid,model,at,.95,2.7,site);
+    expect(fitted.height).toEqual(160);
+    expect(fitted.at.x).toBeGreaterThan(at.x);
+    expect(fitted.scale).toBeLessThan(1);
+    expect(Math.max(...fitted.depths)).toBe(0);
   });
 
   it('uses local materials and puts wetland houses on individual supports',()=>{

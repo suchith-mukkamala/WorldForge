@@ -79,11 +79,7 @@ export function surfaceHeightAt(grid:SurfaceGrid,x:number,y:number):number{
   return (grid.ground[index]+grid.water[index])/TERRAIN_ELEVATION_UNITS;
 }
 
-/** One voxel unit covers the same ground in the stamp and terrain projection.
- * Start the level platform at its highest bearing point and fill downhill to
- * the actual step below each foot, using the same heights as the renderer. */
-export function fitStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number,
-  terrainUnitsPerVoxel:number,site:StructureSite){
+function footingProfile(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number){
   const side=VISUAL_TERRAIN_SIDE,step=unit/(DEPTH_TILE_WIDTH/2)*side;
   const centerX=(at.x+.5)*side,centerY=(at.y+.5)*side;
   const within=(n:number,total:number)=>Math.min(total-1,Math.max(0,n));
@@ -100,9 +96,46 @@ export function fitStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:num
     }
     return lowest;
   });
-  const depths=samples.map(value=>Math.ceil((height-value)/terrainUnitsPerVoxel));
+  return {height,samples,drop:samples.length?height-Math.min(...samples):0};
+}
+
+/** Keep the foundation on the rendered steps. On a cliff edge, fit the
+ * footprint onto a nearby bench within its plot before adding masonry. */
+export function fitStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number,
+  terrainUnitsPerVoxel:number,site:StructureSite){
+  const limit=model.footing==='timber'?28:14;
+  const initial=footingProfile(grid,model,at,unit);
+  let placed={at,scale:1,profile:initial};
+  if(initial.drop>limit){
+    const bench=.28125;
+    const offsets=[{x:0,y:0},...compass.map(({x,y})=>({x:x*bench,y:y*bench})),
+      ...[-bench,bench].flatMap(x=>[-bench,bench].map(y=>({x,y})))];
+    const floor=surfaceHeightAt(grid,at.x,at.y);
+    search:for(const scale of [1,.82,.66,.51,.39]){
+      for(const offset of offsets){
+        if(scale===1&&!offset.x&&!offset.y)continue;
+        const point={x:at.x+offset.x,y:at.y+offset.y};
+        const profile=footingProfile(grid,model,point,unit*scale);
+        if(profile.drop>limit||profile.height<floor-12)continue;
+        placed={at:point,scale,profile};
+        break search;
+      }
+    }
+    if(placed.profile===initial){
+      // Even a narrow rock ledge has one complete visual square. Center
+      // the small structure within that square instead of spanning a cliff.
+      const side=VISUAL_TERRAIN_SIDE;
+      const point={x:at.x+.5/side,y:at.y+.5/side};
+      const extent=Math.max(...model.feet.flatMap(({x,y})=>[Math.abs(x),Math.abs(y),Math.abs(x+1),Math.abs(y+1)]));
+      const scale=Math.min(.39,(DEPTH_TILE_WIDTH/2)/(side*unit*extent*2.1));
+      placed={at:point,scale,profile:footingProfile(grid,model,point,unit*scale)};
+    }
+  }
+  const {height,samples}=placed.profile;
+  const depths=samples.map(value=>Math.ceil((height-value)/(terrainUnitsPerVoxel*placed.scale)));
   const material=model.footing==='timber'?site.material.wood:site.material.stone;
-  return {height,depths,model:extendBlockFootings(model,depths,material,site.material.course)};
+  return {height,depths,at:placed.at,scale:placed.scale,
+    model:extendBlockFootings(model,depths,material,site.material.course)};
 }
 
 export function paintStructureApproach(ctx:CanvasRenderingContext2D,p:Point,side:Point,
