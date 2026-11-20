@@ -27,6 +27,7 @@ describe('atlas detail and picking',()=>{
     const place=(id:number,alpha:readonly number[]):AtlasBuilding=>({
       building:{id} as Building,x:10,y:20,scale:2,
       art:{image:{width:2,height:1} as HTMLCanvasElement,
+        bounds:{left:0,top:0,right:2,bottom:1},
         pixels:new Uint8ClampedArray(alpha.flatMap(value=>[0,0,0,value]))},
     });
     const rear=place(1,[255,255]),front=place(2,[0,255]);

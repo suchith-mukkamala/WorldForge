@@ -32,7 +32,7 @@ import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
 import {createDepthProjector,DEFAULT_DEPTH_CAMERA,interpolatedGroundHeight,
   type DepthCamera} from './depthProjection';
 import {atlasLevel} from './atlasMap';
-import {atlasBuildingAt,paintAtlasBuilding,
+import {atlasBuildingAt,atlasBuildingBounds,paintAtlasBuilding,
   type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
 import {blockBuilding,blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
 import {BLOCK_ANCHOR,blockBuildingArt,blockStampScale,depthBlockView,
@@ -275,15 +275,19 @@ function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
       projected.push({building,x:p.x,y:p.y,p});
     }
   }
-  const district=uncrowdedDistrictBuildings(visibleDistrictBuildings(projected,detail));
-  district.sort((a,b)=>a.y-b.y);
-  for(const {building:b,p} of district){
+  const candidates=visibleDistrictBuildings(projected,detail).flatMap(entry=>{
+    const {building:b,p}=entry;
     const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,w.settings.seed));
     const art=blockBuildingArt(cache,model,blockView,1.2);
-    if(!art)continue;
+    if(!art)return [];
     const scale=blockStampScale(buildingVisualScale(b.type));
     const plot={building:b,art,scale,
       x:p.x-BLOCK_ANCHOR.x*scale,y:p.y-BLOCK_ANCHOR.y*scale};
+    return [{...entry,plot,bounds:atlasBuildingBounds(plot)}];
+  });
+  const district=uncrowdedDistrictBuildings(candidates);
+  district.sort((a,b)=>a.y-b.y);
+  for(const {plot,p} of district){
     plots.push(plot);
     actors.push({order:p.y+.4,paint:()=>paintAtlasBuilding(ctx,plot)});
   }
