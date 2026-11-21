@@ -5,6 +5,7 @@ import {TOPIC_INFO} from './knowledge';
 import {faithOf} from './culture';
 import {GOAL_LABELS} from './mind';
 import {JOB_LABELS} from './economy';
+import {LIVELIHOOD_JOBS,LIVELIHOOD_WORK,type LivelihoodJob} from './livelihood';
 import {guildOf} from './institutions';
 import {PixelPortrait} from './PixelPortrait';
 import {RankBadge,RankProfile} from './RankProfile';
@@ -475,6 +476,8 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 <span><small>HOUSEHOLD</small><strong>{household?
                   '#'+household.id+' · '+household.members.length+' residents':'Unassigned'}</strong></span>
               </div>
+              {alive.work&&(LIVELIHOOD_JOBS as readonly string[]).includes(alive.work.job)&&
+                <p className="evo-family-help">{LIVELIHOOD_WORK[alive.work.job as LivelihoodJob]}</p>}
               {household?.residence&&<p className="evo-family-help">
                 Permanent residence: settlement #{household.residence.settlementId},
                 building #{household.residence.buildingId} · X {household.home.x},

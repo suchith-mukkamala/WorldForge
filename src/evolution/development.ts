@@ -14,8 +14,10 @@ export type Skill='foraging'|'navigation'|'craft'|'knowledge'|'care'|'diplomacy'
 export const SKILLS:Skill[]=['foraging','navigation','craft','knowledge','care','diplomacy'];
 export type Value='community'|'independence'|'tradition'|'discovery';
 export const VALUES:Value[]=['community','independence','tradition','discovery'];
-export type Career='forager'|'scout'|'artisan'|'scholar'|'healer'|'guardian'|'trader';
-export const CAREERS:Career[]=['forager','scout','artisan','scholar','healer','guardian','trader'];
+export type Career='forager'|'scout'|'artisan'|'scholar'|'healer'|'guardian'|'trader'|
+  'hunter'|'fisher'|'herder';
+export const CAREERS:Career[]=['forager','scout','artisan','scholar','healer','guardian','trader',
+  'hunter','fisher','herder'];
 export type MemoryKind='care'|'hardship'|'friendship'|'mentorship'|'adoption'|
   'discovery'|'independence'|'career'|'loss'|'support'|'conflict'|
   'reconciliation'|'collaboration';
@@ -187,10 +189,13 @@ const CAREER_SKILLS:Record<Career,Skill[]>={
   artisan:['craft','knowledge'],scholar:['knowledge','navigation'],
   healer:['care','knowledge'],guardian:['foraging','diplomacy'],
   trader:['diplomacy','navigation'],
+  hunter:['foraging','navigation'],fisher:['foraging','navigation'],
+  herder:['foraging','care'],
 };
 export const CAREER_LABELS:Record<Career,string>={
   forager:'Forager',scout:'Scout',artisan:'Artisan',scholar:'Scholar',
   healer:'Healer',guardian:'Guardian',trader:'Trader',
+  hunter:'Hunter',fisher:'Fisher',herder:'Herder',
 };
 export function guidingBelief(d:Development):string{
   const strongest=VALUES.reduce((best,v)=>d.values[v]>d.values[best]?v:best,'community');
@@ -227,7 +232,10 @@ function chooseCareer(d:Development):Career{
       (career==='forager'?3:0)+
       (career==='scout'?(d.values.discovery-50)*.12:0)+
       (career==='healer'?(d.empathy-50)*.09:0)+
-      (career==='trader'?(d.values.community-50)*.07:0);
+      (career==='trader'?(d.values.community-50)*.07:0)+
+      (career==='hunter'?(d.values.discovery-50)*.05-4:0)+
+      (career==='fisher'?(d.values.discovery-50)*.04-4:0)+
+      (career==='herder'?(d.values.community-50)*.05-4:0);
     if(merit>score){score=merit;best=career;}
   }
   return best;

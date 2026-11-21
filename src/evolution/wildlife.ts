@@ -9,7 +9,9 @@ import {roadTiles} from './transport';
 
 export const WILDLIFE_KINDS=['grazer','browser','wader','flock','fish'] as const;
 export type WildlifeKind=typeof WILDLIFE_KINDS[number];
-export type Herd={kind:WildlifeKind;index:number;size:number};
+export type Herd={kind:WildlifeKind;index:number;size:number;
+  /** Animals people took from this herd this year. Missing on older saves means 0. */
+  harvested?:number;};
 export const WILDLIFE_LABELS:Record<WildlifeKind,string>={
   grazer:'Grazing herd',browser:'Browsing herd',wader:'Wading birds',
   flock:'Wandering flock',fish:'Fish school',
@@ -52,7 +54,9 @@ export function validWildlife(list:unknown,tileCount:number):boolean{
     return !!row&&WILDLIFE_KINDS.includes(row.kind as WildlifeKind)&&
       Number.isInteger(row.index)&&row.index!>=0&&row.index!<tileCount&&
       !seen.has(row.index!)&&!!seen.add(row.index!)&&
-      Number.isInteger(row.size)&&row.size!>=1&&row.size!<=80;
+      Number.isInteger(row.size)&&row.size!>=1&&row.size!<=80&&
+      (row.harvested===undefined||Number.isInteger(row.harvested)&&
+        row.harvested!>=0&&row.harvested!<=80);
   });
 }
 
@@ -125,7 +129,7 @@ export function seedWildlife(world:World):Herd[]{
       if(placed>=shares[kind])break;
       if(tooClose(candidate.index,taken,world.width,5))continue;
       const size=12+Math.floor(terrainHash(candidate.index,SALT[kind]+20,world.settings.seed)*24);
-      herds.push({kind,index:candidate.index,size});
+      herds.push({kind,index:candidate.index,size,harvested:0});
       taken.add(candidate.index);
       placed++;
     }
@@ -182,7 +186,7 @@ export function advanceWildlife(world:World):void{
       world.settings.seed,world.year,x,y);
     const size=Math.min(80,herd.size+herdDelta(herd.kind,anomaly,true,growth,herd.size));
     if(size<1){occupied.delete(index);continue;}
-    next.push({kind:herd.kind,index,size});
+    next.push({...herd,index,size});
     if(herd.kind!=='fish'){
       const tile=world.tiles[index];
       const bite=Math.min(tile.food*.12,size*.018);

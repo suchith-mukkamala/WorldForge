@@ -57,6 +57,7 @@ import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woo
 import {annualGrowthFactor,climateField} from './climate';
 import {advanceClimateEcology} from './climateEcology';
 import {advanceWildlife,seedWildlife,validWildlife,type Herd} from './wildlife';
+import {advanceLivelihood,validLivelihood,type FishStock,type LivestockHolding} from './livelihood';
 import {LANDFORM_NAMES,settlementGeography,
   type LandformProfile} from './regionalGeography';
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
@@ -124,6 +125,8 @@ export type Tile={biome:Biome;food:number};
 export type Settlement={id:number;species:Species;name:string;x:number;y:number;
   founded:number;population:number;stores:number;emptyYears:number;
   infrastructure?:SettlementInfrastructure;economy?:SettlementEconomy;
+  /** Tamed grazers, browsers and flocks. Missing until a pasture takes them in. */
+  livestock?:LivestockHolding[];
   archives?:Topic[]};
 export type WorldEvent={id:number;year:number;
   type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|
@@ -150,6 +153,8 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   woodland?:string;
   /** Grazers, browsers, waders, flocks and fish. Missing on older saves. */
   wildlife?:Herd[];
+  /** Water and reef stocks fished by nearby towns. Missing on older saves. */
+  fishStocks?:FishStock[];
   terrainCells?:TerrainCells;
   skylands?:Skyland[];
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
@@ -404,6 +409,7 @@ export function stepWorld(previous:World):World{
     settlements:previous.settlements.map(s=>({...s,infrastructure:s.infrastructure?
       cloneInfrastructure(s.infrastructure):undefined,
       economy:s.economy?cloneEconomy(s.economy):undefined,
+      livestock:s.livestock?.map(holding=>({...holding})),
       archives:s.archives?[...s.archives]:undefined})),
     bonds:previous.bonds.map(b=>({...b,children:[...b.children]})),
     lineage:previous.lineage.map(r=>({...r,
@@ -437,6 +443,7 @@ export function stepWorld(previous:World):World{
     trails:previous.trails?.map(t=>({...t}))??[],
     deposits:previous.deposits?.map(d=>({...d})),
     wildlife:previous.wildlife?.map(herd=>({...herd})),
+    fishStocks:previous.fishStocks?.map(stock=>({...stock})),
     shipments:previous.shipments?.map(t=>({...t,route:[...t.route]}))??[],
     nextShipmentId:previous.nextShipmentId??1,
     transport:previous.transport?cloneTransport(previous.transport):undefined,
@@ -782,6 +789,8 @@ export function stepWorld(previous:World):World{
   advanceKnowledge(world,()=>random(state));
   // Labor competes across farming, extraction, crafts, trade and construction.
   advanceEconomy(world,movementSteps);
+  // Hunters, fishers and herders draw on herds and water after jobs are set.
+  advanceLivelihood(world);
   advanceInstitutions(world);
   // Culture responds to lived memories, faith conversations and residents'
   // votes. Policies spend real stocks; nothing depends on camera distance.
@@ -936,6 +945,7 @@ export function isWorld(value:unknown):value is World{
     t.food>=0&&t.food<=20))return false;
   if(!validWoodland(w as World))return false;
   if(w.wildlife!==undefined&&!validWildlife(w.wildlife,w.tiles.length))return false;
+  if(!validLivelihood(w as World))return false;
   if(!validTerrainCells(w as World))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();
   const traversableBridges=bridgeTiles(w as World);

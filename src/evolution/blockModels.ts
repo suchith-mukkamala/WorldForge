@@ -312,7 +312,8 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
   const pier=type==='dock'&&(!site||!!shore);
   const raised=(stage==='complete'||stage==='finishing')&&
     (site?.wet||regional==='stilts')&&
-    type!=='farm'&&type!=='well'&&type!=='dock'&&type!=='granary'&&type!=='watermill';
+    type!=='farm'&&type!=='pasture'&&type!=='well'&&type!=='dock'&&
+    type!=='granary'&&type!=='watermill';
   return model([type,culture,stage,tier,variant,quarter,regional,site?.kind,site?.snow,
     site?.steep,raised,pier,wheelTurn,weathered].join(':'),grid=>{
     const width=type==='communal'?12:type==='shelter'?6:
@@ -322,7 +323,7 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
     const wall=tint(tier>=2&&culture==='human'?'#a6a096':style.wall,
       weathered?stone:material?.wall,weathered?.54:.4);
     const h=type==='communal'?9:type==='shelter'||type==='storage'?4+tier:5+tier;
-    const foundation=type==='farm'?earth:type==='dock'?wood:stone;
+    const foundation=type==='farm'||type==='pasture'?earth:type==='dock'?wood:stone;
     const ready=stage==='complete'||stage==='finishing';
     if(raised){
       for(const u of [x,x+width-1])for(const v of [y,y+depth-1])
@@ -335,7 +336,7 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
     }
     if(!ready||type!=='granary'&&!pier){
       grid.box(x,y,0,width,depth,1,foundation);
-      if(!raised&&type!=='farm'&&type!=='dock')for(const u of [x,x+width-2])
+      if(!raised&&type!=='farm'&&type!=='pasture'&&type!=='dock')for(const u of [x,x+width-2])
         for(const v of [y,y+depth-2])grid.box(u,v,0,2,2,1,course);
     }
     if(stage==='foundation'||stage==='abandoned'||stage==='ruin'){
@@ -358,6 +359,18 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
       for(const v of [y,y+depth-1])grid.box(x,v,h,width,1,1,PLANK);
       grid.box(x,y+depth-2,Math.floor(h/2),width,1,1,wood);
       grid.box(x+1,y+depth,0,2,1,2,stone);
+      return;
+    }
+    if(type==='pasture'){
+      for(const u of [x,x+width-1])for(const v of [y,y+depth-1])
+        grid.box(u,v,1,1,1,3,wood);
+      grid.box(x,y,2,width,1,1,wood);
+      grid.box(x,y+depth-1,2,width,1,1,wood);
+      grid.box(x,y,2,1,depth,1,wood);
+      grid.box(x+width-1,y,2,1,depth,1,wood);
+      grid.box(x+1,y+1,1,3,2,3,wall);
+      grid.box(x+1,y+1,4,3,2,1,roof);
+      grid.box(x+2,y+depth-3,1,2,2,1,'#c0b063');
       return;
     }
     if(type==='farm'){
