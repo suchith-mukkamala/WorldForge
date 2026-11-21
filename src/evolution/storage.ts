@@ -3,6 +3,7 @@ import {
   type Agent,type Biome,type Tile,type World,type WorldSettings,
 } from './engine';
 import {livingRecord,pureAncestry} from './family';
+import {migrateWildlife,type Herd} from './wildlife';
 
 /**
  * Browser saves use a compact four-character encoding per terrain tile,
@@ -224,6 +225,20 @@ export function compactWorld(world:World):string{
 function isRecord(input:unknown):input is Record<string,unknown>{
   return !!input&&typeof input==='object'&&!Array.isArray(input);
 }
+/** Herd means, variance, origin, generation and harvested travel inside the
+ * packed world object. The v3 checksum envelope is unchanged, so older packed
+ * saves still open. Missing evolution fields are filled here; harvested starts
+ * at 0 so a loaded year is not treated as already hunted.
+ */
+function restorePackedWildlife<T>(world:T):T{
+  if(!isRecord(world)||!Array.isArray(world.wildlife))return world;
+  const settings=isRecord(world.settings)?world.settings:undefined;
+  const rawSeed=settings?.seed;
+  const seed=typeof rawSeed==='number'&&Number.isInteger(rawSeed)?rawSeed:1;
+  const wildlife=migrateWildlife(world.wildlife as Herd[],seed);
+  if(wildlife===world.wildlife)return world;
+  return {...world,wildlife} as T;
+}
 /** Safe conversion of v0.1 worlds. Original geography stays the same. */
 export function migrateLegacyWorld(input:unknown):World|null{
   if(!isRecord(input)||input.version!==1||!isRecord(input.settings))return null;
@@ -327,11 +342,12 @@ export function readSavedWorld(raw:string|null):World|null{
         return null;
       const tiles=decodeTiles(parsed.terrain,Number(width)*Number(height));
       if(!tiles)return null;
-      const candidate={...inner,tiles};
+      const candidate=restorePackedWildlife({...inner,tiles});
       return isWorld(candidate)?candidate:null;
     }
     if(parsed.version===1)return migrateLegacyWorld(parsed);
-    return isWorld(parsed)?parsed:null;
+    const current=restorePackedWildlife(parsed);
+    return isWorld(current)?current:null;
   }catch{return null;}
 }
 function finiteTime(raw:unknown):number{
