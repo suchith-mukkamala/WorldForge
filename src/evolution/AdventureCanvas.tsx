@@ -2,8 +2,8 @@ import {useEffect,useRef} from 'react';
 import type {Agent,World} from './engine';
 import {adventurePlaceKey} from './adventurePlaces';
 import type {AdventureGate,AdventureMap,AdventureRegion} from './adventureMap';
-import {ADVENTURE_TILE as TILE,adventureProp,paintAdventureStructure,
-  paintAdventureGround,paintAdventureProp,paintAdventureSign,
+import {ADVENTURE_TILE as TILE,adventureProp,adventurePropArt,paintAdventureStructure,
+  paintAdventureGround,paintAdventureSign,
   paintDoorstep,paintErrandMarker} from './adventureArt';
 import {actionPose,canAnimate,motionFrame,samePoint,type Facing,type Motion,
   type Point,type SpritePose} from './motion';
@@ -13,20 +13,25 @@ import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
 import {blockLandmark,blockSettlement} from './blockModels';
-import {settlementStage} from './construction';
-import {paintStructureApproach,streetStructureUnit,structureForBuilding,structureSite} from './structureGround';
+import {settlementStage,type Building} from './construction';
+import {streetStructureUnit,structureSite} from './structureGround';
+import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
+import {blockSceneryArt,DESCENT_BLOCK_VIEW,paintBlockContact} from './blockScenery';
+import {opaqueArtAt,overlappingArt,paintAtlasBuilding,type PlacedArt} from './atlasBuildingArt';
+import {isTreeKind} from './biomeTrees';
 import {mortalWorldPoint} from './spatialDetails';
 import {coastalLife,fishPose,paintFish,type Fish} from './coastalLife';
 import type {AncientSite} from './knowledge';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;facing:Facing;
-  marked:Point|null;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
+  marked:Point|null;focused?:Point;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
   onSelect:(point:Point)=>void};
 
 type Scenery={x:number;y:number;depth:number;opacity:number;
-  draw:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void};
+  draw?:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void;
+  art?:PlacedArt;canopy?:boolean;building?:Building};
 
-function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number){
+function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
   const signs=new Map<number,AdventureGate>();
   const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
@@ -40,16 +45,16 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
       const opacity=region.area.has(index)||site&&site.settlementId===region.settlement?.id?
         1:.72;
       const variant=pixelTerrainHash(x,y,world.settings.seed);
-      const depth=y*TILE+20;
-      if(site){
-        const town=world.settlements.find(s=>s.id===site.settlementId);
-        const {model,site:ground,door}=structureForBuilding(world,town,site.building);
-        const unit=streetStructureUnit(site.building.type);
-        if(door)scenery.push({x,y,depth:-1,opacity,draw:(ctx,px,py)=>
-          paintStructureApproach(ctx,{x:px+TILE/2,y:py+TILE/2},door,TILE,ground)});
-        scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-          paintAdventureStructure(ctx,model,px,py,unit)});
-        if(door&&isOpenBuilding(site.building)){
+      const depth=y*TILE+12;
+      const plot=plots.buildings.get(index);
+      if(plot){
+        const {model,door,building,placement:{at,scale}}=plot;
+        const unit=streetStructureUnit(building.type)*scale;
+        const p={x:(at.x+.5)*TILE,y:(at.y+.5)*TILE};
+        const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,unit);
+        scenery.push({...at,depth:p.y,opacity,art,building,draw:(ctx,px,py)=>
+          paintBlockContact(ctx,model,{x:px+TILE/2,y:py+TILE/2},DESCENT_BLOCK_VIEW,unit)});
+        if(door&&isOpenBuilding(building)){
           const entry={x:x+door.x,y:y+door.y};
           if(region.area.has(entry.y*world.width+entry.x))
             scenery.push({...entry,depth:entry.y*TILE+12,opacity:1,draw:(ctx,px,py)=>
@@ -66,9 +71,12 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         const model=blockSettlement(settlementStage(hub),hub.species,structureSite(world,hub));
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py,1.35)});
       }
-      const prop=!ruin&&!hub&&adventureProp(world,map,region,x,y);
-      if(prop)scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>
-        paintAdventureProp(ctx,prop,px,py,variant,waterSeason(world))});
+      const natural=!ruin&&!hub&&!plots.clear.has(index)?adventureProp(world,map,region,x,y):undefined;
+      const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
+      if(prop){
+        const art=adventurePropArt(prop,x*TILE,y*TILE,variant,waterSeason(world));
+        if(art)scenery.push({x,y,depth:y*TILE+16,opacity,art,canopy:isTreeKind(prop)});
+      }
     }
   }
   return scenery;
@@ -79,6 +87,7 @@ export function AdventureCanvas(props:Props){
   const latest=useRef(props);
   latest.current=props;
   const viewport=useRef({x:0,y:0,width:312,height:184});
+  const visibleArt=useRef<{sprites:Scenery[];faded:Set<Scenery>}|null>(null);
   useEffect(()=>{
     const element=canvas.current,ctx=element?.getContext('2d',{alpha:false});
     if(!element||!ctx)return;
@@ -90,6 +99,8 @@ export function AdventureCanvas(props:Props){
     let previous:Props|null=null,lastKey='',lastFrame=-Infinity;
     let origin={x:Infinity,y:Infinity};
     let foreground:Scenery[]=[];
+    let plots:BuildingPlots|undefined;
+    let faded=new Set<Scenery>();
     let people:Agent[]=[];
     let swimmers:Fish[]=[];
     let frameSize={width:312,height:184},density=1;
@@ -106,7 +117,7 @@ export function AdventureCanvas(props:Props){
     resize();
     const paint=(now:number)=>{
       frame=requestAnimationFrame(paint);
-      const view=latest.current,{world,map,region,actor,marked,board,gather}=view;
+      const view=latest.current,{world,map,region,actor,marked,focused,board,gather}=view;
       const scene=adventurePlaceKey(region.place);
       const changed=previous!==view;
       const active=now-actorMotion.start<actorMotion.duration;
@@ -134,17 +145,28 @@ export function AdventureCanvas(props:Props){
       viewport.current={x,y,width:nativeWidth,height:nativeHeight};
       const grid={x:Math.floor(x/TILE)-1,y:Math.floor(y/TILE)-1};
       const cols=Math.ceil(nativeWidth/TILE)+4,rows=Math.ceil(nativeHeight/TILE)+4;
-      const restage=!samePoint(grid,origin)||previous?.map!==map||previous?.region!==region||
-        previous&&(previous.world.topography!==world.topography||waterSeason(previous.world)!==waterSeason(world)||
-          previous.world.terrainCells!==world.terrainCells);
+      const plotsChanged=!plots||previous?.map!==map||previous?.world.topography!==world.topography||
+        previous.world.terrainCells!==world.terrainCells||waterSeason(previous.world)!==waterSeason(world);
+      if(!plots||plotsChanged)plots=buildingPlots(world);
+      const restage=!samePoint(grid,origin)||plotsChanged||previous?.region!==region;
       if(restage){
         origin=grid;
         background.width=cols*TILE*density;background.height=rows*TILE*density;
         ground.setTransform(density,0,0,density,0,0);
         paintAdventureGround(ground,world,region,map,origin,cols,rows);
-        foreground=sceneScenery(view,origin,cols,rows);
+        paintPlotGround(ground,plots,TILE,origin,cols,rows);
+        foreground=sceneScenery(view,origin,cols,rows,plots).sort((a,b)=>a.depth-b.depth||a.x-b.x);
         swimmers=coastalLife(world).fish.filter(fish=>fish.x+fish.width>=grid.x&&
           fish.x<grid.x+cols&&fish.y+fish.height>=grid.y&&fish.y<grid.y+rows);
+      }
+      if(restage||previous?.focused?.x!==focused?.x||previous?.focused?.y!==focused?.y){
+        faded=new Set<Scenery>();
+        const target=focused&&foreground.find(s=>s.building&&samePoint(s.building,focused));
+        if(target?.art)for(const sprite of foreground){
+          if(sprite.canopy&&sprite.depth>=target.depth&&sprite.art&&overlappingArt(sprite.art,target.art))
+            faded.add(sprite);
+        }
+        visibleArt.current={sprites:foreground,faded};
       }
       ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y,cols*TILE,rows*TILE);
       for(const fish of swimmers){
@@ -185,6 +207,8 @@ export function AdventureCanvas(props:Props){
       }
       drawCharacter(actor,player,player.facing,player.stride,player.walking?'walk':'idle',true);
 
+      const plot=focused&&plots?.buildings.get(focused.y*world.width+focused.x);
+      if(plot)paintPlotOutline(ctx,plot,(u,v)=>({x:(u+.5)*TILE-x,y:(v+.5)*TILE-y}),.85);
       if(marked){
         const px=marked.x*TILE-x,py=marked.y*TILE-y;
         ctx.strokeStyle='#ffe4a1';
@@ -195,8 +219,9 @@ export function AdventureCanvas(props:Props){
       }
       sprites.sort((a,b)=>a.depth-b.depth||a.x-b.x);
       for(const sprite of sprites){
-        ctx.globalAlpha=sprite.opacity;
-        sprite.draw(ctx,Math.round(sprite.x*TILE)-x,Math.round(sprite.y*TILE)-y);
+        ctx.globalAlpha=sprite.opacity*(faded.has(sprite)?.26:1);
+        sprite.draw?.(ctx,Math.round(sprite.x*TILE)-x,Math.round(sprite.y*TILE)-y);
+        if(sprite.art)paintAtlasBuilding(ctx,sprite.art,x,y);
       }
       ctx.globalAlpha=1;
       previous=view;
@@ -209,9 +234,15 @@ export function AdventureCanvas(props:Props){
     aria-label={props.region.name+' exploration map'} role="img"
     onClick={event=>{
       const element=event.currentTarget,box=element.getBoundingClientRect();
-      props.onSelect({
-        x:Math.floor((viewport.current.x+(event.clientX-box.left)*viewport.current.width/box.width)/TILE),
-        y:Math.floor((viewport.current.y+(event.clientY-box.top)*viewport.current.height/box.height)/TILE),
-      });
+      const x=viewport.current.x+(event.clientX-box.left)*viewport.current.width/box.width;
+      const y=viewport.current.y+(event.clientY-box.top)*viewport.current.height/box.height;
+      const scene=visibleArt.current;
+      if(scene)for(let i=scene.sprites.length-1;i>=0;i--){
+        const sprite=scene.sprites[i];
+        if(!sprite.art||scene.faded.has(sprite)||!opaqueArtAt(sprite.art,x,y))continue;
+        if(sprite.building){props.onSelect(sprite.building);return;}
+        break;
+      }
+      props.onSelect({x:Math.floor(x/TILE),y:Math.floor(y/TILE)});
     }}/>;
 }

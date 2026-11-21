@@ -6,9 +6,9 @@ import type {Biome,Settlement,World} from './engine';
 import {mortalBuildingEntrance} from './mortalGameplay';
 import type {Point} from './motion';
 import {regionalBuildingStyle} from './riverArchitecture';
-import {floodplains,riverLinks,waterSeason} from './riverSeasons';
+import {bankSides,DOCK_BANK_DROP,floodplains,riverBank,riverLinks,waterSeason} from './riverSeasons';
 import {TERRAIN_ELEVATION_UNITS} from './terrainCells';
-import {VISUAL_TERRAIN_SIDE,type SurfaceGrid} from './surfaceGrid';
+import {surfaceHasWater,VISUAL_TERRAIN_SIDE,type SurfaceGrid} from './surfaceGrid';
 import {topographyForWorld} from './topography';
 
 const materials={
@@ -26,7 +26,7 @@ type MaterialPalette=typeof materials[SiteKind];
 export type StructureSite={kind:SiteKind;material:MaterialPalette;wet:boolean;snow:boolean;
   steep:boolean;downslope:Point;shore?:Point;water?:Point};
 
-const compass:readonly Point[]=[{x:0,y:1},{x:1,y:0},{x:0,y:-1},{x:-1,y:0}];
+const compass=bankSides;
 const biomeSite:Record<Biome,SiteKind>={
   forest:'forest',mountain:'alpine',cave:'alpine',taiga:'taiga',wetland:'wetland',
   plains:'meadow',savanna:'dry',wasteland:'dry',volcanic:'ash',water:'coast',
@@ -55,13 +55,16 @@ export function structureSite(world:World,at:Point):StructureSite{
     edge.tier>best.tier?edge:best);
   const flow=stream&&(stream.dx?{x:Math.sign(stream.dx),y:0}:{x:0,y:Math.sign(stream.dy)});
   return {kind,material:materials[kind],wet,snow,steep,
-    downslope:slope?.side??compass[0],shore:coast&&Math.abs(coast.drop)<=28?coast.side:undefined,
+    downslope:slope?.side??compass[0],shore:coast&&Math.abs(coast.drop)<=DOCK_BANK_DROP?coast.side:undefined,
     water:flow??coast?.side};
 }
 
 /** Use the simulation's doorway in both atlas views and the walkable scene. */
 export function structureForBuilding(world:World,town:Settlement|undefined,building:Building){
-  const site=structureSite(world,building),entry=town&&mortalBuildingEntrance(world,town,building);
+  const habitat=structureSite(world,building);
+  const bank=building.type==='watermill'&&riverBank(world,building.y*world.width+building.x);
+  const site=bank?{...habitat,water:bank}:habitat;
+  const entry=town&&mortalBuildingEntrance(world,town,building);
   const door=entry&&(entry.x!==building.x||entry.y!==building.y)?
     {x:entry.x-building.x,y:entry.y-building.y}:undefined;
   const model=blockBuilding(building,pixelTerrainHash(building.x,building.y,world.settings.seed),
@@ -72,6 +75,12 @@ export function structureForBuilding(world:World,town:Settlement|undefined,build
 export const streetStructureUnit=(type:Building['type'])=>
   type==='communal'?1.6:type==='shelter'?1.9:1.82;
 
+export function structureFootprint(model:BlockModel,site:StructureSite,type?:Building['type']){
+  const side=type==='dock'?site.shore:type==='watermill'?site.water:undefined;
+  const limit=type==='dock'?0:4;
+  return side?model.feet.filter(({x,y})=>(x+.5)*side.x+(y+.5)*side.y<limit):model.feet;
+}
+
 export function surfaceHeightAt(grid:SurfaceGrid,x:number,y:number):number{
   const sx=Math.min(grid.columns-1,Math.max(0,Math.floor((x+.5)*VISUAL_TERRAIN_SIDE)));
   const sy=Math.min(grid.rows-1,Math.max(0,Math.floor((y+.5)*VISUAL_TERRAIN_SIDE)));
@@ -79,16 +88,20 @@ export function surfaceHeightAt(grid:SurfaceGrid,x:number,y:number):number{
   return (grid.ground[index]+grid.water[index])/TERRAIN_ELEVATION_UNITS;
 }
 
-function footingProfile(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number){
+function footingProfile(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number,
+  bearing:readonly Point[]){
   const side=VISUAL_TERRAIN_SIDE,step=unit/(DEPTH_TILE_WIDTH/2)*side;
   const centerX=(at.x+.5)*side,centerY=(at.y+.5)*side;
   const within=(n:number,total:number)=>Math.min(total-1,Math.max(0,n));
+  const ranges=(left:number,top:number,right:number,bottom:number)=>[
+    within(Math.floor(centerX+left*step),grid.columns),
+    within(Math.floor(centerY+top*step),grid.rows),
+    within(Math.ceil(centerX+right*step)-1,grid.columns),
+    within(Math.ceil(centerY+bottom*step)-1,grid.rows),
+  ];
   let height=model.feet.length?-Infinity:surfaceHeightAt(grid,at.x,at.y);
   const samples=model.feet.map(({x,y})=>{
-    const left=within(Math.floor(centerX+x*step),grid.columns);
-    const right=within(Math.ceil(centerX+(x+1)*step)-1,grid.columns);
-    const top=within(Math.floor(centerY+y*step),grid.rows);
-    const bottom=within(Math.ceil(centerY+(y+1)*step)-1,grid.rows);
+    const [left,top,right,bottom]=ranges(x,y,x+1,y+1);
     let lowest=Infinity;
     for(let row=top;row<=bottom;row++)for(let column=left;column<=right;column++){
       const i=row*grid.columns+column,z=(grid.ground[i]+grid.water[i])/TERRAIN_ELEVATION_UNITS;
@@ -96,41 +109,71 @@ function footingProfile(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number){
     }
     return lowest;
   });
-  return {height,samples,drop:samples.length?height-Math.min(...samples):0};
+  let wet=false,low=Infinity;
+  if(bearing.length){
+    const xs=bearing.map(f=>f.x),ys=bearing.map(f=>f.y);
+    const [left,top,right,bottom]=ranges(Math.min(...xs),Math.min(...ys),
+      Math.max(...xs)+1,Math.max(...ys)+1);
+    for(let row=top;row<=bottom;row++)for(let column=left;column<=right;column++){
+      const i=row*grid.columns+column,z=(grid.ground[i]+grid.water[i])/TERRAIN_ELEVATION_UNITS;
+      wet ||=surfaceHasWater(grid,i);
+      low=Math.min(low,z);height=Math.max(height,z);
+    }
+  }
+  return {height,samples,drop:bearing.length?height-low:0,wet};
 }
 
 /** Keep the foundation on the rendered steps. On a cliff edge, fit the
- * footprint onto a nearby bench within its plot before adding masonry. */
-export function fitStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number,
-  terrainUnitsPerVoxel:number,site:StructureSite){
+ * footprint onto a nearby dry bench before adding masonry. */
+export function placeStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number,
+  site:StructureSite,type?:Building['type']){
   const limit=model.footing==='timber'?28:14;
-  const initial=footingProfile(grid,model,at,unit);
-  let placed={at,scale:1,profile:initial};
-  if(initial.drop>limit){
-    const bench=.28125;
-    const offsets=[{x:0,y:0},...compass.map(({x,y})=>({x:x*bench,y:y*bench})),
-      ...[-bench,bench].flatMap(x=>[-bench,bench].map(y=>({x,y})))];
-    const floor=surfaceHeightAt(grid,at.x,at.y);
-    search:for(const scale of [1,.82,.66,.51,.39]){
-      for(const offset of offsets){
-        if(scale===1&&!offset.x&&!offset.y)continue;
-        const point={x:at.x+offset.x,y:at.y+offset.y};
-        const profile=footingProfile(grid,model,point,unit*scale);
-        if(profile.drop>limit||profile.height<floor-12)continue;
-        placed={at:point,scale,profile};
-        break search;
-      }
-    }
-    if(placed.profile===initial){
-      // Even a narrow rock ledge has one complete visual square. Center
-      // the small structure within that square instead of spanning a cliff.
-      const side=VISUAL_TERRAIN_SIDE;
-      const point={x:at.x+.5/side,y:at.y+.5/side};
-      const extent=Math.max(...model.feet.flatMap(({x,y})=>[Math.abs(x),Math.abs(y),Math.abs(x+1),Math.abs(y+1)]));
-      const scale=Math.min(.39,(DEPTH_TILE_WIDTH/2)/(side*unit*extent*2.1));
-      placed={at:point,scale,profile:footingProfile(grid,model,point,unit*scale)};
+  const bearing=structureFootprint(model,site,type);
+  const profileAt=(point:Point,scale:number)=>footingProfile(grid,model,point,unit*scale,bearing);
+  const waterfront=type==='dock'?site.shore:type==='watermill'?site.water:undefined;
+  const offset=waterfront&&{x:waterfront.x*.25,y:waterfront.y*.25};
+  const initial=offset?{x:at.x+offset.x,y:at.y+offset.y}:at;
+  const origin=profileAt(initial,1);
+  if(!origin.wet&&origin.drop<=limit)return {at:initial,scale:1,profile:origin};
+
+  const offsets=[...(offset?[offset]:[]),{x:0,y:0}];
+  for(const distance of [.25,.375,.5]){
+    for(const side of compass)offsets.push({x:side.x*distance,y:side.y*distance});
+    for(const x of [-distance,distance])for(const y of [-distance,distance])offsets.push({x,y});
+  }
+  const inside=(p:Point)=>p.x>=-.5&&p.y>=-.5&&
+    p.x<grid.columns/VISUAL_TERRAIN_SIDE-.5&&p.y<grid.rows/VISUAL_TERRAIN_SIDE-.5;
+  const floor=surfaceHeightAt(grid,at.x,at.y);
+  for(const scale of [1,.82,.66,.51,.39]){
+    for(const shift of offsets){
+      const point={x:at.x+shift.x,y:at.y+shift.y};
+      if(!inside(point))continue;
+      const profile=profileAt(point,scale);
+      if(!profile.wet&&profile.drop<=limit&&(origin.wet||profile.height>=floor-12))
+        return {at:point,scale,profile};
     }
   }
+
+  // Center very narrow plots on one complete square, keeping legacy sites
+  // accessible from their original doorway without changing saved coordinates.
+  const side=VISUAL_TERRAIN_SIDE;
+  const extent=Math.max(1,...model.feet.flatMap(({x,y})=>[Math.abs(x),Math.abs(y),Math.abs(x+1),Math.abs(y+1)]));
+  const scale=Math.min(.39,(DEPTH_TILE_WIDTH/2)/(side*unit*extent*2.1));
+  const nearby:Point[]=[];
+  for(let dy=-side;dy<side;dy++)for(let dx=-side;dx<side;dx++){
+    const point={x:at.x+(dx+.5)/side,y:at.y+(dy+.5)/side};
+    if(inside(point))nearby.push(point);
+  }
+  nearby.sort((a,b)=>Math.hypot(a.x-at.x,a.y-at.y)-Math.hypot(b.x-at.x,b.y-at.y));
+  for(const point of nearby){
+    const profile=profileAt(point,scale);
+    if(!profile.wet&&(origin.wet||profile.height>=floor-12))return {at:point,scale,profile};
+  }
+  return {at:initial,scale,profile:profileAt(initial,scale)};
+}
+
+export function structureFootings(placed:ReturnType<typeof placeStructure>,model:BlockModel,
+  terrainUnitsPerVoxel:number,site:StructureSite){
   const {height,samples}=placed.profile;
   const depths=samples.map(value=>Math.ceil((height-value)/(terrainUnitsPerVoxel*placed.scale)));
   const material=model.footing==='timber'?site.material.wood:site.material.stone;
@@ -138,18 +181,7 @@ export function fitStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:num
     model:extendBlockFootings(model,depths,material,site.material.course)};
 }
 
-export function paintStructureApproach(ctx:CanvasRenderingContext2D,p:Point,side:Point,
-  tile:number,site:StructureSite){
-  const start=tile*.13,end=tile*.83,width=tile*.28;
-  const length=end-start;
-  const x=side.x?p.x+(side.x<0?-end:start):p.x-width/2;
-  const y=side.y?p.y+(side.y<0?-end:start):p.y-width/2;
-  ctx.fillStyle=site.wet?'#534c40a8':site.material.earth+'bd';
-  ctx.fillRect(x,y,side.x?length:width,side.y?length:width);
-  const plank=Math.max(1,tile/13);
-  ctx.fillStyle=site.wet?site.material.wood:site.material.course+'a0';
-  for(let offset=plank;offset<length;offset+=plank*2){
-    if(side.x)ctx.fillRect(x+offset,y+width*.12,plank,width*.76);
-    else ctx.fillRect(x+width*.12,y+offset,width*.76,plank);
-  }
+export function fitStructure(grid:SurfaceGrid,model:BlockModel,at:Point,unit:number,
+  terrainUnitsPerVoxel:number,site:StructureSite){
+  return structureFootings(placeStructure(grid,model,at,unit,site),model,terrainUnitsPerVoxel,site);
 }

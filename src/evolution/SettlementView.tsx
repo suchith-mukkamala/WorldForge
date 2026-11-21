@@ -17,6 +17,8 @@ import {isTreeKind} from './biomeTrees';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {blockBuildingArt,blockStampScale,DESCENT_BLOCK_VIEW,type BlockStamp} from './blockScenery';
 import {streetStructureUnit,structureForBuilding} from './structureGround';
+import {buildingPlots,type BuildingPlot} from './buildingPlots';
+import {VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {settlementSanitation} from './publicHealth';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
@@ -142,10 +144,10 @@ function TerrainScenery({detail,x,y}:{detail:TerrainDetail;x:number;y:number}){
 const localBuildingArt=new Map<string,BlockStamp>();
 const localBuildingImages=new WeakMap<BlockStamp,string>();
 
-function Structure({world,town,b,x,y,selected,onSelect}:{world:World;town?:Settlement;
+function Structure({world,b,plot,x,y,selected,onSelect}:{world:World;plot?:BuildingPlot;
   b:Building;x:number;y:number;selected:boolean;onSelect:()=>void}){
-  const {model,door,site}=structureForBuilding(world,town,b);
-  const unit=streetStructureUnit(b.type);
+  const {model,site}=plot??structureForBuilding(world,undefined,b);
+  const unit=streetStructureUnit(b.type)*(plot?.placement.scale??1);
   const [stamp,setStamp]=useState<{model:typeof model;art:BlockStamp;href:string}|null>(null);
   useEffect(()=>{
     const art=blockBuildingArt(localBuildingArt,model,DESCENT_BLOCK_VIEW,unit);
@@ -156,15 +158,18 @@ function Structure({world,town,b,x,y,selected,onSelect}:{world:World;town?:Settl
   },[model,unit]);
   const painted=stamp?.model===model?stamp:undefined;
   const unfinished=b.stage==='foundation'||b.stage==='frame'||b.stage==='finishing';
-  const cx=x+CELL/2,cy=y+CELL/2,pixel=blockStampScale(1);
+  const at=plot?.placement.at??b;
+  const cx=x+(at.x-b.x+.5)*CELL,cy=y+(at.y-b.y+.5)*CELL,pixel=blockStampScale(1);
+  const outline=selected&&plot?.outline.map(({from,to})=>
+    `M${x+(from.x-b.x+.5)*CELL} ${y+(from.y-b.y+.5)*CELL}l${(to.x-from.x)*CELL} ${(to.y-from.y)*CELL}`
+  ).join('');
   return <g role="button" tabIndex={0} aria-label={buildingAppearance(b)+' '+b.stage}
     onClick={onSelect} onKeyDown={e=>{if(e.key==='Enter')onSelect();}}
     style={{cursor:'pointer'}}>
-    {selected&&<rect x={x-3} y={y-3} width={CELL+6} height={CELL+6}
+    {outline&&<path d={outline} fill="none" stroke="#ffe7a7" strokeWidth={1.4}/>}
+    {selected&&!outline&&<rect x={x-3} y={y-3} width={CELL+6} height={CELL+6}
       fill="none" stroke="#ffe7a7" strokeWidth={2}/>}
-    {door&&<path d={`M${cx} ${cy}l${door.x*CELL*.82} ${door.y*CELL*.82}`}
-      stroke={site.wet?site.material.wood:site.material.earth} strokeWidth={CELL*.28}/>}
-    <rect x={x+5} y={y+6} width={CELL-10} height={CELL-11}
+    <rect x={cx-CELL*.3} y={cy-CELL*.28} width={CELL*.6} height={CELL*.56}
       fill={painted?'#192b23':site.material.stone} opacity={painted ? .36 : .8}/>
     {painted&&<image href={painted.href} x={cx-painted.art.anchor.x*pixel}
       y={cy-painted.art.anchor.y*pixel} width={painted.art.image.width*pixel}
@@ -181,6 +186,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
   onChoose:(id:number)=>void;chosen:number|null;zoom:number}){
   const place=settlement??ruin!;
   const buildings=settlement?.infrastructure?.buildings??ruin?.buildings??[];
+  const plots=useMemo(()=>settlement?buildingPlots(world):undefined,[world,settlement]);
   const roads=new Set(settlement?.infrastructure?.roads??ruin?.roads??[]);
   const paved=roadTiles(world),bridges=bridgeTiles(world);
   const land=new Set(settlement?.infrastructure?.land??[]);
@@ -206,6 +212,15 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
     x<world.width&&y<world.height?
       world.tiles[y*world.width+x].biome:undefined;
   const originX=place.x-HALF,originY=place.y-HALF;
+  const plotGround=new Map<string,string[]>(),square=CELL/VISUAL_TERRAIN_SIDE;
+  if(plots)for(const [index,{color}] of plots.squares){
+    const x=index%plots.columns-originX*VISUAL_TERRAIN_SIDE;
+    const y=Math.floor(index/plots.columns)-originY*VISUAL_TERRAIN_SIDE;
+    if(x<0||y<0||x>=VIEW*VISUAL_TERRAIN_SIDE||y>=VIEW*VISUAL_TERRAIN_SIDE)continue;
+    const paths=plotGround.get(color)??[];
+    paths.push(`M${x*square} ${y*square}h${square}v${square}h${-square}z`);
+    plotGround.set(color,paths);
+  }
   const allTiles=[];
   for(let dy=0;dy<VIEW;dy++)for(let dx=0;dx<VIEW;dx++){
     const x=originX+dx,y=originY+dy;
@@ -217,7 +232,8 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
     const shore=tile?[biomeAt(x-1,y),biomeAt(x+1,y),
       biomeAt(x,y-1),biomeAt(x,y+1)].some(b=>b!==undefined&&
         (b==='water')!==(tile.biome==='water')):false;
-    allTiles.push({id:dy*VIEW+dx,x:dx*CELL,y:dy*CELL,tile,
+    allTiles.push({id:dy*VIEW+dx,x:dx*CELL,y:dy*CELL,tile,clearing:plots?.clear.has(y*world.width+x),
+      forestEdge:plots?.fringe.has(y*world.width+x),
       elevation,dropN:difference(x,y-1),dropE:difference(x+1,y),
       dropS:difference(x,y+1),dropW:difference(x-1,y),
       detail:tile?terrainDetailAt(tile.biome,x,y,
@@ -268,8 +284,10 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
             stroke="#55b4d3" strokeWidth={p.stream+1} fill="none"/>
         </g>;
       })}
+      {[...plotGround].map(([color,paths])=><path key={color} d={paths.join('')} fill={color}/>)}
       {allTiles.map(p=><g key={'scenery-'+p.id}>
-        {p.detail&&<TerrainScenery detail={p.detail} x={p.x} y={p.y}/>}
+        {p.detail&&!p.clearing&&<TerrainScenery detail={p.forestEdge&&isTreeKind(p.detail.motif)?
+          {...p.detail,motif:'scrub'}:p.detail} x={p.x} y={p.y}/>}
         {p.owner&&<rect x={p.x+1} y={p.y+1} width={CELL-2} height={CELL-2}
           fill="#ffe4aa" fillOpacity={.10} stroke="#e0b976" strokeOpacity={.30}
           strokeDasharray="3 3"/>}
@@ -290,7 +308,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
           <path d={`M${p.x+4} ${p.y+13}h${CELL-8}`} stroke="#554b4a"
             strokeDasharray="4 3" strokeWidth={1.2}/>
         </>}
-        {p.deposit&&p.deposit.amount>.1&&(p.deposit.kind==='tree'?<>
+        {p.deposit&&p.deposit.amount>.1&&(p.deposit.kind==='tree'?!p.clearing&&!p.forestEdge&&<>
           <rect x={p.x+12} y={p.y+11} width={3} height={12} fill="#56493e"/>
           <rect x={p.x+5} y={p.y+7} width={17} height={10}
             fill={RESOURCE_COLORS.tree}/>
@@ -305,7 +323,8 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
       <rect x={HALF*CELL+5} y={HALF*CELL+5} width={CELL-10} height={CELL-10}
         fill="none" stroke="#ffe7ae" strokeWidth={1.5} strokeDasharray="3 2"/>
       {buildings.filter(b=>Math.abs(b.x-place.x)<=HALF&&
-        Math.abs(b.y-place.y)<=HALF).map(b=><Structure key={b.id} world={world} town={settlement} b={b}
+        Math.abs(b.y-place.y)<=HALF).map(b=><Structure key={b.id} world={world} b={b}
+        plot={plots?.buildings.get(b.y*world.width+b.x)}
         x={(b.x-originX)*CELL} y={(b.y-originY)*CELL}
         selected={chosen===b.id} onSelect={()=>onChoose(b.id)}/>)}
       {residents.map(a=><g key={'resident-'+a.id}

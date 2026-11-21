@@ -90,25 +90,30 @@ export function paintDepthSurfaceDetail(ctx:CanvasRenderingContext2D,
  */
 export function paintDepthRoads(ctx:CanvasRenderingContext2D,
   world:World,
-  heights:readonly number[],projector:Projector):number{
+  heights:readonly number[],projector:Projector,access?:ReadonlySet<number>):number{
   const roads=new Set<number>();
   const maintained=new Set<number>();
   const townStreets=new Set<number>();
+  const bridges=new Set<number>();
   const worn=wornPathTiles(world.trails??[],world.width,world.height);
   for(const s of world.settlements){
     const civic=settlementStage(s)==='town'||settlementStage(s)==='city';
     for(const i of s.infrastructure?.roads??[]){
       // Old saves may contain pavement on every walked tile. Rendering only
       // the connected, worn spine cleans those saves without erasing roads.
-      if(worn.has(i)&&i>=0&&i<heights.length){
+      if((worn.has(i)||access?.has(i))&&i>=0&&i<heights.length){
         roads.add(i);maintained.add(i);
         if(civic)townStreets.add(i);
       }
     }
   }
   for(const segment of world.transport?.roads??[])
-    if(segment.index>=0&&segment.index<heights.length){
+    if(segment.condition>25&&segment.index>=0&&segment.index<heights.length){
       roads.add(segment.index);maintained.add(segment.index);
+    }
+  for(const segment of world.transport?.bridges??[])
+    if(segment.condition>25&&segment.index>=0&&segment.index<heights.length){
+      roads.add(segment.index);maintained.add(segment.index);bridges.add(segment.index);
     }
   for(const index of worn)if(index<heights.length)roads.add(index);
   for(const i of roads){
@@ -116,7 +121,7 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
     const p=projector.project(x,y,heights[i]);
     const px=Math.round(p.x),py=Math.round(p.y);
     const paved=maintained.has(i);
-    const civic=townStreets.has(i),walk=paved&&boardwalkSite(world,i);
+    const civic=townStreets.has(i),walk=bridges.has(i)||paved&&boardwalkSite(world,i);
     if(!paved&&springFlood(world,i))continue;
     ctx.fillStyle='rgba(21,28,39,.48)';
     ctx.fillRect(px-4,py-1,9,3);
@@ -171,7 +176,10 @@ export function depthRoadSignature(world:Pick<World,
   }
   const transportRoads=world.transport?.roads??[];
   add(transportRoads.length);
-  for(const segment of transportRoads)add(segment.index);
+  for(const segment of transportRoads){add(segment.index);add(Number(segment.condition>25));}
+  const transportBridges=world.transport?.bridges??[];
+  add(transportBridges.length);
+  for(const segment of transportBridges){add(segment.index);add(Number(segment.condition>25));}
   const drawn=[...worn].sort((a,b)=>a-b);
   add(drawn.length);
   for(const index of drawn)add(index);

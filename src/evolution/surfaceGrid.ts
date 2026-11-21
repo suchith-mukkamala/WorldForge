@@ -8,12 +8,18 @@ import {coastalLife,coralTone} from './coastalLife';
 export const VISUAL_TERRAIN_SIDE=8;
 export const Shore={ground:0,wetSand:1,drySand:2,shallows:3,channel:4,
   gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12} as const;
-export type SurfaceGrid=TerrainGrid&{shore:Uint8Array};
+export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array};
 export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'>;
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
 const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
 const cache=new WeakMap<TerrainGrid,{season:string;riverlands:boolean;grid:SurfaceGrid}>();
+
+export const surfaceHasWater=(grid:SurfaceGrid,index:number)=>{
+  const shore=grid.shore[index];
+  return !!grid.openWater?.[index]||shore===Shore.channel||shore===Shore.foam||
+    shore===Shore.ice||shore===Shore.shallows||shore>=Shore.reefBase;
+};
 
 /** Every tile has the same 8×8 visual lattice. Four-by-four simulation
  * samples are interpolated here so saves and erosion retain their grid. */
@@ -24,7 +30,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const {width,height,tiles}=world,heights=topographyForWorld(world).heights;
   const columns=width*SIDE,rows=height*SIDE,count=columns*rows;
   const ground=new Uint16Array(count),water=new Uint8Array(count);
-  const material=new Uint8Array(count),shore=new Uint8Array(count);
+  const material=new Uint8Array(count),shore=new Uint8Array(count),openWater=new Uint8Array(count);
   const links=riverLinks(world),flood=riverlands&&season==='Bloom'?floodplains(world):null;
   const {reefs}=coastalLife(world),seed=world.settings.seed;
   const land=Uint8Array.from(tiles,t=>+(t.biome!=='water'));
@@ -61,6 +67,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
         const nearest=(by+ry.nearest)*base.columns+bx+rx.nearest;
         material[i]=base.material[nearest];
         water[i]=base.water[nearest];
+        openWater[i]=1-land[tile];
         const i0=clamp(bx+rx.lo,0,base.columns-1),i1=clamp(bx+rx.lo+1,0,base.columns-1);
         const slope=lerp(lerp(base.ground[j0+i0],base.ground[j0+i1],rx.weight),
           lerp(base.ground[j1+i0],base.ground[j1+i1],rx.weight),ry.weight);
@@ -77,12 +84,14 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
               if(inward>.02&&lateral>.17&&lateral<.38&&inward+lateral>.44)
                 shore[i]=season==='Highsun'?Shore.wetSand:Shore.shallows;
             }
+            openWater[i]=+(shore[i]!==Shore.wetSand);
             if(reefs[tile]&&blend<.31&&shore[i]!==Shore.wetSand){
               const coral=coralTone(x*SIDE+col,y*SIDE+row,seed);
               if(coral)shore[i]=Shore.reefBase+coral-1;
             }
             continue;
           }
+          openWater[i]=0;
           const edge=clamp((blend-.46)/.42,0,1);
           if(!cliff)ground[i]=Math.round(lerp(waterline+1,
             Math.max(waterline+1,ground[i]),edge));
@@ -121,7 +130,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       }
     }
   }
-  const grid={columns,rows,ground,water,material,shore};
+  const grid={columns,rows,ground,water,material,shore,openWater};
   cache.set(base,{season,riverlands,grid});
   return grid;
 }

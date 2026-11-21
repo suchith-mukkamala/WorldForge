@@ -104,11 +104,21 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
 
 export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
   p:Point,view:BlockView,unit:number):void{
-  const sprite=blockBuildingArt(propCache,model,view,unit);
+  const sprite=blockSceneryArt(model,p,view,unit);
   if(!sprite)return;
-  const {image,anchor}=sprite;
-  ctx.drawImage(image,p.x-anchor.x/STAMP_DENSITY,p.y-anchor.y/STAMP_DENSITY,
+  const {art:{image},x,y}=sprite;
+  ctx.drawImage(image,x,y,
     image.width/STAMP_DENSITY,image.height/STAMP_DENSITY);
+}
+
+export function blockSceneryArt(model:BlockModel,p:Point,view:BlockView,unit:number){
+  const art=blockBuildingArt(propCache,model,view,unit);
+  return art&&placeBlockArt(art,p,1);
+}
+
+export function placeBlockArt(art:BlockStamp,p:Point,unit:number){
+  const scale=blockStampScale(unit);
+  return {art,x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale,scale};
 }
 
 const contactBounds=new WeakMap<BlockModel,{left:number;top:number;right:number;bottom:number}>();

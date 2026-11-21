@@ -11,6 +11,8 @@ import {terrainBuildPenalty,terrainFarmFactor} from './terrainPhysics';
 import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
 import {wornPathTiles} from './trailNetwork';
 import {boardwalkSite,nearbyDelta,nearbyFord,terraceSite,terrainDistance} from './riverArchitecture';
+import {bankSides,DOCK_BANK_DROP,riverBank,riverLinks} from './riverSeasons';
+import {topographyForWorld} from './topography';
 
 export const BUILDING_TYPES=['shelter','house','farm','storage','well',
   'workshop','market','dock','communal','granary','watermill'] as const;
@@ -221,15 +223,19 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
   const crossing=ford===undefined?undefined:{x:ford%w.width,y:Math.floor(ford/w.width)};
   const delta=type==='dock'?nearbyDelta(w,s):undefined;
   const shore=delta===undefined?undefined:{x:delta%w.width,y:Math.floor(delta/w.width)};
+  const streams=riverLinks(w);
+  const heights=type==='dock'?topographyForWorld(w).heights:undefined;
   let best=-Infinity,target:null|{x:number;y:number}=null;
   for(const id of infra.land){
     const x=id%w.width,y=Math.floor(id/w.width),tile=w.tiles[id];
-    if(tile.biome==='water')continue;
+    if(tile.biome==='water'||streams.has(id))continue;
     if(!buildingSiteClear({x,y},type,buildings,s))continue;
-    if(type==='watermill'&&(!crossing||terrainDistance(w.width,id,crossing)>2||id===ford))continue;
-    if(type==='dock'&&![-1,0,1].some(dx=>[-1,0,1].some(dy=>
-      (dx||dy)&&inWorld(w,x+dx,y+dy)&&
-      w.tiles[position(w,x+dx,y+dy)].biome==='water')))continue;
+    if(type==='watermill'&&(!crossing||terrainDistance(w.width,id,crossing)>2||!riverBank(w,id)))continue;
+    if(heights&&!bankSides.some(({x:dx,y:dy})=>{
+      if(!inWorld(w,x+dx,y+dy))return false;
+      const neighbor=position(w,x+dx,y+dy);
+      return w.tiles[neighbor].biome==='water'&&Math.abs(heights[id]-heights[neighbor])<=DOCK_BANK_DROP;
+    }))continue;
     const near=distance({x,y},s),hazard=tile.biome==='volcanic'?4:
       tile.biome==='wasteland'?2:0;
     const nearbyRoad=[id-1,id+1,id-w.width,id+w.width].some(n=>roads.has(n));
