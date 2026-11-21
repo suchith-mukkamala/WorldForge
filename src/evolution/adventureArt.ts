@@ -128,7 +128,7 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
       const color=shoreColor(surface.shore[cell]);
       if(color)rect(ctx,color,px+sx*square,py+sy*square,square,square);
       const shade=surface.shadow?.[cell];
-      if(shade)rect(ctx,shade===1?'#18283032':'#18283059',
+      if(shade)rect(ctx,shade===3?'#18283019':shade===1?'#18283032':'#18283059',
         px+sx*square,py+sy*square,square,square);
     }
     const bridge=map.bridges.has(i)||map.roads.has(i)&&boardwalkSite(world,i);

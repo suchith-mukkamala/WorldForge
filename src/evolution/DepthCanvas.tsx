@@ -1,3 +1,4 @@
+import {WORLD_TREE_BLOCK,worldTreeModel} from './worldTreeArt';
 import {useEffect,useRef,useState} from 'react';
 import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Biome,type Brush,type World} from './engine';
@@ -37,12 +38,12 @@ import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
-import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,interpolatedGroundHeight,
+import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,DEPTH_TILE_WIDTH,interpolatedGroundHeight,
   type DepthCamera} from './depthProjection';
 import {atlasLevel} from './atlasMap';
 import {atlasBuildingBounds,opaqueArtAt,overlappingArt,paintAtlasBuilding,
   type PlacedArt} from './atlasBuildingArt';
-import {blockWorldTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
+import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
 import {blockBuildingArt,blockSceneryArt,depthBlockView,placeBlockArt,type BlockStamp} from './blockScenery';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
@@ -215,9 +216,10 @@ function renderTerrain(w:World,overlay:MapOverlay,
       }
   }
   if(overlay==='terrain'&&w.worldTree){
-    const tree=w.worldTree,ground=surfaceHeightAt(grid!,tree.x,tree.y);
+    const tree=w.worldTree,unit=DEPTH_TILE_WIDTH/2*WORLD_TREE_BLOCK;
+    const {model,ground}=worldTreeModel(w,grid,projector.riseScale/(DEPTH_RISE*blockView.rise*unit));
     const p=projector.projectSmooth(tree.x,tree.y,ground);
-    const sprite=blockSceneryArt(blockWorldTree(tree.variant),p,blockView,2.7);
+    const sprite=blockSceneryArt(model,p,blockView,unit);
     if(sprite)actors.push({order:projector.depth(tree.x,tree.y,ground),sprite,canopy:true,landmark:tree});
   }
   if(showBuildings){

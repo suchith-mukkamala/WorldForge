@@ -1,3 +1,4 @@
+import {worldTreeModel} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
 import type {Agent,World} from './engine';
 import {adventurePlaceKey} from './adventurePlaces';
@@ -12,7 +13,7 @@ import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
-import {blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockWorldTree} from './blockModels';
+import {blockLandmark,blockSailboat,blockSettlement,blockShipyard} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -37,6 +38,7 @@ type Scenery={x:number;y:number;depth:number;opacity:number;
 function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
   const signs=new Map<number,AdventureGate>();
+  const tree=world.worldTree;
   const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
   const yards=new Map([...map.shipyards.values()].map(site=>[site.shore,site]));
   const boats=new Map([...yards.values()].map(site=>[site.water,site.shore]));
@@ -91,7 +93,9 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         const model=blockSettlement(settlementStage(hub),hub.species,structureSite(world,hub));
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py,1.35)});
       }
-      const natural=!ruin&&!hub&&!yard&&!plots.clear.has(index)?adventureProp(world,map,region,x,y):undefined;
+      const treeBase=tree?.x===x&&tree.y===y;
+      const natural=!treeBase&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
+        adventureProp(world,map,region,x,y):undefined;
       const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
       if(prop){
         const art=adventurePropArt(prop,x*TILE,y*TILE,variant,waterSeason(world));
@@ -99,11 +103,11 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
       }
     }
   }
-  const tree=world.worldTree;
   if(tree&&tree.x>=origin.x-3&&tree.x<origin.x+cols+3&&
     tree.y>=origin.y-3&&tree.y<origin.y+rows+5){
     const p={x:(tree.x+.5)*TILE,y:(tree.y+.5)*TILE};
-    const art=blockSceneryArt(blockWorldTree(tree.variant),p,DESCENT_BLOCK_VIEW,3.1);
+    const {model}=worldTreeModel(world);
+    const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,3.1);
     scenery.push({x:tree.x,y:tree.y,depth:p.y,opacity:1,art,canopy:true});
   }
   return scenery;

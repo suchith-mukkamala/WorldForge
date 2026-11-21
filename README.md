@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.24.1 — World Tree scenery** rebuilds the tree with a tapered trunk, irregular voxel foliage, and roots that sit along the slope. The crown takes its shape and color from the neighboring biomes, and the grove gets a dappled shadow. Saved worlds with a World Tree get the new scenery on load.
+
 - **v2.24.0 — World Tree** adds a giant tree to newly generated worlds. Its roots raise ridges around a grove that blends into the local biome. Find it in **Places**, start a mortal on its root trail, or sail to the landing marked on the sea chart and follow the trail inland.
 
 - **v2.23.0 — Floating Islands** adds seeded islands with stepped rock undersides, smaller fragments, and waterfalls that feed pools on the ground. Find them in **Places** and use **Show waterfall basin** to see where the water lands. New worlds include floating islands by default. In an older world, choose **Map options → Add floating islands**.

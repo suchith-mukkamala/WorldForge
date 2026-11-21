@@ -26,7 +26,7 @@ export function TerrainPreview({world,label}:{world:AtlasLand;label:string}){
       const rock=world.settings.landforms?highlandColor(biome,heights[i],grain):undefined;
       return {color:rock??overheadTerrainColor(biome,depths[i],cover),grain,water:biome==='water'};
     },ATLAS_SEA);
-    if(world.worldTree)paintOverheadWorldTree(ctx,world.worldTree,CELL);
+    if(world.worldTree)paintOverheadWorldTree(ctx,world,CELL);
     if(world.skylands)paintOverheadSkylands(ctx,world.skylands,CELL);
   },[world,width,height]);
   return <canvas ref={ref} width={width*CELL} height={height*CELL} role="img"

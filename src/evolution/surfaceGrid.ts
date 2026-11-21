@@ -4,6 +4,7 @@ import {terrainRenderGrid,TERRAIN_CELL_SIDE,TERRAIN_ELEVATION_UNITS,VISUAL_TERRA
 import {floodplains,riverLinks,waterSeason} from './riverSeasons';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {coastalLife,coralTone} from './coastalLife';
+import {terrainHash,terrainNoise} from './biomeGeneration';
 import {skylandMesh,skylandShadows} from './skylands';
 
 export {VISUAL_TERRAIN_SIDE};
@@ -176,7 +177,23 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       }
     }
   }
-  const shadow=skylands?.length?skylandShadows(skylands,columns,rows):undefined;
+  const skyShadow=skylands?.length?skylandShadows(skylands,columns,rows):undefined;
+  const shadow=worldTree?(skyShadow?.slice()??new Uint8Array(count)):skyShadow;
+  if(worldTree&&shadow){
+    const seed=world.settings.seed+worldTree.variant;
+    const cx=(worldTree.x+.5)*SIDE+2,cy=(worldTree.y+.5)*SIDE+3;
+    const radius=SIDE*3;
+    for(let y=Math.max(0,cy-radius);y<=Math.min(rows-1,cy+radius);y++){
+      for(let x=Math.max(0,cx-radius);x<=Math.min(columns-1,cx+radius);x++){
+        const i=y*columns+x;
+        if(shadow[i]||openWater[i])continue;
+        const fade=Math.hypot(x-cx,(y-cy)*1.15)/radius;
+        const canopy=terrainNoise(x,y,7,seed)*.25+terrainHash(x,y,seed)*.16;
+        if(fade<.5+canopy)shadow[i]=1;
+        else if(fade<.83+canopy)shadow[i]=3;
+      }
+    }
+  }
   const grid={columns,rows,ground,water,material,shore,openWater,shadow};
   cache.set(base,{season,riverlands,skylands,worldTree,grid});
   return grid;
