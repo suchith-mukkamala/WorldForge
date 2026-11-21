@@ -106,7 +106,7 @@ export type Bond={id:number;a:number;b:number;since:number;
 export type LifeMoment={year:number;
   kind:'arrival'|'birth'|'courtship'|'partner'|'separation'|'parenthood'|
     'death'|'founding'|'renamed'|'adoption'|'mentorship'|'career'|
-    'independence'|'divine'|'discovery'|'awakening';text:string;relatedIds?:number[]};
+    'independence'|'divine'|'discovery'|'awakening'|'milestone';text:string;relatedIds?:number[]};
 export type LineageRecord={id:number;species:Species;ancestry:Ancestry;
   genes:Genes;born:number;died?:number;generation:number;name?:string;house?:string;
   appearance?:MortalAppearance;
@@ -1080,7 +1080,7 @@ export function isWorld(value:unknown):value is World{
           m.year<=year&&
           ['arrival','birth','courtship','partner','separation','parenthood','death',
             'founding','renamed','adoption','mentorship','career',
-            'independence','divine','discovery','awakening'].includes(m.kind)&&
+            'independence','divine','discovery','awakening','milestone'].includes(m.kind)&&
           typeof m.text==='string'&&m.text.length<=220&&
           (m.relatedIds===undefined||(Array.isArray(m.relatedIds)&&
             m.relatedIds.length<=20&&m.relatedIds.every(id=>Number.isSafeInteger(id)&&id>0))))))||

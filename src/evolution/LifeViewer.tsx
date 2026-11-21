@@ -3,6 +3,7 @@ import {calendarDate} from './calendar';
 import type {Agent,World} from './engine';
 import {learnedDisposition} from './experienceLearning';
 import {personName} from './identity';
+import {temperamentOf,temperamentPhrase} from './temperament';
 
 /** Close-up into a mortal's actual state, never an invented narrative.
  * Every motive and choice comes from a persisted planning decision.
@@ -50,6 +51,12 @@ export function LifeViewer({world,person}:{world:World;person:Agent}){
             STEP_LABELS[disposition.caution]} — repeated blocked attempts.</p>}
           <small>These tendencies can change with new experiences.</small>
         </div>}
+        <div className="evo-life-history">
+          <h4>TEMPERAMENT</h4>
+          <p>This person is {temperamentPhrase(temperamentOf(world.settings.seed,person))}.
+            The leaning can tip a free hour or a tied ambition. It does not
+            assign a moral character or override hunger.</p>
+        </div>
         {c.ambition&&<div className="evo-life-history">
           <h4>PERSONAL AMBITION</h4>
           <p><b>{PURPOSE_LABELS[c.ambition.purpose]}</b> — {c.ambition.reason}</p>

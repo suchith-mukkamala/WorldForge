@@ -8,6 +8,7 @@ import {
 import {personName,isPersonFavorite,cleanIdentityName} from './identity';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
+import {kinshipOf} from './kinship';
 
 type Props={world:World;focusId:number|null;onChoose:(id:number)=>void;
   onShowOnMap:(id:number)=>void;onFavorite:(id:number)=>void;
@@ -59,9 +60,11 @@ export function WorldFamily({world,focusId,onChoose,onShowOnMap,
     .slice(-25).reverse();
   const children=current?.children.map(ancestors).filter(
     (r):r is LineageRecord=>!!r)??[];
-  const siblings=current?.parents?.flatMap(id=>map.get(id)?.children??[])
-    .filter((id,i,ids)=>id!==current.id&&ids.indexOf(id)===i)
-    .map(ancestors).filter((r):r is LineageRecord=>!!r)??[];
+  const kin=current?kinshipOf(world,current.id,{sibling:16,'half-sibling':12}):[];
+  const siblings=kin.filter(link=>link.role==='sibling')
+    .map(link=>ancestors(link.id)).filter((r):r is LineageRecord=>!!r);
+  const halfSiblings=kin.filter(link=>link.role==='half-sibling')
+    .map(link=>ancestors(link.id)).filter((r):r is LineageRecord=>!!r);
   const isLiving=current?living.has(current.id):false;
   const person=isLiving&&current?living.get(current.id):undefined;
   const traits=current?traitProfile(current.ancestry):null;
@@ -241,10 +244,16 @@ export function WorldFamily({world,focusId,onChoose,onShowOnMap,
             </section>
             <section className="evo-section-card">
               <div className="evo-card-heading"><strong>◈ SIBLINGS</strong>
-                <span>{siblings.length} recorded</span></div>
-              {siblings.length?siblings.slice(0,16).map(r=>
+                <span>{siblings.length} full · {halfSiblings.length} half</span></div>
+              {siblings.length?siblings.map(r=>
                 <LifeCard world={world} key={r.id} record={r} onSelect={onChoose} compact/>):
-                <p className="evo-family-help">No recorded siblings for this individual.</p>}
+                <p className="evo-family-help">No full siblings share both parents.</p>}
+              {halfSiblings.length>0&&<div className="evo-family-help">
+                <strong>Half-siblings</strong>
+                {halfSiblings.map(r=>
+                  <LifeCard world={world} key={'half'+r.id} record={r}
+                    onSelect={onChoose} compact/>)}
+              </div>}
             </section>
           </div>
         </>}

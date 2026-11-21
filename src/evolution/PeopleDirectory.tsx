@@ -11,7 +11,13 @@ import {RankBadge,RankProfile} from './RankProfile';
 import {potentialRank,TRAIT_RANKS,type TraitRank} from './traitRanks';
 import {innateTrait,INNATE_TRAIT_CATALOG,INNATE_TRAIT_INFO,
   TRAIT_DOMAINS,TRAIT_DOMAIN_INFO,type TraitDomain} from './innateTraits';
-import {CAREER_LABELS,SKILLS,VALUES,lifeStage,guidingBelief} from './development';
+import {CAREER_LABELS,SKILLS,VALUES,LIFE_STAGES,lifeStage,guidingBelief,
+  type LifeStage} from './development';
+import {PURPOSE_LABELS} from './mindII';
+import {AMBITION_PURPOSES} from './ambitions';
+import {CUSTOM_INFO,residentHome} from './customs';
+import {TEMPERAMENT_AXES,temperamentOf,temperamentPhrase,temperamentSummary} from './temperament';
+import {KIN_ROLE_LABELS,kinshipOf} from './kinship';
 import {cleanIdentityName,isPersonFavorite,personName} from './identity';
 import {activeEffects} from './divine';
 import {ACTIVITY_LABELS} from './dailyLife';
@@ -22,6 +28,8 @@ type Props={world:World;selectedId:number|null;onOpen:(id:number)=>void;
   onFavorite:(id:number)=>void;onRename:(id:number,name:string)=>void;
   onFindOnMap:(id:number)=>void;onInvoke?:(id:number)=>void};
 type Filter='all'|'living'|'deceased'|'favorites';
+type StageFilter='all'|LifeStage;
+type AmbitionFilter='all'|typeof AMBITION_PURPOSES[number];
 
 function LifeChip({world,record,focused,living,onPick,onFavorite}:{
   world:World;record:LineageRecord;focused:boolean;
@@ -42,6 +50,8 @@ function LifeChip({world,record,focused,living,onPick,onFavorite}:{
           {' · Potential '}<RankBadge rank={potentialRank(world.settings.seed,record)}/></small>
         <small className="evo-directory-gift-line">✦ {gift.name} ·{' '}
           {TRAIT_DOMAIN_INFO[gift.domain].name}</small>
+        <small className="evo-directory-temperament">{temperamentPhrase(
+          temperamentOf(world.settings.seed,record))}</small>
         {living.get(record.id)?.disease?.stage==='sick'&&
           <small className="evo-directory-awakened">✚ ILL · {' '}
             {DISEASES[living.get(record.id)!.disease!.kind].name}</small>}
@@ -63,12 +73,23 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
   const [minRank,setMinRank]=useState<'all'|TraitRank>('all');
   const [traitDomain,setTraitDomain]=useState<'all'|TraitDomain>('all');
   const [awakeningFilter,setAwakeningFilter]=useState<'all'|'awakened'|'dormant'>('all');
-  const [sortBy,setSortBy]=useState<'recent'|'rank'|'awakening'|'name'>('recent');
+  const [sortBy,setSortBy]=useState<'recent'|'rank'|'awakening'|'name'|'age'>('recent');
+  const [homeId,setHomeId]=useState<'all'|number>('all');
+  const [stageFilter,setStageFilter]=useState<StageFilter>('all');
+  const [ambitionFilter,setAmbitionFilter]=useState<AmbitionFilter>('all');
   const [activeId,setActiveId]=useState<number|null>(null);
   const [draft,setDraft]=useState('');
   const [editNotice,setEditNotice]=useState('');
   const living=useMemo(()=>new Map(world.agents.map(a=>[a.id,a])),[world.agents]);
   const recordMap=useMemo(()=>new Map(world.lineage.map(r=>[r.id,r])),[world.lineage]);
+  const homes=useMemo(()=>{
+    const map=new Map<number,NonNullable<ReturnType<typeof residentHome>>>();
+    for(const agent of world.agents){
+      const home=residentHome(world,agent);
+      if(home)map.set(agent.id,home);
+    }
+    return map;
+  },[world]);
   const favoriteIds=world.codex?.favoritePeople??[];
   const focused=recordMap.get(activeId??selectedId??-1)??world.lineage.at(-1);
   useEffect(()=>{if(!focused)return;
@@ -88,9 +109,20 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
       if(filter==='living'&&!living.has(r.id))return false;
       if(filter==='deceased'&&living.has(r.id))return false;
       if(filter==='favorites'&&!favorites.has(r.id))return false;
+      const person=living.get(r.id);
+      const home=homes.get(r.id);
+      if(homeId!=='all'&&home?.settlementId!==homeId)return false;
+      if(stageFilter!=='all'&&(!person||lifeStage(person)!==stageFilter))return false;
+      if(ambitionFilter!=='all'&&
+        person?.cognition?.ambition?.purpose!==ambitionFilter)return false;
       if(needle&&!([
         personName(world,r),r.house??'',String(r.id),ancestryLabel(r.ancestry),
         gift.name,TRAIT_DOMAIN_INFO[gift.domain].name,
+        temperamentPhrase(temperamentOf(world.settings.seed,r)),
+        home?.name??'',home?.custom?CUSTOM_INFO[home.custom.custom].name:'',
+        person?.development?.career?CAREER_LABELS[person.development.career]:'',
+        person?.cognition?.ambition?
+          PURPOSE_LABELS[person.cognition.ambition.purpose]:'',
       ].some(value=>value.toLocaleLowerCase().includes(needle))))return false;
       return true;
     });
@@ -101,15 +133,22 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
       (sortBy==='awakening'?(b.awakening?.year??-100000)-
         (a.awakening?.year??-100000):0)||
       (sortBy==='name'?personName(world,a).localeCompare(personName(world,b)):0)||
+      (sortBy==='age'?(living.get(b.id)?.age??
+        (b.died!==undefined?b.died-b.born:0))-(living.get(a.id)?.age??
+        (a.died!==undefined?a.died-a.born:0)):0)||
       b.id-a.id);
   },[world,query,filter,species,minRank,traitDomain,awakeningFilter,sortBy,
-    living,favoriteIds]);
+    homeId,stageFilter,ambitionFilter,homes,living,favoriteIds]);
   const exceptional=useMemo(()=>world.lineage.filter(r=>
     TRAIT_RANKS.indexOf(potentialRank(world.settings.seed,r))>=
       TRAIT_RANKS.indexOf('S')).length,[world.lineage,world.settings.seed]);
   const awakenedCount=useMemo(()=>world.lineage.filter(r=>!!r.awakening).length,
     [world.lineage]);
   const alive=focused&&living.get(focused.id);
+  const home=focused?homes.get(focused.id):undefined;
+  const temper=focused?temperamentOf(world.settings.seed,focused):undefined;
+  const kin=useMemo(()=>focused?kinshipOf(world,focused.id):[],
+    [world,focused?.id]);
   const development=alive?.development;
   const guild=alive?guildOf(world,alive.id):undefined;
   const blessings=alive?activeEffects(alive,world.year):[];
@@ -128,7 +167,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
     <header className="evo-section-header">
       <div><span className="evo-overline">WORLDFORGE / THE DIVINE ROSTER</span>
         <h2>People of the World</h2>
-        <p>Find an individual, grant them a name, follow their life, or revisit their legacy.</p>
+        <p>Find an individual, follow their temperament and kin, or revisit their legacy.</p>
       </div>
       <div className="evo-family-summary">
         <span><b>{world.agents.length}</b> living</span>
@@ -147,7 +186,7 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
         <div className="evo-directory-filters">
           <label htmlFor="evo-people-search">SEARCH PEOPLE / FAMILY / GIFT / ID</label>
           <input id="evo-people-search" type="search"
-            placeholder="Search a name, lineage, gift, species or ID"
+            placeholder="Search a name, kin, gift, temperament, town or ID"
             value={query} onChange={e=>setQuery(e.target.value)}/>
           <div className="evo-directory-filter-row">
             <label htmlFor="evo-people-status">STATUS
@@ -200,6 +239,35 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 <option value="rank">Highest potential</option>
                 <option value="awakening">Recent awakenings</option>
                 <option value="name">Name A–Z</option>
+                <option value="age">Age, oldest first</option>
+              </select>
+            </label>
+          </div>
+          <div className="evo-directory-filter-row">
+            <label htmlFor="evo-people-home">SETTLEMENT
+              <select id="evo-people-home" value={String(homeId)}
+                onChange={e=>setHomeId(e.target.value==='all'?'all':
+                  Number(e.target.value))}>
+                <option value="all">Any home</option>
+                {world.settlements.map(s=>
+                  <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <label htmlFor="evo-people-stage">LIFE STAGE
+              <select id="evo-people-stage" value={stageFilter}
+                onChange={e=>setStageFilter(e.target.value as StageFilter)}>
+                <option value="all">Any stage</option>
+                {LIFE_STAGES.map(item=>
+                  <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label htmlFor="evo-people-ambition">AMBITION
+              <select id="evo-people-ambition" value={ambitionFilter}
+                onChange={e=>setAmbitionFilter(e.target.value as AmbitionFilter)}>
+                <option value="all">Any ambition</option>
+                {AMBITION_PURPOSES.map(purpose=>
+                  <option key={purpose} value={purpose}>
+                    {PURPOSE_LABELS[purpose]}</option>)}
               </select>
             </label>
           </div>
@@ -263,6 +331,51 @@ export function PeopleDirectory({world,selectedId,onOpen,onFavorite,
                 and in their historical record after death.</small>
             </div>
           </section>
+          {focused&&temper&&<section className="evo-section-card">
+            <div className="evo-card-heading"><strong>◈ CHARACTER & KIN</strong>
+              <span>{kin.length} ties</span></div>
+            <div className="evo-development-body">
+              <div className="evo-development-pairs">
+                <div>
+                  <h4>TEMPERAMENT</h4>
+                  <p>{temperamentSummary(temper)}</p>
+                  {TEMPERAMENT_AXES.map(axis=><label key={axis}>
+                    <span>{axis}</span>
+                    <progress max={100} value={temper[axis]}/>
+                    <b>{temper[axis]}</b></label>)}
+                  <small>{temperamentPhrase(temper)}</small>
+                </div>
+                <div>
+                  <h4>AMBITION</h4>
+                  {alive?.cognition?.ambition?<p>
+                    <b>{PURPOSE_LABELS[alive.cognition.ambition.purpose]}</b>
+                    {' — '}{alive.cognition.ambition.reason}</p>:
+                    <p>{focused.moments?.slice().reverse().find(m=>
+                      m.kind==='milestone'&&
+                      m.text.startsWith('Chose a lasting ambition'))?.text??
+                      'No lasting ambition yet. One forms only after repeated finished plans. Temperament breaks ties; it does not assign a destiny.'}</p>}
+                  {alive?.cognition?.ambition&&<small>Since year {
+                    alive.cognition.ambition.since.year}. Commitment {
+                    alive.cognition.ambition.commitment}/12.</small>}
+                  <h4>HOME</h4>
+                  {home?<p>{home.name}
+                    {home.custom?<> · <b>{CUSTOM_INFO[home.custom.custom].name}</b>
+                      {' — '}{home.custom.voice}</>:
+                      ' · no settled custom yet'}</p>:
+                    <p>{alive?'Not within a settlement.':'Archived away from a living home.'}</p>}
+                </div>
+              </div>
+              <div className="evo-development-relationships">
+                <h4>FAMILY & CLOSE TIES</h4>
+                {kin.length?kin.map(link=><p key={link.role+'-'+link.id}>
+                  <b>{KIN_ROLE_LABELS[link.role]}</b>
+                  <button type="button" onClick={()=>setActiveId(link.id)}>
+                    {nameFor(link.id)}</button>
+                  <small> · {link.tone} · {link.note}</small>
+                </p>):<small>No recorded relatives, partners or companions yet.</small>}
+              </div>
+            </div>
+          </section>}
           {alive&&<section className="evo-section-card evo-mind-profile">
             <div className="evo-card-heading"><strong>◈ ANNUAL INTENTION</strong>
               <span>BASE MIND ENGINE</span></div>

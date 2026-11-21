@@ -176,3 +176,6 @@
 @media(prefers-reduced-motion:reduce){
   .evo-dir-star,.evo-directory-person{transition:none}
 }
+.evo-directory-person-open .evo-directory-temperament{color:#e7c99a}
+.evo-development-pairs p{margin:0 0 8px;color:#d5e4df;
+  font:10px/1.7 'Space Mono',monospace}

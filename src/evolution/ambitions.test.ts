@@ -34,4 +34,20 @@ describe('Mind Engine III long-term ambitions',()=>{
     expect(developAmbition(c,{year:13,day:8},true)).toBe(first);
     expect(developAmbition(c,{year:18,day:8},true)?.purpose).toBe('create');
   });
+  it('lets temperament break a tie without inventing an ambition',()=>{
+    const c=initialCognition();
+    c.history=[1,2].flatMap(day=>[
+      {year:1,day,purpose:'learn' as const,outcome:'completed' as const,reason:'Studied'},
+      {year:1,day:day+2,purpose:'explore' as const,outcome:'completed' as const,
+        reason:'Traveled'},
+    ]);
+    expect(developAmbition(c,{year:2,day:1},true)?.purpose).toBe('learn');
+    expect(developAmbition(c,{year:2,day:1},true)?.commitment).toBe(8);
+    const leaned=developAmbition(c,{year:2,day:1},true,{explore:.9,learn:.1});
+    expect(leaned?.purpose).toBe('explore');
+    expect(leaned?.commitment).toBe(10);
+    expect(leaned?.reason).toContain('temperament');
+    c.history=[{year:1,day:1,purpose:'learn',outcome:'completed',reason:'Once'}];
+    expect(developAmbition(c,{year:2,day:1},true,{learn:1})).toBeUndefined();
+  });
 });
