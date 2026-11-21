@@ -27,16 +27,46 @@ function checksum(input:string):string{
   for(let i=0;i<input.length;i++)hash=Math.imul(hash^input.charCodeAt(i),16777619);
   return (hash>>>0).toString(16).padStart(8,'0');
 }
+/** Opening the database is not proportional to world size. A stuck open
+ * must not leave the loading screen up forever. */
+export const IDB_OPEN_TIMEOUT_MS=8_000;
+/** Reading or writing a large snapshot can be slow. This only ends a
+ * transaction that never settles, so later autosaves are not stuck behind it. */
+export const IDB_IO_TIMEOUT_MS=60_000;
 function database():Promise<IDBDatabase>{
   return new Promise((resolve,reject)=>{
-    if(typeof indexedDB==='undefined')return reject(Error('IndexedDB unavailable'));
-    const request=indexedDB.open(WORLD_DATABASE,1);
-    request.onupgradeneeded=()=>{
-      if(!request.result.objectStoreNames.contains(WORLD_STORE))
-        request.result.createObjectStore(WORLD_STORE);
+    if(typeof indexedDB==='undefined'){
+      reject(Error('IndexedDB unavailable'));
+      return;
+    }
+    let settled=false;
+    const timer=setTimeout(()=>fail(Error('IndexedDB timed out')),IDB_OPEN_TIMEOUT_MS);
+    const fail=(error:unknown)=>{
+      if(settled)return;
+      settled=true;
+      clearTimeout(timer);
+      reject(error instanceof Error?error:Error('IndexedDB failed'));
     };
-    request.onerror=()=>reject(request.error);
-    request.onsuccess=()=>resolve(request.result);
+    const succeed=(db:IDBDatabase)=>{
+      if(settled){try{db.close();}catch{/* The timed-out open finished late. */}return;}
+      settled=true;
+      clearTimeout(timer);
+      // Let another tab upgrade or delete the database instead of blocking it.
+      db.onversionchange=()=>{db.close();};
+      resolve(db);
+    };
+    let request:IDBOpenDBRequest;
+    try{request=indexedDB.open(WORLD_DATABASE,1);}
+    catch(error){fail(error);return;}
+    request.onupgradeneeded=()=>{
+      try{
+        if(!request.result.objectStoreNames.contains(WORLD_STORE))
+          request.result.createObjectStore(WORLD_STORE);
+      }catch(error){fail(error);}
+    };
+    request.onblocked=()=>fail(Error('IndexedDB blocked'));
+    request.onerror=()=>fail(request.error??Error('IndexedDB failed'));
+    request.onsuccess=()=>succeed(request.result);
   });
 }
 /** IndexedDB snapshots are atomically replaced. Keep the previously
@@ -49,8 +79,21 @@ export async function loadDatabaseSnapshot():Promise<{world:World;savedAt:number
     const store=db.transaction(WORLD_STORE,'readonly').objectStore(WORLD_STORE);
     const get=(key:string)=>new Promise<unknown>((resolve,reject)=>{
       const request=store.get(key);
-      request.onsuccess=()=>resolve(request.result);
-      request.onerror=()=>reject(request.error);
+      let settled=false;
+      const timer=setTimeout(()=>fail(Error('IndexedDB timed out')),IDB_IO_TIMEOUT_MS);
+      const fail=(error:unknown)=>{
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        reject(error instanceof Error?error:Error('IndexedDB failed'));
+      };
+      request.onsuccess=()=>{
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        resolve(request.result);
+      };
+      request.onerror=()=>fail(request.error??Error('IndexedDB failed'));
     });
     const records=await Promise.all([get(WORLD_RECORD),get(WORLD_PREVIOUS_RECORD)]);
     for(const entry of records){
@@ -59,8 +102,7 @@ export async function loadDatabaseSnapshot():Promise<{world:World;savedAt:number
           entry as {raw:unknown;savedAt:unknown}:null;
       if(!payload||typeof payload.raw!=='string')continue;
       const world=readSavedWorld(payload.raw);
-      if(world)return {world,savedAt:Number.isFinite(payload.savedAt)?
-        Number(payload.savedAt):0};
+      if(world)return {world,savedAt:finiteTime(payload.savedAt)};
     }
     return null;
   }finally{db.close();}
@@ -78,23 +120,42 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now(),
       await new Promise<void>((resolve,reject)=>{
         const transaction=db.transaction(WORLD_STORE,'readwrite');
         const store=transaction.objectStore(WORLD_STORE);
+        let settled=false;
+        const timer=setTimeout(()=>{
+          fail(Error('IndexedDB timed out'));
+          try{transaction.abort();}catch{/* The transaction already finished. */}
+        },IDB_IO_TIMEOUT_MS);
+        const fail=(error:unknown)=>{
+          if(settled)return;
+          settled=true;
+          clearTimeout(timer);
+          reject(error instanceof Error?error:Error('IndexedDB failed'));
+        };
+        const ok=()=>{
+          if(settled)return;
+          settled=true;
+          clearTimeout(timer);
+          resolve();
+        };
         const previous=store.get(WORLD_RECORD);
         previous.onsuccess=()=>{
-          const entry=previous.result;
-          const old=typeof entry==='string'?entry:
-            entry&&typeof entry==='object'&&'raw' in entry?
-              (entry as {raw:unknown}).raw:null;
-          // Preserve a backup only for a recognized checkpoint, avoiding
-          // unnecessary writes of corrupt or non-world data.
-          if(typeof old==='string'&&
-            (old===lastCommittedCanonical||readSavedWorld(old)))
-            store.put(entry,WORLD_PREVIOUS_RECORD);
-          store.put({raw,savedAt},WORLD_RECORD);
+          try{
+            const entry=previous.result;
+            const old=typeof entry==='string'?entry:
+              entry&&typeof entry==='object'&&'raw' in entry?
+                (entry as {raw:unknown}).raw:null;
+            // Preserve a backup only for a recognized checkpoint, avoiding
+            // unnecessary writes of corrupt or non-world data.
+            if(typeof old==='string'&&
+              (old===lastCommittedCanonical||readSavedWorld(old)))
+              store.put(entry,WORLD_PREVIOUS_RECORD);
+            store.put({raw,savedAt},WORLD_RECORD);
+          }catch(error){fail(error);}
         };
-        previous.onerror=()=>reject(previous.error);
-        transaction.oncomplete=()=>resolve();
-        transaction.onerror=()=>reject(transaction.error);
-        transaction.onabort=()=>reject(transaction.error);
+        previous.onerror=()=>fail(previous.error??Error('IndexedDB failed'));
+        transaction.oncomplete=()=>ok();
+        transaction.onerror=()=>fail(transaction.error??Error('IndexedDB failed'));
+        transaction.onabort=()=>fail(transaction.error??Error('IndexedDB aborted'));
       });
       lastCommittedCanonical=canonical?raw:null;
     }finally{db.close();}
