@@ -6,7 +6,7 @@ import {compactWorld,readSavedWorld} from './storage';
 import {MAX_LANDING_RISE,seaNeighbors} from './shipSave';
 import {topographyForWorld} from './topography';
 import {Shore,surfaceGrid} from './surfaceGrid';
-import {validWorldTree} from './worldTree';
+import {validWorldTree,worldTreeBlocksBuilding} from './worldTree';
 import {WORLD_LAYOUTS} from './worldGeography';
 
 describe('World Tree',()=>{
@@ -18,7 +18,8 @@ describe('World Tree',()=>{
       expect(tree).toBeDefined();
       expect(tree).toEqual(createWorld(settings).worldTree);
       expect(validWorldTree(tree,world.width,world.height)).toBe(true);
-      expect(world.tiles[tree.y*world.width+tree.x].biome).not.toBe('water');
+      expect(world.tiles[tree.y*world.width+tree.x].biome==='water').toBe(tree.approach!==undefined);
+      expect(world.ancientSites?.every(site=>!worldTreeBlocksBuilding(tree,site.x,site.y))).toBe(true);
       const map=adventureMapFor(world);
       expect(map.open[tree.y*world.width+tree.x]).toBe(0);
       expect(tree.trail.every(i=>map.open[i])).toBe(true);
@@ -34,11 +35,30 @@ describe('World Tree',()=>{
     }
   });
 
+  it('spawns offshore for some seeds and keeps a dry approach and landing',()=>{
+    let offshore=0,land=0;
+    for(let seed=1;seed<=20;seed++){
+      const world=createWorld({seed,layout:'archipelago',worldTree:true});
+      const tree=world.worldTree!;
+      if(tree.approach===undefined){land++;continue;}
+      offshore++;
+      expect(world.tiles[tree.y*world.width+tree.x].biome).toBe('water');
+      expect(world.tiles[tree.approach].biome).not.toBe('water');
+      expect(tree.trail.every(i=>world.tiles[i].biome!=='water')).toBe(true);
+      expect(readSavedWorld(compactWorld(world))?.worldTree).toEqual(tree);
+    }
+    expect(offshore).toBeGreaterThan(0);
+    expect(land).toBeGreaterThan(0);
+  });
+
   it('saves the landmark and lets a new mortal start on its trail',()=>{
     const world=createWorld({seed:321721,layout:'continents',worldTree:true});
     const {agent,world:started}=createMortal(world,{name:'Root Walker',species:'human',background:'scout',
       appearance:{skin:0,hair:0,hairStyle:0,outfit:'wanderer'}},undefined,undefined,true);
-    expect(world.worldTree!.trail.slice(0,4)).toContain(agent.y*world.width+agent.x);
+    const tree=world.worldTree!;
+    const radius=Math.hypot(agent.x-tree.x,agent.y-tree.y);
+    expect(radius>=12||tree.trail.includes(agent.y*world.width+agent.x)).toBe(true);
+    expect(adventureMapFor(world).open[agent.y*world.width+agent.x]).toBe(1);
     expect(readSavedWorld(compactWorld(started))?.worldTree).toEqual(world.worldTree);
     expect(validWorldTree({...world.worldTree,trail:[0]},world.width,world.height)).toBe(false);
   });

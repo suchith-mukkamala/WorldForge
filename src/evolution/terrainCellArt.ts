@@ -43,7 +43,7 @@ export function terrainSwatches(color:string,water:boolean):Uint32Array{
 
 const shoreColors=['','#b39771','#c9b087','#448398','#407d93',
   '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4','#667d99','#aa7894','#c6999b',
-  '#427f8d','#a9ded6','#aa956e'];
+  '#427f8d','#a9ded6','#aa956e','#75583f','#5e6a46','#504c43'];
 export const shoreColor=(type:number)=>shoreColors[type];
 const shoreline=shoreColors.map(color=>color?terrainPixel(color):0);
 export function cellPixel(grid:SurfaceGrid,index:number,palette:Uint32Array,grain:number):number{

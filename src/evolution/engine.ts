@@ -61,7 +61,7 @@ import {LANDFORM_NAMES,settlementGeography,
   type LandformProfile} from './regionalGeography';
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
 import {generateSkylands,validSkylands,type Skyland} from './skylands';
-import {validWorldTree,type WorldTree} from './worldTree';
+import {worldTreeBlocksBuilding,validWorldTree,type WorldTree} from './worldTree';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export const BIOMES=['plains','forest','mountain','cave','wasteland','volcanic','water',
   'taiga','wetland','savanna'] as const;
@@ -733,7 +733,7 @@ export function stepWorld(previous:World):World{
     const info=SPECIES_INFO[a.species];
     if(biomeSuitability(a.ancestry,world.tiles[offset(world.width,a.x,a.y)].biome)<.55)
       continue;
-    if(settlementCoverage[offset(world.width,a.x,a.y)])continue;
+    if(settlementCoverage[offset(world.width,a.x,a.y)]||worldTreeBlocksBuilding(world.worldTree,a.x,a.y))continue;
     const nearby:Agent[]=[];
     for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
       const x=a.x+dx,y=a.y+dy;
@@ -749,7 +749,7 @@ export function stepWorld(previous:World):World{
         const x=a.x+dx,y=a.y+dy;
         if((!dx&&!dy)||!within(world.width,world.height,x,y))continue;
         const index=offset(world.width,x,y),tile=world.tiles[index];
-        if(settlementCoverage[index]||tile.biome==='water'||
+        if(settlementCoverage[index]||tile.biome==='water'||worldTreeBlocksBuilding(world.worldTree,x,y)||
           biomeSuitability(a.ancestry,tile.biome)<.55)continue;
         const score=settlementGeography(world,index).score-Math.hypot(dx,dy)*.10;
         if(score<=best||nearby.filter(resident=>distance(resident,{x,y})<=4).length<4)continue;

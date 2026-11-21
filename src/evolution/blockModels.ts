@@ -690,9 +690,10 @@ export const worldTreeFoliage={
 } as const;
 export type TreeFoliage=keyof typeof worldTreeFoliage;
 export type WorldTreeRoot=Point&{ground:number;height:number;moss:boolean};
-export function blockWorldTree(seed:number,foliage:readonly TreeFoliage[],roots:readonly WorldTreeRoot[]):BlockModel{
+export function blockWorldTree(seed:number,foliage:readonly TreeFoliage[],roots:readonly WorldTreeRoot[],clearBase:ReadonlySet<number>=new Set()):BlockModel{
   const key='world-tree:'+seed+':'+foliage.join(',')+':'+
-    roots.map(({x,y,ground,height,moss})=>[x,y,ground,height,+moss].join(',')).join(';');
+    roots.map(({x,y,ground,height,moss})=>[x,y,ground,height,+moss].join(',')).join(';')+
+    ':clear:'+Array.from(clearBase).join(',');
   return model(key,g=>{
     const bark=['#554539','#604b3b','#6e5642','#7d624a'];
     const wood=(x:number,y:number)=>bark[Math.floor(terrainHash(x,y,seed)*bark.length)%bark.length];
@@ -722,6 +723,7 @@ export function blockWorldTree(seed:number,foliage:readonly TreeFoliage[],roots:
       const {x:cx,y:cy}=trunk(z);
       const r=3.6-2.75*z/32+1.55*Math.exp(-Math.max(0,z)/3);
       for(let y=-6;y<=6;y++)for(let x=-6;x<=6;x++){
+        if(z<5&&clearBase.has((y+6)*13+x+6))continue;
         if(Math.hypot(x-cx,y-cy)<r+.53*terrainHash(x,y,seed))g.box(x,y,z,1,1,1,wood(x,y));
       }
     }
@@ -753,10 +755,5 @@ export function blockWorldTree(seed:number,foliage:readonly TreeFoliage[],roots:
     canopyCluster(top.x,top.y,31,central==='conifer'?3.6:5.6,4.6,
       central==='conifer'?7.3:4.6,leaves,31);
     canopyCluster(top.x+2.7,top.y-2,29.5,4.2,3.8,3.6,leaves,43);
-    // A low, broken ring is visible where roots leave a gap.
-    for(const [x,y,h] of [[5,4,2],[6,4,3],[7,4,1],[8,5,1]]){
-      const root=roots.find(root=>root.x===x&&root.y===y);
-      if(!root)g.box(x,y,0,1,1,h,'#686e5d');
-    }
   },0,'timber');
 }

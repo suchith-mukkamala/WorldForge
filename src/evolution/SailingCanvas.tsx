@@ -1,3 +1,5 @@
+import {WORLD_TREE_CROWN_RADIUS,WORLD_TREE_DESCENT_UNIT} from './worldTree';
+import {worldTreeModel} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
 import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {ADVENTURE_TILE as TILE} from './adventureArt';
@@ -111,6 +113,13 @@ export function SailingCanvas(props:Props){
           const target=seaPoint(world.width,landing);
           ctx.strokeRect(target.x*TILE-offset.x+3,target.y*TILE-offset.y+3,TILE-6,TILE-6);
         }
+      }
+      const tree=world.worldTree;
+      if(tree&&Math.abs(boat.x-tree.x)<WORLD_TREE_CROWN_RADIUS&&
+        Math.abs(boat.y-tree.y)<WORLD_TREE_CROWN_RADIUS*2){
+        const {model}=worldTreeModel(world);
+        paintBlockScenery(ctx,model,{x:(tree.x+.5)*TILE-offset.x,y:(tree.y+.5)*TILE-offset.y},
+          DESCENT_BLOCK_VIEW,WORLD_TREE_DESCENT_UNIT);
       }
       const x=p.x-offset.x,y=p.y-offset.y;
       if(boat.walking&&!reducedMotion.matches){

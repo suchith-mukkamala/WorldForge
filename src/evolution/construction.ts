@@ -1,3 +1,4 @@
+import {worldTreeBlocksBuilding} from './worldTree';
 /** Evolution Lab v0.7 — deterministic settlement construction.
  * Every change is driven by the world tick, not by map zoom or UI visibility.
  */
@@ -228,7 +229,7 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
   let best=-Infinity,target:null|{x:number;y:number}=null;
   for(const id of infra.land){
     const x=id%w.width,y=Math.floor(id/w.width),tile=w.tiles[id];
-    if(tile.biome==='water'||streams.has(id))continue;
+    if(tile.biome==='water'||streams.has(id)||worldTreeBlocksBuilding(w.worldTree,x,y))continue;
     if(!buildingSiteClear({x,y},type,buildings,s))continue;
     if(type==='watermill'&&(!crossing||terrainDistance(w.width,id,crossing)>2||!riverBank(w,id)))continue;
     if(heights&&!bankSides.some(({x:dx,y:dy})=>{

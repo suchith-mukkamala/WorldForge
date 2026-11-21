@@ -1,3 +1,4 @@
+import {WORLD_TREE_CROWN_RADIUS} from './worldTree';
 import {terrainHash,terrainNoise} from './biomeGeneration';
 import type {World} from './engine';
 import type {Point} from './motion';
@@ -47,7 +48,7 @@ export function generateSkylands(world:SiteWorld):Skyland[]{
   const tree=world.worldTree;
   for(const {x,y} of candidates){
     if(groups.length>=count)break;
-    if(tree&&Math.hypot(x-tree.x,y-tree.y)<16)continue;
+    if(tree&&Math.hypot(x-tree.x,y-tree.y)<WORLD_TREE_CROWN_RADIUS+7)continue;
     if(groups.some(({islands:[a]})=>Math.hypot(x-a.x,y-a.y)<spacing))continue;
     const id=groups.length+1,random=(n:number)=>terrainHash(x+n*19,y-n*7,seed+39841);
     const mainSeed=(Math.floor(random(1)*2147483647)+id)%2147483647;

@@ -43,8 +43,25 @@ function arrival(world:World,species:Species,mouth?:number,shipyard?:number,atWo
   if(atWorldTree){
     const tree=world.worldTree;
     const map=adventureMapFor(world);
-    const site=tree?.trail.slice(0,4).find(i=>map.open[i]&&available(i));
-    return site===undefined?null:{point:seaPoint(world.width,site)};
+    if(!tree)return null;
+    const able=(i:number)=>!!map.open[i]&&available(i);
+    const trailSite=tree.trail.find(i=>{
+      const {x,y}=seaPoint(world.width,i);
+      return able(i)&&Math.hypot(x-tree.x,y-tree.y)>=12;
+    });
+    if(trailSite!==undefined)return {point:seaPoint(world.width,trailSite)};
+    // Start on the same landmass a short walk back from the trunk when possible.
+    const start=tree.trail[0],visited=new Set([start]),queue=[start];
+    for(let read=0;read<queue.length;read++){
+      const i=queue[read],point=seaPoint(world.width,i);
+      if(Math.hypot(point.x-tree.x,point.y-tree.y)>=12&&able(i))return {point};
+      for(const next of seaNeighbors(i,world.width,world.tiles.length)){
+        if(next<0||visited.has(next)||!map.open[next])continue;
+        visited.add(next);queue.push(next);
+      }
+    }
+    const fallback=tree.trail.find(able);
+    return fallback===undefined?null:{point:seaPoint(world.width,fallback)};
   }
   if(mouth!==undefined)return riverTrailArrival(world,mouth,available)??null;
   if(shipyard!==undefined){
