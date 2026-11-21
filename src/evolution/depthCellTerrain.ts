@@ -6,6 +6,8 @@ import {TERRAIN_ELEVATION_UNITS} from './terrainCells';
 import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE,type SurfaceWorld} from './surfaceGrid';
 import {cellPixel,firstTerrainSquare,shadeTerrainPixel,terrainPixel,
   terrainSwatches} from './terrainCellArt';
+import {CONTACT_SHADE,insetEdge,RIM_LIGHT,stampSegment,waterCrest} from './depthForm';
+import {paintDepthSky} from './depthSky';
 import {SEA_LEVEL} from './topography';
 
 type Projector=ReturnType<typeof createDepthProjector>;
@@ -17,6 +19,8 @@ function paintPlotSquare(base:number,color:string){
   const blend=(shift:number)=>Math.round((base>>>shift&255)*(1-opacity)+(paint>>>shift&255)*opacity);
   return (255<<24|blend(16)<<16|blend(8)<<8|blend(0))>>>0;
 }
+const GLINT=terrainPixel('#9bcacc');
+const SPARK=terrainPixel('#d8e6d9');
 const wallColors=new WeakMap<Uint32Array,{east:Uint32Array;south:Uint32Array}>();
 function terrainWalls(palette:Uint32Array){
   const cached=wallColors.get(palette);
@@ -37,6 +41,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   const {width,height}=hit,image=ctx.createImageData(width,height);
   const pixels=new Uint32Array(image.data.buffer);
   pixels.fill(terrainPixel(sea));
+  paintDepthSky(pixels,width,height,w.settings.seed,projector.skyBand*density);
   const grid=surfaceGrid(w),{columns,rows,ground,water,shore}=grid;
   const decks=plots&&new Uint8Array(ground.length);
   if(decks)for(const [i,plot] of plots.squares){
@@ -58,6 +63,12 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   const a={x:0,y:0},b={x:0,y:0},c={x:0,y:0},d={x:0,y:0};
   const e={x:0,y:0},f={x:0,y:0};
   const top=[a,b,c,d];
+  const lip=(ax:number,ay:number,bx:number,by:number,cx:number,cy:number,face:number,factor:number)=>{
+    if(Math.hypot(bx-ax,by-ay)<2.5)return;
+    const edge=insetEdge(ax,ay,bx,by,cx,cy,1);
+    stampSegment(pixels,width,height,edge.ax,edge.ay,edge.bx,edge.by,
+      shadeTerrainPixel(face,factor),face);
+  };
   const horizontal=frontX>0?[b,c,e,f]:[d,a,e,f];
   const vertical=frontY>0?[c,d,e,f]:[a,b,e,f];
   for(const index of tiles){
@@ -95,6 +106,34 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
         pickTerrainFace(hit,vertical,index,pixels,wall);
       }
       pickTerrainFace(hit,top,index,pixels,color);
+      if(!plot){
+        const crest=paint.water&&shore[i]===Shore.ground?waterCrest(paint.grain,x,y):0;
+        const rimX=!!frontX&&(z-zX)*rise>=2;
+        const rimY=!!frontY&&(z-zY)*rise>=2;
+        const zBackX=rimX||frontX?x-tx>=0&&x-tx<columns?level(i-tx):z:z;
+        const zBackY=rimY||frontY?y-ty>=0&&y-ty<rows?level(i-ty*columns):z:z;
+        const shadeX=!!frontX&&(zBackX-z)*rise>=2;
+        const shadeY=!!frontY&&(zBackY-z)*rise>=2;
+        if(rimX||rimY||shadeX||shadeY||crest){
+          const centerX=(a.x+b.x+c.x+d.x)/4,centerY=(a.y+b.y+c.y+d.y)/4;
+          if(rimX)lip(frontX>0?b.x:d.x,frontX>0?b.y:d.y,frontX>0?c.x:a.x,frontX>0?c.y:a.y,
+            centerX,centerY,color,RIM_LIGHT);
+          if(rimY)lip(frontY>0?c.x:a.x,frontY>0?c.y:a.y,frontY>0?d.x:b.x,frontY>0?d.y:b.y,
+            centerX,centerY,color,RIM_LIGHT);
+          if(shadeX)lip(frontX>0?d.x:b.x,frontX>0?d.y:b.y,frontX>0?a.x:c.x,frontX>0?a.y:c.y,
+            centerX,centerY,color,CONTACT_SHADE);
+          if(shadeY)lip(frontY>0?a.x:c.x,frontY>0?a.y:c.y,frontY>0?b.x:d.x,frontY>0?b.y:d.y,
+            centerX,centerY,color,CONTACT_SHADE);
+          if(crest){
+            const px=Math.round(centerX),py=Math.round(centerY),at=py*width+px;
+            if(px>=0&&py>=0&&px<width&&py<height&&pixels[at]===color){
+              pixels[at]=GLINT;
+              if(px+1<width&&pixels[at+1]===color)pixels[at+1]=crest===2?SPARK:GLINT;
+              if(crest===2&&px+2<width&&pixels[at+2]===color)pixels[at+2]=GLINT;
+            }
+          }
+        }
+      }
     }
   }
   ctx.putImageData(image,0,0);
