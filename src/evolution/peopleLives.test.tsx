@@ -3,13 +3,21 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import {createWorld,isWorld,stepWorld,type World} from './engine';
 import {PeopleDirectory} from './PeopleDirectory';
-import {compactWorld,readSavedWorld} from './storage';
+import {godModeShortcut} from './appShortcuts';
+import {compactWorld,loadBrowserWorldSnapshot,readSavedWorld,
+  resolveStartupSave,writeBrowserSnapshot} from './storage';
 import {initialCognition} from './mindII';
 import {advanceCulture} from './culture';
 import {createEconomy} from './economy';
 
 const noop=()=>{};
 
+function memoryStorage(){
+  const data=new Map<string,string>();
+  return {getItem:(key:string)=>data.get(key)??null,
+    setItem:(key:string,value:string)=>{data.set(key,value);},
+    removeItem:(key:string)=>{data.delete(key);}};
+}
 describe('people lives, kin and customs',()=>{
   it('loads a save from before milestones and settlement customs',()=>{
     const fresh=createWorld({seed:42,size:'small',
@@ -18,13 +26,39 @@ describe('people lives, kin and customs',()=>{
     delete old.culture?.customs;
     for(const record of old.lineage)
       record.moments=record.moments?.filter(moment=>moment.kind!=='milestone');
-    const loaded=readSavedWorld(JSON.stringify(old));
+    const plain=JSON.stringify(old);
+    const loaded=readSavedWorld(plain);
     expect(loaded).toEqual(old);
     expect(isWorld(loaded)).toBe(true);
-    expect(readSavedWorld(compactWorld(loaded!))).toEqual(loaded);
+    // The post-#82 browser snapshot path must accept this older plain JSON
+    // and must not treat a missing customs field as a corrupt save.
+    const browser=memoryStorage();
+    expect(writeBrowserSnapshot(browser,plain,40)).toBe('stored');
+    expect(loadBrowserWorldSnapshot(browser)).toEqual({world:old,savedAt:40});
+    expect(resolveStartupSave({
+      localRaw:plain,localTimeRaw:'40',legacyRaw:null,database:null,
+      storageBlocked:false,
+    })).toEqual({kind:'restored',world:old,source:'local'});
+    const packed=compactWorld(old);
+    expect(packed.startsWith('{"format":"evo-packed-v3"')).toBe(true);
+    expect(readSavedWorld(packed)).toEqual(old);
     const lived=stepWorld(loaded!);
     expect(isWorld(lived)).toBe(true);
     expect(lived.culture?.customs).toBeUndefined();
+    expect(readSavedWorld(compactWorld(lived))).toEqual(lived);
+  });
+
+  it('leaves the atlas P pause key unused by the People directory',()=>{
+    const world=createWorld({seed:15,size:'small',
+      starting:{human:1,elf:0,dwarf:0,demon:0}});
+    const html=renderToStaticMarkup(createElement(PeopleDirectory,{
+      world,selectedId:null,onOpen:noop,onFavorite:noop,onRename:noop,
+      onFindOnMap:noop}));
+    expect(html).toContain('SEARCH PEOPLE');
+    const search={tagName:'INPUT'},rename={tagName:'INPUT'},filter={tagName:'SELECT'};
+    expect(godModeShortcut({key:'p',target:search})).toBeNull();
+    expect(godModeShortcut({key:'P',target:rename})).toBeNull();
+    expect(godModeShortcut({key:'p',target:filter})).toBeNull();
   });
 
   it('records coming of age when a youth crosses maturity',()=>{
