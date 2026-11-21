@@ -70,8 +70,9 @@ export function visibleDistrictBuildings<T extends {building:Building;x:number;y
 export function depthStructureSignature(settlements:readonly Settlement[]):string{
   return settlements.map(s=>[
     s.id,s.species,s.x,s.y,settlementStage(s),
+    (s.infrastructure?.roads??[]).join(','),
     (s.infrastructure?.buildings??[]).map(b=>[
-      b.id,b.x,b.y,b.type,b.culture,b.stage,buildingTier(b),
+      b.id,b.x,b.y,b.type,b.culture,b.stage,buildingTier(b),b.condition<46,
     ].join(':')).join(','),
   ].join('|')).join(';');
 }

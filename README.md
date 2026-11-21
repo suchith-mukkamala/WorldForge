@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.20.0 — Grounded Structures** fits foundations to the small terrain squares below each building. Stone and timber supports follow slopes, docks face nearby water, and approaches connect to the same entrances used in Descend. All eleven building types, settlement centers, and landmarks have updated block models. Local stone, timber, roof materials, and floodplain or snowy details vary with the site. Existing worlds gain the new scenery.
+
 - **v2.19.1 — Crisp Edges** draws square terrain and block scenery with hard pixel edges in both atlas views and in Descend. The world preview uses the same crisp scaling.
 
 - **v2.19.0 — Coastal Life** sharpens the 2.5D atlas, block scenery and outdoor Descend view. Look for coral clusters in warm shallows and little fish that wander near shore and occasionally jump. Zoom into a coast or explore it on foot to see the fish. Existing worlds gain the same coastal details.

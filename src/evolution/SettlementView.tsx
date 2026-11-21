@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Settlement,type World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
-  buildingAppearance,buildingTier,settlementStage,type Building,type RuinSite} from './construction';
+  buildingAppearance,settlementStage,type Building,type RuinSite} from './construction';
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
 import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
 import {TOPIC_INFO} from './knowledge';
@@ -15,6 +15,8 @@ import {hydrologyForWorld} from './hydrology';
 import {terrainDetailAt,type TerrainDetail} from './terrainDetails';
 import {isTreeKind} from './biomeTrees';
 import {populationScene,renderedPopulation} from './populationVisibility';
+import {blockBuildingArt,blockStampScale,DESCENT_BLOCK_VIEW,type BlockStamp} from './blockScenery';
+import {streetStructureUnit,structureForBuilding} from './structureGround';
 import {settlementSanitation} from './publicHealth';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
@@ -137,74 +139,39 @@ function TerrainScenery({detail,x,y}:{detail:TerrainDetail;x:number;y:number}){
   </g>;
 }
 
-function Structure({b,x,y,selected,onSelect}:{b:Building;x:number;y:number;
-  selected:boolean;onSelect:()=>void}){
-  const style=ARCHITECTURE[b.culture],abandoned=b.stage==='abandoned';
-  const ruin=b.stage==='ruin',unfinished=['foundation','frame','finishing']
-    .includes(b.stage);
-  const tier=buildingTier(b),raised=b.stage==='complete'?tier*2:0;
+const localBuildingArt=new Map<string,BlockStamp>();
+const localBuildingImages=new WeakMap<BlockStamp,string>();
+
+function Structure({world,town,b,x,y,selected,onSelect}:{world:World;town?:Settlement;
+  b:Building;x:number;y:number;selected:boolean;onSelect:()=>void}){
+  const {model,door,site}=structureForBuilding(world,town,b);
+  const unit=streetStructureUnit(b.type);
+  const [stamp,setStamp]=useState<{model:typeof model;art:BlockStamp;href:string}|null>(null);
+  useEffect(()=>{
+    const art=blockBuildingArt(localBuildingArt,model,DESCENT_BLOCK_VIEW,unit);
+    if(!art)return;
+    let href=localBuildingImages.get(art);
+    if(!href){href=art.image.toDataURL();localBuildingImages.set(art,href);}
+    setStamp({model,art,href});
+  },[model,unit]);
+  const painted=stamp?.model===model?stamp:undefined;
+  const unfinished=b.stage==='foundation'||b.stage==='frame'||b.stage==='finishing';
+  const cx=x+CELL/2,cy=y+CELL/2,pixel=blockStampScale(1);
   return <g role="button" tabIndex={0} aria-label={buildingAppearance(b)+' '+b.stage}
     onClick={onSelect} onKeyDown={e=>{if(e.key==='Enter')onSelect();}}
     style={{cursor:'pointer'}}>
     {selected&&<rect x={x-3} y={y-3} width={CELL+6} height={CELL+6}
       fill="none" stroke="#ffe7a7" strokeWidth={2}/>}
-    {ruin?<>
-      <path d={`M${x+3} ${y+19} L${x+8} ${y+8} L${x+13} ${y+19}Z`}
-        fill={style.wall} stroke="#293044" strokeWidth={1}/>
-      <path d={`M${x+14} ${y+20} L${x+20} ${y+12} L${x+23} ${y+21}Z`}
-        fill={style.roof}/>
-    </>:<>
-      {b.stage!=='foundation'&&<rect x={x+4} y={y+9-raised} width={18} height={13+raised}
-        fill={abandoned?'#696976':tier>=2?'#a5a4a0':style.wall}
-        stroke="#172338" strokeWidth={1.3}/>}
-      {b.stage==='foundation'&&<rect x={x+4} y={y+16} width={18} height={6}
-        fill={style.wall} stroke={style.trim} strokeWidth={1.5}/>}
-      {b.stage==='frame'&&<>
-        <path d={`M${x+4} ${y+8}V${y+22}M${x+22} ${y+8}V${y+22}M${x+4} ${y+8}L${x+22} ${y+22}`}
-          fill="none" stroke={style.trim} strokeWidth={2}/>
-      </>}
-      {['finishing','complete','abandoned'].includes(b.stage)&&<>
-        <path d={`M${x+2} ${y+10-raised}L${x+13} ${y+3-raised}L${x+24} ${y+10-raised}Z`}
-          fill={abandoned?'#494a5d':style.roof} stroke={style.trim} strokeWidth={1}/>
-        {tier>=1&&!abandoned&&<>
-          <rect x={x+8} y={y+11-raised} width={3} height={3} fill="#ffe0a8"/>
-          <rect x={x+16} y={y+11-raised} width={3} height={3} fill="#ffe0a8"/>
-          {tier>=3&&<rect x={x+17} y={y-4-raised} width={4} height={6}
-            fill={style.wall} stroke={style.roof} strokeWidth={1}/>}
-        </>}
-        {b.type==='well'?<circle cx={x+13} cy={y+16} r={5} fill="#4689bd"/>
-          :b.type==='farm'?<>
-            {[8,13,18].map(px=><path key={px}
-              d={`M${x+px} ${y+21}v-9m-3 3l3 2l3-2`}
-              stroke="#a8d780" strokeWidth={2} fill="none"/>)}</>
-            :b.type==='dock'?<>
-              <path d={`M${x+5} ${y+12}H${x+21}M${x+8} ${y+12}v9m10-9v9`}
-                stroke="#806344" strokeWidth={3} fill="none"/>
-              <path d={`M${x+10} ${y+20}q4-5 8 0`} stroke="#65b8cf"
-                strokeWidth={1.5} fill="none"/>
-            </>:b.type==='market'?<>
-              <path d={`M${x+4} ${y+12}h18l-3 5h-12Z`} fill="#f5c96d"/>
-              <path d={`M${x+9} ${y+12}l-1 5m8-5l1 5`} stroke="#a95e54"
-                strokeWidth={2}/>
-            </>:b.type==='granary'?<>
-              <rect x={x+5} y={y+16} width={16} height={3} fill="#c7a36b"/>
-              <rect x={x+6} y={y+19} width={3} height={4} fill="#50443d"/>
-              <rect x={x+17} y={y+19} width={3} height={4} fill="#50443d"/>
-            </>:b.type==='communal'?<path d={`M${x+13} ${y+4}V${y-1}l7 3l-7 2`}
-              stroke={style.trim} fill={style.roof} strokeWidth={1}/>
-              :b.type==='workshop'?<>
-                <rect x={x+17} y={y+1} width={3} height={8} fill="#626879"/>
-                <rect x={x+11} y={y+13} width={4} height={6} fill="#edc07d"/>
-              </>:<rect x={x+10} y={y+13} width={6} height={8}
-                fill={style.trim}/>} </>}
-      {unfinished&&<>
-        <path d={`M${x+3} ${y+2}V${y+23}M${x+23} ${y+2}V${y+23}M${x+3} ${y+5}H${x+23}`}
-          fill="none" stroke="#f3d4a5" strokeWidth={1} strokeDasharray="3 2"/>
-        <rect x={x+3} y={y+24} width={20} height={3} fill="#3e445c"/>
-        <rect x={x+3} y={y+24} width={b.progress*.20} height={3} fill="#e7bc76"/>
-      </>}
-      {abandoned&&<path d={`M${x+3} ${y+8}l8 5l4-6`} fill="none"
-        stroke="#372e44" strokeWidth={2}/>}
+    {door&&<path d={`M${cx} ${cy}l${door.x*CELL*.82} ${door.y*CELL*.82}`}
+      stroke={site.wet?site.material.wood:site.material.earth} strokeWidth={CELL*.28}/>}
+    <rect x={x+5} y={y+6} width={CELL-10} height={CELL-11}
+      fill={painted?'#192b23':site.material.stone} opacity={painted ? .36 : .8}/>
+    {painted&&<image href={painted.href} x={cx-painted.art.anchor.x*pixel}
+      y={cy-painted.art.anchor.y*pixel} width={painted.art.image.width*pixel}
+      height={painted.art.image.height*pixel} style={{imageRendering:'pixelated'}}/>}
+    {unfinished&&<>
+      <rect x={x+3} y={y+24} width={20} height={3} fill="#3e445c"/>
+      <rect x={x+3} y={y+24} width={b.progress*.20} height={3} fill="#e7bc76"/>
     </>}
   </g>;
 }
@@ -338,7 +305,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
       <rect x={HALF*CELL+5} y={HALF*CELL+5} width={CELL-10} height={CELL-10}
         fill="none" stroke="#ffe7ae" strokeWidth={1.5} strokeDasharray="3 2"/>
       {buildings.filter(b=>Math.abs(b.x-place.x)<=HALF&&
-        Math.abs(b.y-place.y)<=HALF).map(b=><Structure key={b.id} b={b}
+        Math.abs(b.y-place.y)<=HALF).map(b=><Structure key={b.id} world={world} town={settlement} b={b}
         x={(b.x-originX)*CELL} y={(b.y-originY)*CELL}
         selected={chosen===b.id} onSelect={()=>onChoose(b.id)}/>)}
       {residents.map(a=><g key={'resident-'+a.id}

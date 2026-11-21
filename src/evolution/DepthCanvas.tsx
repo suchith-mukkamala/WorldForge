@@ -13,7 +13,8 @@ import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain
 import {paintDepthCells} from './depthCellTerrain';
 import {AtlasFish} from './AtlasFish';
 import {waterSeason} from './riverSeasons';
-import {regionalBuildingStyle} from './riverArchitecture';
+import {surfaceGrid,VISUAL_TERRAIN_SIDE,type SurfaceGrid} from './surfaceGrid';
+import {fitStructure,structureForBuilding,structureSite,surfaceHeightAt,type StructureSite} from './structureGround';
 import type {RiverCourse} from './riverCourses';
 import {paintRiverCourse} from './riverCourseArt';
 import {visibleAtlasSite} from './riverDiscoveries';
@@ -31,19 +32,19 @@ import {buildingVisualScale,depthArtDetail,depthRenderDensity,depthSceneryDensit
 import {depthStructureSignature,uncrowdedDistrictBuildings,
   visibleDistrictBuildings} from './depthPerformance';
 import {settlementStage,type Building} from './construction';
-import type {Agent} from './engine';
+import type {Agent,Settlement} from './engine';
 import {mortalWorldPoint} from './spatialDetails';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {canAnimate,directionBetween,motionFrame,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
-import {createDepthProjector,DEFAULT_DEPTH_CAMERA,interpolatedGroundHeight,
+import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,interpolatedGroundHeight,
   type DepthCamera} from './depthProjection';
 import {atlasLevel} from './atlasMap';
 import {atlasBuildingAt,atlasBuildingBounds,paintAtlasBuilding,
-  type AtlasBuilding,type BuildingArt} from './atlasBuildingArt';
-import {blockBuilding,blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
-import {BLOCK_ANCHOR,blockBuildingArt,blockStampScale,depthBlockView,
-  paintBlockScenery} from './blockScenery';
+  type AtlasBuilding} from './atlasBuildingArt';
+import {blockLandmark,blockProp,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
+import {blockBuildingArt,blockStampScale,depthBlockView,
+  paintBlockScenery,type BlockStamp} from './blockScenery';
 
 const BASINS=['#385e60','#4a6758','#536072','#637056',
   '#42637c','#6c695e','#456f68','#606d77'];
@@ -63,6 +64,38 @@ const HEIGHT_COLORS=['#234966','#3b7182','#5d866b','#74936a',
   '#8c9a72','#b19f7c','#9b918b','#bcc1c4','#e8e7d9'];
 type Pt={x:number;y:number};
 type Projector=ReturnType<typeof createDepthProjector>;
+
+function seatAt(world:World,grid:SurfaceGrid|undefined,at:Point,model:BlockModel,site:StructureSite,
+  projector:Projector,view:SceneryView,unit:number){
+  const fitted=grid&&fitStructure(grid,model,at,unit,unit*view.rise*DEPTH_RISE/projector.riseScale,site);
+  const height=fitted?fitted.height:topographyForWorld(world).heights[at.y*world.width+at.x];
+  const position=fitted?.at??at;
+  return {p:projector.projectSmooth(position.x,position.y,height),model:fitted?.model??model,
+    scale:fitted?.scale??1};
+}
+
+function addDepthApproach(paths:Map<string,Path2D>,grid:SurfaceGrid,projector:Projector,
+  at:Point,side:Point,site:StructureSite){
+  const steps=VISUAL_TERRAIN_SIDE,step=1/steps;
+  const center=steps/2;
+  for(let forward=1;forward<=6;forward++)for(let across=-1;across<=0;across++){
+    const offset=(direction:number)=>direction>0?forward:-forward-1;
+    const column=at.x*steps+center+(side.x?offset(side.x):across);
+    const row=at.y*steps+center+(side.y?offset(side.y):across);
+    if(row<0||row>=grid.rows||column<0||column>=grid.columns)continue;
+    const x=column*step-.5,y=row*step-.5,h=surfaceHeightAt(grid,x+step/2,y+step/2);
+    const edge=site.wet?(forward%2?site.material.wood:site.material.earth):
+      (forward%3?site.material.earth:site.material.course)+'b0';
+    let path=paths.get(edge);
+    if(!path){path=new Path2D();paths.set(edge,path);}
+    const corners=[[x,y],[x+step,y],[x+step,y+step],[x,y+step]];
+    for(const [i,[u,v]] of corners.entries()){
+      const p=projector.projectSmooth(u,v,h);
+      if(i)path.lineTo(p.x,p.y);else path.moveTo(p.x,p.y);
+    }
+    path.closePath();
+  }
+}
 
 function polygon(ctx:CanvasRenderingContext2D,points:readonly Pt[],color:string,seal=true){
   ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
@@ -204,15 +237,18 @@ function renderTerrain(w:World,overlay:MapOverlay,
   }
   if(showBuildings){
     if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector);
+    const ground=tiled?surfaceGrid(w):undefined;
     for(const site of w.ancientSites??[]){
       if(!visibleAtlasSite(w,site))continue;
-      const p=projector.project(site.x,site.y,heights[site.y*W+site.x]);
-      paintBlockScenery(ctx,blockLandmark(site.kind,(site.visits??site.visitors.length)>0),
-        p,blockView,1.1);
+      const habitat=structureSite(w,site),art=blockLandmark(site.kind,(site.visits??site.visitors.length)>0,habitat);
+      const {p,model,scale}=seatAt(w,ground,site,art,habitat,projector,blockView,1.1);
+      paintBlockScenery(ctx,model,p,blockView,1.1*scale);
     }
     for(const ruin of w.ruins??[]){
-      const p=projector.project(ruin.x,ruin.y,heights[ruin.y*W+ruin.x]);
-      paintBlockScenery(ctx,blockLandmark('ruin'),p,blockView,1.18);
+      const habitat=structureSite(w,ruin);
+      const {p,model,scale}=seatAt(w,ground,ruin,blockLandmark('ruin',false,habitat),
+        habitat,projector,blockView,1.18);
+      paintBlockScenery(ctx,model,p,blockView,1.18*scale);
     }
   }
   if(overlay==='deposits')for(const d of w.deposits??[]){
@@ -227,41 +263,44 @@ type DepthActor={order:number;paint:()=>void};
 /** Geometry and structures are immutable throughout an animation. Build
  * projected actors only when the world or camera changes. */
 function prepareDepthStructures(ctx:CanvasRenderingContext2D,w:World,
-  projector:Projector,blockView:SceneryView,cache:Map<string,BuildingArt>,detail:DepthArtDetail){
+  projector:Projector,blockView:SceneryView,cache:Map<string,BlockStamp>,detail:DepthArtDetail,
+  ground:SurfaceGrid|undefined){
   const heights=topographyForWorld(w).heights,actors:DepthActor[]=[];
   const plots:AtlasBuilding[]=[];
-  const projected:{building:Building;x:number;y:number;p:Pt}[]=[];
+  const projected:{building:Building;town:Settlement;x:number;y:number}[]=[];
+  const approaches=new Map<string,Path2D>();
   for(const s of w.settlements){
     const buildings=s.infrastructure?.buildings??[];
     if(!buildings.length){
-      const p=projector.project(s.x,s.y,heights[s.y*w.width+s.x]);
-      const hub=blockSettlement(settlementStage(s),s.species);
-      actors.push({order:p.y+.2,paint:()=>paintBlockScenery(ctx,hub,p,blockView,1.1)});
+      const site=structureSite(w,s),hub=blockSettlement(settlementStage(s),s.species,site);
+      const {p,model,scale}=seatAt(w,ground,s,hub,site,projector,blockView,1.1);
+      actors.push({order:p.y+.2,paint:()=>paintBlockScenery(ctx,model,p,blockView,1.1*scale)});
     }
     for(const building of buildings){
-      const p=projector.project(building.x,building.y,
-        heights[building.y*w.width+building.x]);
-      projected.push({building,x:p.x,y:p.y,p});
+      const height=ground?surfaceHeightAt(ground,building.x,building.y):heights[building.y*w.width+building.x];
+      const p=projector.projectSmooth(building.x,building.y,height);
+      projected.push({building,town:s,x:p.x,y:p.y});
     }
   }
   const candidates=visibleDistrictBuildings(projected,detail).flatMap(entry=>{
-    const {building:b,p}=entry;
-    const model=blockBuilding(b,pixelTerrainHash(b.x,b.y,w.settings.seed),
-      {regional:regionalBuildingStyle(w,b)});
+    const {building:b,town}=entry,look=structureForBuilding(w,town,b);
+    const unit=buildingVisualScale(b.type);
+    const {p,model,scale:fit}=seatAt(w,ground,b,look.model,look.site,projector,blockView,1.2*unit);
     const art=blockBuildingArt(cache,model,blockView,1.2);
     if(!art)return [];
-    const scale=blockStampScale(buildingVisualScale(b.type));
+    const scale=blockStampScale(unit*fit);
     const plot={building:b,art,scale,
-      x:p.x-BLOCK_ANCHOR.x*scale,y:p.y-BLOCK_ANCHOR.y*scale};
-    return [{...entry,plot,bounds:atlasBuildingBounds(plot)}];
+      x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale};
+    return [{...entry,door:look.door,site:look.site,plot,p,x:p.x,y:p.y,bounds:atlasBuildingBounds(plot)}];
   });
   const district=uncrowdedDistrictBuildings(candidates);
   district.sort((a,b)=>a.y-b.y);
-  for(const {plot,p} of district){
+  for(const {plot,p,door,site} of district){
+    if(ground&&door)addDepthApproach(approaches,ground,projector,plot.building,door,site);
     plots.push(plot);
     actors.push({order:p.y+.4,paint:()=>paintAtlasBuilding(ctx,plot)});
   }
-  return {actors,plots};
+  return {actors,plots,approaches};
 }
 function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   selected:{x:number;y:number}|null,zoom:number,
@@ -312,12 +351,13 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   const sceneryRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const pickingRef=useRef<DepthPicking|null>(null);
-  const buildingSpritesRef=useRef<Map<string,BuildingArt>>(new Map());
+  const buildingSpritesRef=useRef<Map<string,BlockStamp>>(new Map());
   const personSpritesRef=useRef<PersonSpriteCache>(new Map());
   const populationSceneRef=useRef<{signature:string;seed:number;
     width:number;height:number;scene:PopulationScene}|null>(null);
   const structureCacheRef=useRef<{signature:string;
     topography:World['topography'];seed:number;relief:number;
+    ground:SurfaceGrid|undefined;season:string;roadKey:number;
     yaw:number;pitch:number;detail:DepthArtDetail;
     structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
@@ -439,19 +479,21 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     }
     priorRef.current={seed:world.settings.seed,year:world.year,day,positions};
     const structureCache=structureCacheRef.current;
-    const structures=!showBuildings?{actors:[],plots:[]}:structureCache&&
+    const ground=showBuildings&&(overlay==='terrain'||overlay==='trade')?surfaceGrid(world):undefined;
+    const structures=!showBuildings?undefined:structureCache&&
       structureCache.signature===structureKey&&
+      !landChanged&&structureCache.ground===ground&&structureCache.season===season&&structureCache.roadKey===roadKey&&
       structureCache.topography===world.topography&&
       structureCache.seed===world.settings.seed&&
       structureCache.relief===relief&&structureCache.yaw===camera.yaw&&
       structureCache.pitch===camera.pitch&&
       structureCache.detail===zoomDetailTier?structureCache.structures:
       prepareDepthStructures(ctx,world,projector,blockView,buildingSpritesRef.current,
-        zoomDetailTier);
-    structureCacheRef.current=showBuildings?{signature:structureKey,
+        zoomDetailTier,ground);
+    structureCacheRef.current=structures?{signature:structureKey,
       topography:world.topography,seed:world.settings.seed,
       relief,yaw:camera.yaw,pitch:camera.pitch,detail:zoomDetailTier,
-      structures}:null;
+      ground,season,roadKey,structures}:null;
     let frameHandle=0,lastFollow:Point|null=null;
     const draw=(time:number)=>{
       // Maintain identical world-space positions and hit-testing at every
@@ -461,6 +503,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       ctx.imageSmoothingEnabled=false;
       ctx.drawImage(scenery,0,0,size.width,size.height);
       if(overlay==='terrain')ctx.drawImage(atmosphere,0,0);
+      if(structures)for(const [color,path] of structures.approaches){
+        ctx.fillStyle=color;ctx.fill(path);
+      }
       if(overlay==='trade'){
         ctx.fillStyle='rgba(12,29,33,.26)';
         ctx.fillRect(0,0,size.width,size.height);
@@ -486,7 +531,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
         }
       }
       paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
-        projector,structures.actors,visibleAgents,personSpritesRef.current,
+        projector,structures?.actors??[],visibleAgents,personSpritesRef.current,
         facingRef.current,strides);
       const tracked=followId!==null?interpolated.get(followId):undefined;
       if(tracked&&onFollowPosition&&(!lastFollow||
