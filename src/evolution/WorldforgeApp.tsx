@@ -828,7 +828,7 @@ export function WorldforgeApp(){
   const findAncientSite=(x:number,y:number)=>{
     if(tab!=='world')setPlaying(false);
     if(tree?.x===x&&tree.y===y){
-      setOverlay('terrain');locateAtlasPoint(treeFocus(x,y),1);setZoom(1);
+      setOverlay('terrain');locateAtlasPoint(treeFocus(x,y),1.65);setZoom(1.65);
     }else locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
     focusMap();
   };

@@ -3,7 +3,7 @@
  */
 import type {World} from './engine';
 import {skylandCeiling} from './skylands';
-import {WORLD_TREE_BLOCK,WORLD_TREE_CROWN_RADIUS} from './worldTree';
+import {WORLD_TREE_BLOCK,WORLD_TREE_CROWN_RADIUS,WORLD_TREE_HEIGHT} from './worldTree';
 import {SEA_LEVEL} from './topography';
 
 export const DEPTH_TILE_WIDTH=12;
@@ -61,7 +61,7 @@ export function createDepthProjector(w:WorldSize,relief=1,
   const ys=corners.map(p=>p.x*uy+p.y*vy);
   const minX=Math.min(...xs),maxX=Math.max(...xs);
   const minY=Math.min(...ys),maxY=Math.max(...ys);
-  const topMargin=Math.ceil((skylandCeiling(w.skylands)-SEA_LEVEL)/DEPTH_RISE*relief*vertical)+20+(w.worldTree?Math.ceil(horizontal*WORLD_TREE_BLOCK*42*Math.SQRT2*Math.cos(pitch)):0);
+  const topMargin=Math.ceil((skylandCeiling(w.skylands)-SEA_LEVEL)/DEPTH_RISE*relief*vertical)+20+(w.worldTree?Math.ceil(horizontal*WORLD_TREE_BLOCK*WORLD_TREE_HEIGHT*Math.SQRT2*Math.cos(pitch)):0);
   const offsetX=MARGIN_X-minX,offsetY=topMargin-minY;
   const size={width:Math.ceil(maxX-minX+MARGIN_X*2),
     height:Math.ceil(maxY-minY+topMargin+MARGIN_BOTTOM+SKIRT+

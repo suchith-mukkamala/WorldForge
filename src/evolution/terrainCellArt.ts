@@ -43,13 +43,19 @@ export function terrainSwatches(color:string,water:boolean):Uint32Array{
 
 const shoreColors=['','#b39771','#c9b087','#448398','#407d93',
   '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4','#667d99','#aa7894','#c6999b',
-  '#427f8d','#a9ded6','#aa956e','#75583f','#5e6a46','#504c43'];
+  '#427f8d','#a9ded6','#aa956e','#75583f','#5e6a46','#504c43','#355869'];
 export const shoreColor=(type:number)=>shoreColors[type];
 const shoreline=shoreColors.map(color=>color?terrainPixel(color):0);
 export function cellPixel(grid:SurfaceGrid,index:number,palette:Uint32Array,grain:number):number{
   const edge=grid.shore[index];
   let color:number;
-  if(edge!==Shore.ground)color=shoreline[edge];
+  if(edge!==Shore.ground){
+    color=shoreline[edge];
+    if(edge===Shore.rootBark||edge===Shore.rootMoss||edge===Shore.rootWet){
+      const fleck=Math.imul(index^grain,0x45d9f3b)>>>27;
+      color=shadeTerrainPixel(color,.94+fleck*.004);
+    }
+  }
   else{
     const water=grid.water[index],hash=Math.imul(index^grain,0x45d9f3b);
     color=water?palette[water>=12?14:water>=4?13:12]:

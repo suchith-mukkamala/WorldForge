@@ -1,4 +1,5 @@
-import {WORLD_TREE_CROWN_RADIUS,WORLD_TREE_DESCENT_UNIT} from './worldTree';
+import {surfaceGrid} from './surfaceGrid';
+import {WORLD_TREE_CROWN_RADIUS,WORLD_TREE_DESCENT_UNIT,WORLD_TREE_TRUNK_CLEARANCE} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
 import type {Agent,World} from './engine';
@@ -39,7 +40,7 @@ type Scenery={x:number;y:number;depth:number;opacity:number;
 function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
   const signs=new Map<number,AdventureGate>();
-  const tree=world.worldTree;
+  const tree=world.worldTree,treeCover=tree?surfaceGrid(world).treeCover:undefined;
   const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
   const yards=new Map([...map.shipyards.values()].map(site=>[site.shore,site]));
   const boats=new Map([...yards.values()].map(site=>[site.water,site.shore]));
@@ -94,8 +95,7 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         const model=blockSettlement(settlementStage(hub),hub.species,structureSite(world,hub));
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py,1.35)});
       }
-      const treeBase=tree?.x===x&&tree.y===y;
-      const natural=!treeBase&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
+      const natural=!treeCover?.has(index)&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
         adventureProp(world,map,region,x,y):undefined;
       const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
       if(prop){
@@ -107,8 +107,8 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
   if(tree&&tree.x>=origin.x-WORLD_TREE_CROWN_RADIUS&&tree.x<origin.x+cols+WORLD_TREE_CROWN_RADIUS&&
     tree.y>=origin.y-WORLD_TREE_CROWN_RADIUS&&tree.y<origin.y+rows+WORLD_TREE_CROWN_RADIUS*2){
     const p={x:(tree.x+.5)*TILE,y:(tree.y+.5)*TILE};
-    const {model}=worldTreeModel(world);
-    const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,WORLD_TREE_DESCENT_UNIT);
+    const {model,unitScale}=worldTreeModel(world);
+    const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,WORLD_TREE_DESCENT_UNIT*unitScale);
     scenery.push({x:tree.x,y:tree.y,depth:p.y,opacity:1,art,canopy:true,worldTree:true});
   }
   return scenery;
@@ -253,7 +253,7 @@ export function AdventureCanvas(props:Props){
       for(const sprite of sprites){
         const playerX=(player.x+.5)*TILE,playerY=(player.y+.55)*TILE;
         const treeCoversPlayer=sprite.worldTree&&sprite.art&&
-          (Math.hypot(sprite.x-player.x,sprite.y-player.y)<12||
+          (Math.hypot(sprite.x-player.x,sprite.y-player.y)<WORLD_TREE_TRUNK_CLEARANCE||
             sprite.depth>=playerY&&opaqueArtAt(sprite.art,playerX,playerY));
         ctx.globalAlpha=sprite.opacity*(treeCoversPlayer?.19:faded.has(sprite)?.26:1);
         sprite.draw?.(ctx,Math.round(sprite.x*TILE)-x,Math.round(sprite.y*TILE)-y);

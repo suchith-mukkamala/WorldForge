@@ -20,11 +20,12 @@ export function terrainRiverEdge(heights:readonly number[],projector:Projector,
 }
 
 export type DepthPicking={width:number;height:number;ids:Uint32Array};
+type RasterDepth={values:Float32Array;origin:number;dx:number;dy:number};
 
 /** Fill a convex face at pixel centers. Shared edges use half-open spans so
  * adjacent faces meet without mixing their colors or leaving a seam. */
 export function rasterFace({width,height}:{width:number;height:number},points:readonly Point[],
-  pixels:Uint32Array|undefined,color:number,ids?:Uint32Array,id=0):void{
+  pixels:Uint32Array|undefined,color:number,ids?:Uint32Array,id=0,depth?:RasterDepth):void{
   let top=Infinity,bottom=-Infinity;
   for(const {y} of points){top=Math.min(top,y);bottom=Math.max(bottom,y);}
   const lastRow=Math.min(height,Math.ceil(bottom-.5));
@@ -42,7 +43,14 @@ export function rasterFace({width,height}:{width:number;height:number},points:re
     if(start<end){
       const offset=y*width;
       ids?.fill(id,offset+start,offset+end);
-      pixels?.fill(color,offset+start,offset+end);
+      if(depth&&pixels){
+        let z=depth.origin+depth.dx*(start+.5)+depth.dy*scan;
+        for(let x=start;x<end;x++,z+=depth.dx){
+          const i=offset+x;
+          if(z<depth.values[i])continue;
+          depth.values[i]=z;pixels[i]=color;
+        }
+      }else pixels?.fill(color,offset+start,offset+end);
     }
   }
 }

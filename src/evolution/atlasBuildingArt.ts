@@ -1,7 +1,7 @@
 import type {Building} from './construction';
 
 export type ArtBounds={left:number;top:number;right:number;bottom:number};
-export type BuildingArt={image:HTMLCanvasElement;pixels:Uint8ClampedArray;bounds:ArtBounds};
+export type BuildingArt={image:HTMLCanvasElement;pixels:Uint8ClampedArray;bounds:ArtBounds;depth?:Float32Array};
 export type PlacedArt={art:BuildingArt;x:number;y:number;scale:number};
 export type AtlasBuilding=PlacedArt&{building:Building};
 
