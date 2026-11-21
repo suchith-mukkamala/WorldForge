@@ -127,13 +127,13 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 2. **Mortal agency.** Every person can weigh needs, experiences and social context. Divine whispers may be resisted; direct interventions change reality.
 3. **Emergent construction.** Inhabitants decide which buildings to erect and where. The player influences people and conditions, not every building placement.
 4. **Consequences over scripts.** Memories, relationships, resources and environmental conditions shape future events without determining anyone's fate in advance.
-5. **More than one perspective.** The first interface is a godlike observer and influencer. Future play may include inhabiting a mortal and participating in the same persistent world.
+5. **More than one perspective.** The atlas is a godlike observer and influencer. Descend inhabits a mortal in the same persistent world; ascending returns that person to autonomous life.
 
 ## Project roadmap
 
-- **Current:** v2.6.2 — speak with real indoor residents using E or the household roster; family interactions affect persistent relationships and needs, while stable NPC positions and collision improve movement. The shared 2.5D interiors continue to advance the real autonomous world. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
-- **Next:** v2.6.1 — real living household routines, visits and indoor use; then occupations and inventory. Eventually add the second promised descent path: inhabiting a living NPC instead of creating a new person.
-- **Future visual direction:** Continue polishing the Pokémon Black & White–inspired layered 2.5D pixel-art world. Later, procedurally generated planets, separate realms and interplanetary travel. The renderer stays lightweight and deliberately **is not a separate 3D mode**.
+- **Current:** v2.23.0 — floating islands, seafaring, building plots, and grounded structures in the atlas and in Descend. Saved worlds keep their terrain and histories. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
+- **Play:** observe from the atlas, intervene in God Mode, or Descend as a mortal and walk the same world. Press **P** on the atlas to pause or resume time, and **?** for that hint. Mortal exploration keeps its own keys.
+- **Future visual direction:** Keep the existing pixel-art atlas and Descend view. Later, procedurally generated planets, separate realms and interplanetary travel. The renderer stays lightweight and deliberately **is not a separate 3D mode**. Inhabiting an already-living resident, instead of a created mortal, is still future work.
 
 ## Architecture
 
