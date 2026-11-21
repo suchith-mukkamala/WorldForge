@@ -4,6 +4,7 @@ import {hydrologyForWorld} from './hydrology';
 import {SEA_LEVEL,topographyForWorld,type Topography} from './topography';
 
 export const TERRAIN_CELL_SIDE=4;
+export const VISUAL_TERRAIN_SIDE=TERRAIN_CELL_SIDE*2;
 export const TERRAIN_ELEVATION_UNITS=4;
 const SIDE=TERRAIN_CELL_SIDE,CELLS_PER_TILE=SIDE*SIDE;
 const UNITS=TERRAIN_ELEVATION_UNITS,SEA=SEA_LEVEL*UNITS,MAX_DEPTH=15;

@@ -6,6 +6,7 @@ import {pixelTerrainHash} from './depthWorldArt';
 import {woodlandCover,woodlandHabitat} from './woodland';
 import {paintTerrainMosaic} from './terrainCellArt';
 import {VISUAL_TERRAIN_SIDE} from './surfaceGrid';
+import {paintOverheadSkylands} from './skylandArt';
 
 const CELL=VISUAL_TERRAIN_SIDE;
 export function TerrainPreview({world,label}:{world:AtlasLand;label:string}){
@@ -24,6 +25,7 @@ export function TerrainPreview({world,label}:{world:AtlasLand;label:string}){
       const rock=world.settings.landforms?highlandColor(biome,heights[i],grain):undefined;
       return {color:rock??overheadTerrainColor(biome,depths[i],cover),grain,water:biome==='water'};
     },ATLAS_SEA);
+    if(world.skylands)paintOverheadSkylands(ctx,world.skylands,CELL);
   },[world,width,height]);
   return <canvas ref={ref} width={width*CELL} height={height*CELL} role="img"
     aria-label={label}/>;

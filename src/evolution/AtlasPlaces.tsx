@@ -6,9 +6,11 @@ import {ancientSiteName,type AncientSite} from './knowledge';
 import type {Point} from './motion';
 import {atlasLabelSides} from './atlasMap';
 import {visibleAtlasSite} from './riverDiscoveries';
+import {skylandName} from './skylands';
 
-export function AtlasPlacePicker({world,onTown,onSite}:{
+export function AtlasPlacePicker({world,onTown,onSite,onSkyland}:{
   world:World;onTown:(id:number)=>void;onSite:(x:number,y:number)=>void;
+  onSkyland?:(id:number)=>void;
 }){
   const [open,setOpen]=useState(false);
   const [query,setQuery]=useState('');
@@ -39,9 +41,12 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
   const towns=open?world.settlements.filter(town=>matches(town.name))
     .sort((a,b)=>a.name.localeCompare(b.name)): [];
   const sites=open?(world.ancientSites??[]).filter(site=>visibleAtlasSite(world,site)&&matches(ancientSiteName(site))): [];
+  const skylands=open&&onSkyland?(world.skylands??[]).filter(site=>
+    matches(skylandName(site)+' floating islands')):[];
   const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
   const chooseTown=(id:number)=>{close();onTown(id);};
   const chooseSite=(site:AncientSite)=>{close();onSite(site.x,site.y);};
+  const chooseSkyland=(id:number)=>{close();onSkyland?.(id);};
   return <div ref={picker} className="atlas-place-picker" onBlur={blur} onKeyDown={keyDown}>
     <button ref={trigger} type="button" className="atlas-places-toggle"
       aria-expanded={open} aria-controls={open?panelId:undefined}
@@ -51,7 +56,9 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
         placeholder="Find a place…" onChange={event=>setQuery(event.target.value)}
         onKeyDown={event=>{
           if(event.key!=='Enter')return;
-          if(towns.length)chooseTown(towns[0].id);else if(sites.length)chooseSite(sites[0]);
+          if(towns.length)chooseTown(towns[0].id);
+          else if(skylands.length)chooseSkyland(skylands[0].id);
+          else if(sites.length)chooseSite(sites[0]);
         }}/>
       <div className="atlas-places-results">
         {towns.length>0&&<><h3>Settlements</h3><ul>
@@ -63,6 +70,14 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
           </li>)}
         </ul></>}
         {!world.settlements.length&&!filter&&<p>Settlements appear as the world grows.</p>}
+        {skylands.length>0&&<><h3>Floating islands</h3><ul>
+          {skylands.map(site=><li key={site.id}>
+            <button type="button" onClick={()=>chooseSkyland(site.id)}>
+              <span aria-hidden="true">◇</span>
+              <span>{skylandName(site)}<small>{site.islands.length} islands</small></span>
+            </button>
+          </li>)}
+        </ul></>}
         {sites.length>0&&<><h3>Landmarks</h3><ul>
           {sites.map(site=><li key={site.id}>
             <button type="button" onClick={()=>chooseSite(site)}>
@@ -71,7 +86,7 @@ export function AtlasPlacePicker({world,onTown,onSite}:{
             </button>
           </li>)}
         </ul></>}
-        {!towns.length&&!sites.length&&filter&&<p>No places match your search.</p>}
+        {!towns.length&&!sites.length&&!skylands.length&&filter&&<p>No places match your search.</p>}
       </div>
     </div>}
   </div>;

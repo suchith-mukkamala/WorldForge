@@ -124,8 +124,12 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
     }
     const first=firstTerrainSquare(width,surface.columns,i);
     for(let sy=0;sy<VISUAL_TERRAIN_SIDE;sy++)for(let sx=0;sx<VISUAL_TERRAIN_SIDE;sx++){
-      const color=shoreColor(surface.shore[first+sy*surface.columns+sx]);
+      const cell=first+sy*surface.columns+sx;
+      const color=shoreColor(surface.shore[cell]);
       if(color)rect(ctx,color,px+sx*square,py+sy*square,square,square);
+      const shade=surface.shadow?.[cell];
+      if(shade)rect(ctx,shade===1?'#18283032':'#18283059',
+        px+sx*square,py+sy*square,square,square);
     }
     const bridge=map.bridges.has(i)||map.roads.has(i)&&boardwalkSite(world,i);
     if(pathAt(i)&&(!springFlood(world,i)||map.roads.has(i)||bridge)){

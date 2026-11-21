@@ -57,6 +57,7 @@ import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woo
 import {LANDFORM_NAMES,settlementGeography,
   type LandformProfile} from './regionalGeography';
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
+import {generateSkylands,validSkylands,type Skyland} from './skylands';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export const BIOMES=['plains','forest','mountain','cave','wasteland','volcanic','water',
   'taiga','wetland','savanna'] as const;
@@ -72,6 +73,7 @@ export type WorldSettings={
   riverlands?:boolean;
   landforms?:LandformProfile;
   terrainCells?:boolean;
+  floatingIslands?:boolean;
 };
 export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
 export type Ancestry=Record<Species,number>;
@@ -142,6 +144,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   nextBondId:number;rngState:number;tiles:Tile[];topography?:Topography;
   woodland?:string;
   terrainCells?:TerrainCells;
+  skylands?:Skyland[];
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -230,6 +233,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
     ...(input.landforms&&Object.hasOwn(LANDFORM_NAMES,input.landforms)?
       {landforms:input.landforms,regionalGeography:true}:{}),
     ...(typeof input.terrainCells==='boolean'?{terrainCells:input.terrainCells}:{}),
+    ...(typeof input.floatingIslands==='boolean'?{floatingIslands:input.floatingIslands}:{}),
     ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
 }
 export function population(world:Pick<World,'agents'>):Record<Species,number>{
@@ -298,6 +302,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
     ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
   if(settings.livingBiomes)world.woodland=initialWoodland(world);
+  if(settings.floatingIslands)world.skylands=generateSkylands(world);
   if(settings.terrainCells)advanceTerrainCells(world);
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
@@ -868,6 +873,7 @@ export function isWorld(value:unknown):value is World{
     settings.riverlands!==undefined&&typeof settings.riverlands!=='boolean'||
     settings.landforms!==undefined&&!Object.hasOwn(LANDFORM_NAMES,settings.landforms)||
     settings.terrainCells!==undefined&&typeof settings.terrainCells!=='boolean'||
+    settings.floatingIslands!==undefined&&typeof settings.floatingIslands!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
     settings.resourceLevel>1.8||!Number.isFinite(settings.wandering)||
     settings.wandering<.5||settings.wandering>1.8||
@@ -901,6 +907,7 @@ export function isWorld(value:unknown):value is World{
     !Array.isArray(w.events)||w.events.length>90||
     !Array.isArray(w.history)||w.history.length>400||w.history.length===0)return false;
   const width=w.width,height=w.height,year=w.year as number;
+  if(w.skylands!==undefined&&!validSkylands(w.skylands,width,height))return false;
   if(w.topography!==undefined&&!validTopography(w.topography,width,height))
     return false;
   if(w.terrainPhysics!==undefined&&(!w.terrainPhysics||
