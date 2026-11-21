@@ -23,6 +23,16 @@ const seededCover=(biome:Biome)=>biome==='forest'?MAX_COVER:
 export function woodlandCover(woodland:string|undefined,index:number):number|undefined{
   return woodland===undefined?undefined:decode[woodland.charCodeAt(index)]/MAX_COVER;
 }
+export function woodlandGlyph(biome:Biome):string{
+  return COVER[seededCover(biome)];
+}
+/** Replace a few canopy glyphs without rebuilding untouched tiles one by one. */
+export function rewriteWoodland(woodland:string,edits:readonly (readonly [number,Biome])[]):string{
+  if(!edits.length)return woodland;
+  const glyphs=woodland.split('');
+  for(const [index,biome] of edits)glyphs[index]=woodlandGlyph(biome);
+  return glyphs.join('');
+}
 
 function neighboringCover(cover:Uint8Array,width:number,height:number,x:number,y:number):number{
   let total=0,weight=0;
