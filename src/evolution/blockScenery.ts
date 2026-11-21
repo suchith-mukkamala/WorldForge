@@ -34,7 +34,7 @@ function faceColor(color:string,light:number,tone:number):number{
   return result;
 }
 
-function projectBlock(model:BlockModel,view:BlockView,unit:number){
+function projectBlock(model:BlockModel,view:BlockView,unit:number,trackDepth=false){
   const {xx,xy,yx,yy,rise,frontX,frontY,depthX,depthY,depthZ}=view;
   const faces=model.faces.filter(f=>{
     const {dx,dy,dz}=BLOCK_FACES[f.direction];
@@ -43,12 +43,13 @@ function projectBlock(model:BlockModel,view:BlockView,unit:number){
     const {dx,dy,dz}=BLOCK_FACES[f.direction];
     const order=(f.x+dx/2)*depthX+(f.y+dy/2)*depthY+(f.z+dz/2)*depthZ;
     return {f,order};
-  }).sort((a,b)=>a.order-b.order);
+  });
+  if(!trackDepth)faces.sort((a,b)=>a.order-b.order);
   let left=0,top=0,right=0,bottom=0;
   const projected=faces.map(({f})=>{
     const {quad,light}=BLOCK_FACES[f.direction];
     const grain=(Math.imul(f.x,31)^Math.imul(f.y,17)^Math.imul(f.z,13))&3;
-    const color=faceColor(f.color,light,grain);
+    const color=model.sculpted?faceColor(f.color,.88+light*.12,1.5):faceColor(f.color,light,grain);
     const points=quad.map(([u,v,w])=>{
       const x=f.x+u,y=f.y+v,z=f.z+w;
       const sx=(x*xx+y*yx)*unit,sy=(x*xy+y*yy-z*rise)*unit;
@@ -56,18 +57,36 @@ function projectBlock(model:BlockModel,view:BlockView,unit:number){
       right=Math.max(right,sx);bottom=Math.max(bottom,sy);
       return {x:sx,y:sy};
     });
-    return {points,color};
+    let depth: {origin:number;dx:number;dy:number}|undefined;
+    if(trackDepth){
+      const [a,b,,d]=points;
+      const u={x:b.x-a.x,y:b.y-a.y},v={x:d.x-a.x,y:d.y-a.y};
+      const area=u.x*v.y-u.y*v.x;
+      if(Math.abs(area)>1e-9){
+        const value=([x,y,z]:readonly number[])=>
+          ((f.x+x)*depthX+(f.y+y)*depthY+(f.z+z)*depthZ)*unit;
+        const start=value(quad[0]),du=value(quad[1])-start,dv=value(quad[3])-start;
+        const dx=(du*v.y-dv*u.y)/area,dy=(dv*u.x-du*v.x)/area;
+        depth={dx,dy,origin:start-dx*a.x-dy*a.y};
+      }
+    }
+    return {points,color,depth};
   });
   return {projected,left,top,right,bottom};
 }
 
-function paintBlockRaster(ctx:CanvasRenderingContext2D,block:ReturnType<typeof projectBlock>,p:Point){
+function paintBlockRaster(ctx:CanvasRenderingContext2D,block:ReturnType<typeof projectBlock>,p:Point,
+  trackDepth=false){
   const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
   const pixels=new Uint32Array(image.data.buffer);
-  for(const {points,color} of block.projected)
-    rasterFace(image,points.map(({x,y})=>({x:x+p.x,y:y+p.y})),pixels,color);
+  const depths=trackDepth?new Float32Array(pixels.length).fill(-Infinity):undefined;
+  for(const {points,color,depth} of block.projected){
+    if(depths&&!depth)continue;
+    rasterFace(image,points.map(({x,y})=>({x:x+p.x,y:y+p.y})),pixels,color,undefined,0,
+      depths&&depth?{...depth,values:depths,origin:depth.origin-depth.dx*p.x-depth.dy*p.y}:undefined);
+  }
   ctx.putImageData(image,0,0);
-  return image.data;
+  return {pixels:image.data,depth:depths};
 }
 
 export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
@@ -83,11 +102,11 @@ const propCache=new Map<string,BlockStamp>();
 const largePropCache=new Map<string,BlockStamp>();
 
 export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
-  view:BlockView,unit:number):BlockStamp|undefined{
-  const key=[model.key,view.key,unit].join('|'),cached=cache.get(key);
+  view:BlockView,unit:number,trackDepth=false):BlockStamp|undefined{
+  const key=[model.key,view.key,unit,+trackDepth].join('|'),cached=cache.get(key);
   if(cached)return cached;
-  const density=unit>=10?1:STAMP_DENSITY;
-  const block=projectBlock(model,view,unit*density);
+  const density=model.sculpted?3:unit>=10?1:STAMP_DENSITY;
+  const block=projectBlock(model,view,unit*density,trackDepth);
   // Size the sprite to the real projected geometry, including extended
   // footings and shore decks beyond their original fixed-size canvas.
   const anchor={x:1-Math.floor(block.left),y:1-Math.floor(block.top)};
@@ -96,10 +115,10 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
   image.height=Math.ceil(block.bottom)+anchor.y+1;
   const painter=image.getContext('2d');
   if(!painter)return;
-  const pixels=paintBlockRaster(painter,block,anchor);
+  const raster=paintBlockRaster(painter,block,anchor,trackDepth);
   const bounds={left:0,top:0,right:image.width,bottom:image.height};
-  const art={image,anchor,pixels,bounds,density};
-  if(cache.size>=(density===1?4:200))cache.clear();
+  const art={image,anchor,...raster,bounds,density};
+  if(cache.size>=(model.sculpted||density===1?5:200))cache.clear();
   cache.set(key,art);
   return art;
 }
@@ -112,8 +131,8 @@ export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
   ctx.drawImage(image,x,y,image.width*scale,image.height*scale);
 }
 
-export function blockSceneryArt(model:BlockModel,p:Point,view:BlockView,unit:number){
-  const art=blockBuildingArt(unit>=10?largePropCache:propCache,model,view,unit);
+export function blockSceneryArt(model:BlockModel,p:Point,view:BlockView,unit:number,trackDepth=false){
+  const art=blockBuildingArt(model.sculpted||unit>=10?largePropCache:propCache,model,view,unit,trackDepth);
   return art&&placeBlockArt(art,p,1);
 }
 

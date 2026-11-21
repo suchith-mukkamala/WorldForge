@@ -1,6 +1,8 @@
 import {describe,expect,it} from 'vitest';
 import {ATLAS_SEA} from './atlasTerrain';
 import {createDepthProjector} from './depthProjection';
+import {rasterFace} from './depthTerrain';
+import {treeCovers} from './worldTreeOcclusion';
 import {CLOUD_COLORS,GULL_LIGHT,GULL_SHADE,mixHex,paintDepthSky,skyColor,
   skyStamps,SKY_HAZE} from './depthSky';
 import {CONTACT_SHADE,footShadowRect,insetEdge,RIM_LIGHT,stampSegment,
@@ -8,6 +10,21 @@ import {CONTACT_SHADE,footShadowRect,insetEdge,RIM_LIGHT,stampSegment,
 import {shadeTerrainPixel,terrainPixel} from './terrainCellArt';
 
 describe('depth presentation',()=>{
+  it('keeps the nearer surface when tree and scenery overlap the same pixel',()=>{
+    const surface={width:2,height:2};
+    const square=[{x:0,y:0},{x:2,y:0},{x:2,y:2},{x:0,y:2}];
+    const pixels=new Uint32Array(4),values=new Float32Array(4).fill(-Infinity);
+    rasterFace(surface,square,pixels,1,undefined,0,{values,origin:4,dx:-2,dy:0});
+    rasterFace(surface,square,pixels,2,undefined,0,{values,origin:2,dx:0,dy:0});
+    expect([...pixels]).toEqual([1,2,1,2]);
+    const art={image:surface as HTMLCanvasElement,pixels:new Uint8ClampedArray(16),depth:values,
+      bounds:{left:0,top:0,right:2,bottom:2}};
+    const tree={sprite:{art,x:20.3,y:11,scale:.5},order:10};
+    expect(treeCovers(tree,20.25,11.25,11.2)).toBe(true);
+    expect(treeCovers(tree,20.75,11.25,11.2)).toBe(false);
+    expect(treeCovers(tree,21.25,11.25,0)).toBe(false);
+  });
+
   it('mixes existing sea and haze without leaving hex range',()=>{
     expect(mixHex(ATLAS_SEA,SKY_HAZE,0)).toBe(ATLAS_SEA);
     expect(mixHex(ATLAS_SEA,SKY_HAZE,1)).toBe(SKY_HAZE);

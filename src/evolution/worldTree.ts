@@ -4,11 +4,14 @@ import {MAX_LANDING_RISE} from './shipSave';
 import {SEA_LEVEL} from './topography';
 
 export type WorldTree={x:number;y:number;variant:number;trail:number[];pools:number[];approach?:number};
-export const WORLD_TREE_BLOCK=2.5;
-export const WORLD_TREE_CROWN_RADIUS=39;
-export const WORLD_TREE_DESCENT_UNIT=31;
-export const WORLD_TREE_ROOT_REACH=58;
-const TRUNK_CLEARANCE=15;
+// The first sculpted tree used quarter-tile cubes. Triple its world size
+// while letting the model subdivide those units for finer bark and foliage.
+export const WORLD_TREE_BLOCK=.75;
+export const WORLD_TREE_CROWN_RADIUS=15;
+export const WORLD_TREE_DESCENT_UNIT=9.3;
+export const WORLD_TREE_HEIGHT=46;
+export const WORLD_TREE_TRUNK_CLEARANCE=4.75;
+export const WORLD_TREE_ROOT_REACH=30;
 
 type Root={angle:number;bend:number;length:number;width:number;phase:number};
 const rootCache=new WeakMap<WorldTree,Root[]>();
@@ -16,10 +19,10 @@ export function worldTreeRoots(tree:WorldTree){
   const cached=rootCache.get(tree);
   if(cached)return cached;
   const seed=tree.variant+tree.x*151+tree.y*131;
-  const roots=Array.from({length:7},(_,i)=>({
-    angle:(i+terrainHash(i,3,seed)*.6)*Math.PI*2/7+seed%628/100,
-    bend:(terrainHash(i,5,seed)-.5)*1.32,length:32+terrainHash(i,8,seed)*26,
-    width:1.9+terrainHash(i,16,seed)*2.3,phase:terrainHash(i,22,seed)*2,
+  const roots=Array.from({length:6},(_,i)=>({
+    angle:(i+terrainHash(i,3,seed)*.6)*Math.PI*2/6+seed%628/100,
+    bend:(terrainHash(i,5,seed)-.5)*1.4,length:16+terrainHash(i,8,seed)*14,
+    width:.75+terrainHash(i,16,seed)*1.02,phase:terrainHash(i,22,seed)*2,
   }));
   rootCache.set(tree,roots);
   return roots;
@@ -39,8 +42,8 @@ export function worldTreeRootHeight(roots:readonly Root[],dx:number,dy:number,ma
     const cross=Math.abs(Math.sin(delta)*r);
     if(cross>=width+margin)continue;
     const crown=Math.sqrt(Math.max(0,1-(Math.max(0,cross-margin)/width)**2));
-    const rise=(Math.sin(t*18+root.phase)*.53+.25+Math.exp(-r/9)*.81);
-    height=Math.max(height,Math.max(0,rise)*crown*(1-t)*22);
+    const rise=(Math.sin(t*18+root.phase)*.37+.18+Math.exp(-r/4)*.9);
+    height=Math.max(height,Math.max(0,rise)*crown*(1-t)*7.5);
   }
   return height;
 }
@@ -48,7 +51,7 @@ export function worldTreeRootHeight(roots:readonly Root[],dx:number,dy:number,ma
 export function worldTreeBlocksBuilding(tree:WorldTree|undefined,x:number,y:number){
   if(!tree)return false;
   const dx=x-tree.x,dy=y-tree.y;
-  return dx*dx+dy*dy<TRUNK_CLEARANCE**2||worldTreeRootHeight(worldTreeRoots(tree),dx,dy,1.5)>0;
+  return dx*dx+dy*dy<WORLD_TREE_TRUNK_CLEARANCE**2||worldTreeRootHeight(worldTreeRoots(tree),dx,dy,1.5)>0;
 }
 
 type TreeStructures=Partial<Pick<World,'settlements'|'ruins'|'ancientSites'>>;

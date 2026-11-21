@@ -6,7 +6,7 @@ import {compactWorld,readSavedWorld} from './storage';
 import {MAX_LANDING_RISE,seaNeighbors} from './shipSave';
 import {topographyForWorld} from './topography';
 import {Shore,surfaceGrid} from './surfaceGrid';
-import {validWorldTree,worldTreeBlocksBuilding} from './worldTree';
+import {validWorldTree,WORLD_TREE_TRUNK_CLEARANCE,worldTreeBlocksBuilding} from './worldTree';
 import {WORLD_LAYOUTS} from './worldGeography';
 
 describe('World Tree',()=>{
@@ -57,7 +57,7 @@ describe('World Tree',()=>{
       appearance:{skin:0,hair:0,hairStyle:0,outfit:'wanderer'}},undefined,undefined,true);
     const tree=world.worldTree!;
     const radius=Math.hypot(agent.x-tree.x,agent.y-tree.y);
-    expect(radius>=12||tree.trail.includes(agent.y*world.width+agent.x)).toBe(true);
+    expect(radius>=WORLD_TREE_TRUNK_CLEARANCE||tree.trail.includes(agent.y*world.width+agent.x)).toBe(true);
     expect(adventureMapFor(world).open[agent.y*world.width+agent.x]).toBe(1);
     expect(readSavedWorld(compactWorld(started))?.worldTree).toEqual(world.worldTree);
     expect(validWorldTree({...world.worldTree,trail:[0]},world.width,world.height)).toBe(false);

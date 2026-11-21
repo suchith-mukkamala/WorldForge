@@ -1,6 +1,5 @@
 import {ARCHITECTURE,buildingTier,type Building,type SettlementStage} from './construction';
 import type {Species} from './engine';
-import {terrainHash} from './biomeGeneration';
 import type {AncientKind} from './knowledge';
 import type {Facing,Point} from './motion';
 import type {TerrainMotif} from './terrainDetails';
@@ -17,7 +16,7 @@ export const BLOCK_FACES=[
   {dx:0,dy:-1,dz:0,quad:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],light:.71},
 ] as const;
 type Face={x:number;y:number;z:number;direction:number;color:string};
-export type BlockModel={key:string;faces:readonly Face[];feet:readonly Point[];footing:'stone'|'timber'};
+export type BlockModel={key:string;faces:readonly Face[];feet:readonly Point[];footing:'stone'|'timber';sculpted?:boolean};
 
 const stride=32,layer=stride*stride;
 const cell=(x:number,y:number,z:number)=>x+16+(y+16)*stride+z*layer;
@@ -680,80 +679,4 @@ export function blockLandmark(kind:AncientKind,visited=false,site?:StructureSite
     }
     if(visited)grid.box(-1,2,1,2,1,2,'#b9a875');
   });
-}
-
-export const worldTreeFoliage={
-  woodland:['#355643','#476b4c','#54794e','#668758'],
-  conifer:['#294b46','#365e53','#487064','#658478'],
-  wetland:['#365746','#4c6e50','#638256','#78945e'],
-  dry:['#4e593b','#646b42','#777e4a','#92965b'],
-} as const;
-export type TreeFoliage=keyof typeof worldTreeFoliage;
-export type WorldTreeRoot=Point&{ground:number;height:number;moss:boolean};
-export function blockWorldTree(seed:number,foliage:readonly TreeFoliage[],roots:readonly WorldTreeRoot[],clearBase:ReadonlySet<number>=new Set()):BlockModel{
-  const key='world-tree:'+seed+':'+foliage.join(',')+':'+
-    roots.map(({x,y,ground,height,moss})=>[x,y,ground,height,+moss].join(',')).join(';')+
-    ':clear:'+Array.from(clearBase).join(',');
-  return model(key,g=>{
-    const bark=['#554539','#604b3b','#6e5642','#7d624a'];
-    const wood=(x:number,y:number)=>bark[Math.floor(terrainHash(x,y,seed)*bark.length)%bark.length];
-    for(const {x,y,ground,height,moss} of roots){
-      g.box(x,y,ground,1,1,height,wood(x,y));
-      if(moss)g.box(x,y,ground+height-1,1,1,1,'#566a44');
-    }
-    const canopyCluster=(cx:number,cy:number,cz:number,rx:number,ry:number,rz:number,
-      palette:readonly string[],salt:number)=>{
-      for(let y=Math.max(-15,Math.floor(cy-ry-1));y<=Math.min(14,Math.ceil(cy+ry+1));y++){
-        for(let x=Math.max(-15,Math.floor(cx-rx-1));x<=Math.min(14,Math.ceil(cx+rx+1));x++){
-          for(let z=Math.floor(cz-rz);z<=Math.ceil(cz+rz);z++){
-            const d=((x-cx)/rx)**2+((y-cy)/ry)**2+((z-cz)/rz)**2;
-            const grain=terrainHash(x+z*19,y-z*31,seed+salt);
-            if(d>.8+grain*.36)continue;
-            const level=Math.max(0,Math.min(3,Math.floor((z-cz)/rz*1.25+1.2+grain*.95)));
-            g.box(x,y,z,1,1,1,palette[level]);
-          }
-        }
-      }
-    };
-    const trunk=(z:number)=>{
-      const t=z/30;
-      return {x:Math.sin(t*2.6+seed%5)*t*3,y:Math.cos(t*3.4+seed%3)*t*3};
-    };
-    for(let z=-1;z<32;z++){
-      const {x:cx,y:cy}=trunk(z);
-      const r=3.6-2.75*z/32+1.55*Math.exp(-Math.max(0,z)/3);
-      for(let y=-6;y<=6;y++)for(let x=-6;x<=6;x++){
-        if(z<5&&clearBase.has((y+6)*13+x+6))continue;
-        if(Math.hypot(x-cx,y-cy)<r+.53*terrainHash(x,y,seed))g.box(x,y,z,1,1,1,wood(x,y));
-      }
-    }
-    const central=foliage[0];
-    for(let b=0;b<9;b++){
-      const angle=b*2.39996+(seed%629)/100;
-      const dx=Math.cos(angle),dy=Math.sin(angle),type=foliage[1+b];
-      const leaves=worldTreeFoliage[type];
-      const reach=5+terrainHash(b,19,seed)*(type==='conifer'?4:7);
-      const start=13+Math.floor(terrainHash(b,28,seed)*10);
-      const end=start+5+terrainHash(b,37,seed)*7;
-      const origin=trunk(start);
-      for(let step=0;step<=18;step++){
-        const t=step/18,curve=t*(1-t)*2;
-        const x=origin.x+dx*reach*t-dy*curve,y=origin.y+dy*reach*t+dx*curve;
-        const z=start+(end-start)*Math.pow(t,1.4);
-        const r=Math.max(.9,2.15-t*1.5);
-        for(let v=Math.floor(y-r);v<=Math.ceil(y+r);v++)for(let u=Math.floor(x-r);u<=Math.ceil(x+r);u++){
-          if(u>=-15&&u<=14&&v>=-15&&v<=14&&Math.hypot(u-x,v-y)<=r)g.box(u,v,Math.floor(z),1,1,Math.ceil(r),wood(u,v));
-        }
-      }
-      const ex=origin.x+dx*reach,ey=origin.y+dy*reach;
-      const tall=type==='conifer',flat=type==='dry',droop=type==='wetland';
-      canopyCluster(ex,ey,end+2,tall?3.7:5.1,tall?3.9:4.7,tall?5.2:flat?2.7:3.9,leaves,b);
-      canopyCluster(ex-dy*2.3,ey+dx*2.3,end+3,3.1,3.4,tall?4.2:2.8,leaves,b+9);
-      if(droop)canopyCluster(ex+dx*2,ey+dy*2,end-.8,1.7,2.1,4.1,leaves,b+27);
-    }
-    const top=trunk(30),leaves=worldTreeFoliage[central];
-    canopyCluster(top.x,top.y,31,central==='conifer'?3.6:5.6,4.6,
-      central==='conifer'?7.3:4.6,leaves,31);
-    canopyCluster(top.x+2.7,top.y-2,29.5,4.2,3.8,3.6,leaves,43);
-  },0,'timber');
 }

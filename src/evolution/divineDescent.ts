@@ -1,3 +1,4 @@
+import {WORLD_TREE_TRUNK_CLEARANCE} from './worldTree';
 /** v2.5.0 — Divine Descent creates a genuine mortal in the existing world.
  * Movement and player authority are deliberately deferred to v2.5.1. */
 import {SPECIES_INFO,editWorld,type Agent,type MortalAppearance,
@@ -47,14 +48,14 @@ function arrival(world:World,species:Species,mouth?:number,shipyard?:number,atWo
     const able=(i:number)=>!!map.open[i]&&available(i);
     const trailSite=tree.trail.find(i=>{
       const {x,y}=seaPoint(world.width,i);
-      return able(i)&&Math.hypot(x-tree.x,y-tree.y)>=12;
+      return able(i)&&Math.hypot(x-tree.x,y-tree.y)>=WORLD_TREE_TRUNK_CLEARANCE;
     });
     if(trailSite!==undefined)return {point:seaPoint(world.width,trailSite)};
     // Start on the same landmass a short walk back from the trunk when possible.
     const start=tree.trail[0],visited=new Set([start]),queue=[start];
     for(let read=0;read<queue.length;read++){
       const i=queue[read],point=seaPoint(world.width,i);
-      if(Math.hypot(point.x-tree.x,point.y-tree.y)>=12&&able(i))return {point};
+      if(Math.hypot(point.x-tree.x,point.y-tree.y)>=WORLD_TREE_TRUNK_CLEARANCE&&able(i))return {point};
       for(const next of seaNeighbors(i,world.width,world.tiles.length)){
         if(next<0||visited.has(next)||!map.open[next])continue;
         visited.add(next);queue.push(next);

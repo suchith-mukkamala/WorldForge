@@ -29,7 +29,7 @@ export function SailingCanvas(props:Props){
     const land=document.createElement('canvas'),brush=land.getContext('2d',{alpha:false});
     if(!canvas||!ctx||!brush)return;
     let frame=0,stamp:{source:World;origin:Point;size:Point}|null=null;
-    let ocean:Uint8Array|undefined;
+    let ocean:Uint8Array|undefined,treeCover:ReadonlySet<number>|undefined;
     const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
     const start=seaPoint(latest.current.world.width,latest.current.ship.at);
     let motion:Motion={from:start,to:start,duration:1,start:0,facing:latest.current.ship.heading};
@@ -69,6 +69,7 @@ export function SailingCanvas(props:Props){
         if(!ocean||source?.tiles!==world.tiles)ocean=coastalDepth(world.width,world.height,
           i=>world.tiles[i].biome==='water');
         const grid=surfaceGrid(world);
+        treeCover=grid.treeCover;
         const width=size.x*SIDE,height=size.y*SIDE;
         land.width=width;land.height=height;
         const image=brush.createImageData(width,height),pixels=new Uint32Array(image.data.buffer);
@@ -98,7 +99,7 @@ export function SailingCanvas(props:Props){
       for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+size.y);y++){
         for(let x=Math.max(0,origin.x);x<Math.min(world.width,origin.x+size.x);x++){
           const index=y*world.width+x,biome=world.tiles[index].biome;
-          if(biome==='water'||landings.includes(index))continue;
+          if(biome==='water'||landings.includes(index)||treeCover?.has(index))continue;
           const grain=pixelTerrainHash(x,y,world.settings.seed);
           if(grain%8!==0)continue;
           const detail=terrainDetailAt(biome,x,y,world.settings.seed,world.topography?.heights[index]??75,false);
@@ -117,9 +118,9 @@ export function SailingCanvas(props:Props){
       const tree=world.worldTree;
       if(tree&&Math.abs(boat.x-tree.x)<WORLD_TREE_CROWN_RADIUS&&
         Math.abs(boat.y-tree.y)<WORLD_TREE_CROWN_RADIUS*2){
-        const {model}=worldTreeModel(world);
+        const {model,unitScale}=worldTreeModel(world);
         paintBlockScenery(ctx,model,{x:(tree.x+.5)*TILE-offset.x,y:(tree.y+.5)*TILE-offset.y},
-          DESCENT_BLOCK_VIEW,WORLD_TREE_DESCENT_UNIT);
+          DESCENT_BLOCK_VIEW,WORLD_TREE_DESCENT_UNIT*unitScale);
       }
       const x=p.x-offset.x,y=p.y-offset.y;
       if(boat.walking&&!reducedMotion.matches){

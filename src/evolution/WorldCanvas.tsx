@@ -18,7 +18,7 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,overheadTerrainColor
 import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {paintTerrainMosaic} from './terrainCellArt';
-import {VISUAL_TERRAIN_SIDE} from './surfaceGrid';
+import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {AtlasFish} from './AtlasFish';
 import {springFlood,waterSeason} from './riverSeasons';
 import {boardwalkSite} from './riverArchitecture';
@@ -155,6 +155,7 @@ export function WorldCanvas({
       ctx.fillRect(0,0,mapWidth,mapHeight);
     }
     const occupied=overlay==='terrain'?occupiedScenery(world):null;
+    const treeCover=occupied&&world.worldTree?surfaceGrid(world).treeCover:undefined;
     const yard=showBuildings&&tiled?buildingPlots(world):undefined;
     plotGroundRef.current=yard;
     if(occupied&&!terrainAtlasRef.current){
@@ -203,7 +204,7 @@ export function WorldCanvas({
         tile.biome,overlay==='elevation'?'elevation':'terrain');
       const scenery=tile.biome==='water'?ocean&&ocean[index]<=2&&grain%9===0:
         showBuildings?showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover):grain%3!==0;
-      if(occupied&&!occupied.has(index)&&!yard?.clear.has(index)&&scenery){
+      if(occupied&&!occupied.has(index)&&!yard?.clear.has(index)&&!treeCover?.has(index)&&scenery){
         const water=tile.biome==='water';
         const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
@@ -323,8 +324,8 @@ export function WorldCanvas({
         plots.push({building:b,...placeBlockArt(art,p,unit)});
       }
       for(const plot of plots)paintAtlasBuilding(ctx,plot);
-      if(overlay==='terrain'&&world.worldTree)paintOverheadWorldTree(ctx,world,CELL);
     }
+    if(overlay==='terrain'&&world.worldTree)paintOverheadWorldTree(ctx,world,CELL);
     buildingPlotsRef.current=plots;
     backgroundStamp.current={tiles:world.tiles,
       topography:world.topography,settlementKey,

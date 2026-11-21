@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.25.1 — World Tree refinement** sets the World Tree to three times its original sculpted size and rebuilds it with finer bark, tapered limbs, and layered leaf sprays. Scenery grows clear of the trunk and exposed roots. The raised atlas uses depth to hide trees and buildings behind the World Tree. Existing saves pick up the new art at the same site.
+
 - **v2.25.0 — Colossal World Tree** scales the tree up tenfold. Its long roots rise out of the terrain and dive back beneath it, leaving room around settlements and landmarks. Some new worlds grow the tree offshore with a landing and trail on the coast. Use **Places → World Tree** for the full view and **Inspect the roots** to see the terrain below.
 
 - **v2.24.1 — World Tree scenery** rebuilds the tree with a tapered trunk, irregular voxel foliage, and roots that sit along the slope. The crown takes its shape and color from the neighboring biomes, and the grove gets a dappled shadow. Saved worlds with a World Tree get the new scenery on load.
