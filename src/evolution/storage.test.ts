@@ -1,11 +1,11 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {advanceWorldDays} from './calendar';
 import {BIOMES,createWorld,type Biome} from './engine';
-import {commitBrowserSnapshot,compactWorld,inspectLocalRecord,LEGACY_STORAGE_KEY,
-  loadBrowserWorldSnapshot,loadDatabaseSnapshot,LOCAL_SNAPSHOT_LIMIT,
-  OMITTED_LOCAL_FORMAT,readSavedWorld,recoverStoredWorld,resolveStartupSave,
-  saveDatabaseWorld,SAVE_FORMAT_VERSION,UNREADABLE_SAVE_NOTICE,WORLD_SCHEMA_VERSION,
-  WORLD_STORAGE_KEY,WORLD_STORAGE_TIME_KEY,writeBrowserSnapshot,
+import {commitBrowserSnapshot,compactWorld,inspectLocalRecord,IDB_IO_TIMEOUT_MS,
+  IDB_OPEN_TIMEOUT_MS,LEGACY_STORAGE_KEY,loadBrowserWorldSnapshot,loadDatabaseSnapshot,
+  LOCAL_SNAPSHOT_LIMIT,OMITTED_LOCAL_FORMAT,readSavedWorld,recoverStoredWorld,
+  resolveStartupSave,saveDatabaseWorld,SAVE_FORMAT_VERSION,UNREADABLE_SAVE_NOTICE,
+  WORLD_SCHEMA_VERSION,WORLD_STORAGE_KEY,WORLD_STORAGE_TIME_KEY,writeBrowserSnapshot,
   writeOmittedLocalSnapshot} from './storage';
 
 afterEach(()=>vi.unstubAllGlobals());
@@ -231,5 +231,68 @@ describe('save snapshots stay lossless and do not revive stale copies',()=>{
     expect(recoverStoredWorld(storage)).toEqual({kind:'database-only'});
     storage.setItem(WORLD_STORAGE_KEY,'{nope');
     expect(recoverStoredWorld(storage)).toEqual({kind:'unreadable'});
+  });
+});
+
+describe('IndexedDB waits cannot hang the game',()=>{
+  afterEach(()=>{
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function openRequest(result:object,fire?:'success'|'blocked'){
+    const request:{onsuccess?:()=>void;onblocked?:()=>void;result:object}={result};
+    if(fire)queueMicrotask(()=>fire==='success'?request.onsuccess?.():request.onblocked?.());
+    return request;
+  }
+
+  it('reads a numeric-string checkpoint time',async()=>{
+    const world=createWorld({seed:19,size:'small'});
+    const records=new Map<string,unknown>([['current-world',{
+      raw:compactWorld(world),savedAt:'250',
+    }]]);
+    const db={
+      objectStoreNames:{contains:()=>true},close:()=>{},
+      transaction:()=>({objectStore:()=>({
+        get:(key:string)=>{
+          const request:{result?:unknown;onsuccess?:()=>void;onerror?:()=>void}={};
+          queueMicrotask(()=>{request.result=records.get(key);request.onsuccess?.();});
+          return request;
+        },
+      })}),
+    };
+    vi.stubGlobal('indexedDB',{open:()=>openRequest(db,'success')});
+    expect(await loadDatabaseSnapshot()).toEqual({world,savedAt:250});
+  });
+
+  it('rejects an open that never finishes',async()=>{
+    vi.useFakeTimers();
+    vi.stubGlobal('indexedDB',{open:()=>openRequest({
+      objectStoreNames:{contains:()=>true},close(){},
+    })});
+    const pending=loadDatabaseSnapshot();
+    const rejected=expect(pending).rejects.toThrow('IndexedDB timed out');
+    await vi.advanceTimersByTimeAsync(IDB_OPEN_TIMEOUT_MS);
+    await rejected;
+  });
+
+  it('rejects when another tab blocks the database',async()=>{
+    vi.stubGlobal('indexedDB',{open:()=>openRequest({
+      objectStoreNames:{contains:()=>true},close(){},
+    },'blocked')});
+    await expect(loadDatabaseSnapshot()).rejects.toThrow('IndexedDB blocked');
+  });
+
+  it('rejects a snapshot read that never finishes',async()=>{
+    vi.useFakeTimers();
+    vi.stubGlobal('indexedDB',{open:()=>openRequest({
+      objectStoreNames:{contains:()=>true},close(){},
+      transaction:()=>({objectStore:()=>({get:()=>({})})}),
+    },'success')});
+    const pending=loadDatabaseSnapshot();
+    await vi.advanceTimersByTimeAsync(0);
+    const rejected=expect(pending).rejects.toThrow('IndexedDB timed out');
+    await vi.advanceTimersByTimeAsync(IDB_IO_TIMEOUT_MS);
+    await rejected;
   });
 });
