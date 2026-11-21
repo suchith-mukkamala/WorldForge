@@ -1,7 +1,7 @@
 import {ARCHITECTURE,buildingTier,type Building,type SettlementStage} from './construction';
 import type {Species} from './engine';
 import type {AncientKind} from './knowledge';
-import type {Point} from './motion';
+import type {Facing,Point} from './motion';
 import type {TerrainMotif} from './terrainDetails';
 import type {TreeKind} from './biomeTrees';
 import type {VisualSeason} from './sceneAtmosphere';
@@ -217,6 +217,58 @@ export function blockProp(kind:BlockProp,seed:number,season?:VisualSeason):Block
 const STONE='#827e78',WOOD='#927353',PLANK='#bd9469',BEAM='#654e41';
 const quarterForDoor=(side?:Point)=>side?.y===-1?2:side?.x===-1?1:side?.x===1?3:0;
 const compassTurn=(side?:Point)=>side?.y===1?1:side?.x===-1?2:side?.y===-1?3:0;
+
+function boatHull(grid:BlockGrid,merchant:boolean){
+  const sides=[1,2,4,5,5,5,5,5,5,4,3,2];
+  for(const [row,width] of sides.entries()){
+    const x=-Math.floor(width/2),y=row-6;
+    grid.box(x,y,0,width,1,2,merchant?'#704d3a':'#745541');
+    grid.box(x,y,2,width,1,1,row%2===0?PLANK:WOOD);
+    for(const edge of [x,x+width-1])grid.box(edge,y,3,1,1,1,BEAM);
+  }
+  grid.box(-1,-6,2,1,2,3,'#be8d5f');
+  grid.box(-1,4,3,3,1,1,'#ae875e');
+}
+
+export function blockSailboat(heading:Facing,merchant=false):BlockModel{
+  const quarter={north:0,east:1,south:2,west:3}[heading];
+  return model('sailboat:'+heading+':'+merchant,grid=>{
+    boatHull(grid,merchant);
+    grid.box(0,0,3,1,1,12,BEAM);
+    grid.box(0,-1,12,1,3,1,'#815938');
+    const canvas=merchant?'#dad9bc':'#f0deb1';
+    for(let z=5;z<13;z++){
+      const width=7-Math.floor((z-5)*.65);
+      for(let col=0;col<width;col++){
+        const x=col-Math.floor(width/2),y=x+Number(col>width/2);
+        grid.box(x,y,z,1,2,1,z===6?'#b27c5e':col===0?'#d4bc90':canvas);
+      }
+    }
+    grid.box(0,0,14,2,1,1,merchant?'#679389':'#be7650');
+    if(merchant)grid.box(-1,2,3,2,2,2,'#b98b67');
+  },quarter,'timber');
+}
+
+export function blockShipyard(water:Point,site:StructureSite):BlockModel{
+  const quarter=quarterForDoor({x:-water.x,y:-water.y});
+  const {wood,course,stone,wall,roof}=site.material;
+  return model('shipyard:'+quarter+':'+site.kind,grid=>{
+    grid.box(-5,-3,0,10,7,1,stone);
+    grid.box(-5,0,1,5,4,5,wall);
+    grid.box(-5,0,6,5,5,1,roof);
+    grid.box(-4,1,7,3,4,1,roof);
+    grid.box(-4,3,1,2,1,4,BEAM);
+    grid.box(-1,3,3,1,1,2,'#e2b987');
+    for(let row=-9;row<=0;row++)grid.box(-3,row,1,7,1,1,row%2===0?PLANK:wood);
+    for(const x of [-3,3])for(const y of [-9,-5,-2])grid.box(x,y,0,1,1,4,BEAM);
+    grid.box(-1,-5,2,3,4,1,BEAM);
+    grid.box(-1,-5,3,3,1,1,wood);
+    grid.box(-1,-2,3,3,1,1,wood);
+    grid.box(0,-6,3,1,5,1,course);
+    grid.box(3,2,1,2,1,2,wood);
+    grid.box(3,2,3,2,1,1,PLANK);
+  },quarter,'timber');
+}
 function tint(color:string,local:string|undefined,amount:number):string{
   if(!local)return color;
   const a=parseInt(color.slice(1),16),b=parseInt(local.slice(1),16);

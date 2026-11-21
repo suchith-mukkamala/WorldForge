@@ -1,10 +1,9 @@
-import type {World} from './engine';
 import type {BuildingPlots} from './buildingPlots';
 import type {createDepthProjector} from './depthProjection';
 import {DEPTH_RISE} from './depthProjection';
 import {pickTerrainFace,type DepthPicking} from './depthTerrain';
 import {TERRAIN_ELEVATION_UNITS} from './terrainCells';
-import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
+import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE,type SurfaceWorld} from './surfaceGrid';
 import {cellPixel,firstTerrainSquare,shadeTerrainPixel,terrainPixel,
   terrainSwatches} from './terrainCellArt';
 import {SEA_LEVEL} from './topography';
@@ -30,9 +29,11 @@ function terrainWalls(palette:Uint32Array){
 
 /** Rasterize a single world-wide grid. Terrain and selection IDs use the same
  * spans. A small face costs a few contiguous writes instead of a canvas path. */
-export function paintDepthCells(ctx:CanvasRenderingContext2D,hit:DepthPicking,w:World,
+export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,
+  hit:DepthPicking,w:SurfaceWorld,
   projector:Projector,density:number,tiles:readonly number[],sea:string,
-  tilePaint:(index:number)=>{color:string;grain:number;water:boolean},plots?:BuildingPlots):void{
+  tilePaint:(index:number)=>{color:string;grain:number;water:boolean},
+  plots?:Pick<BuildingPlots,'squares'|'decoratedTiles'>,sample=1):void{
   const {width,height}=hit,image=ctx.createImageData(width,height);
   const pixels=new Uint32Array(image.data.buffer);
   pixels.fill(terrainPixel(sea));
@@ -51,7 +52,8 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D,hit:DepthPicking,w:
   const rise=projector.riseScale/DEPTH_RISE/TERRAIN_ELEVATION_UNITS*density;
   const level=(i:number)=>ground[i]+water[i]+(decks?.[i]??0);
   const seaHeight=(SEA_LEVEL-9)*TERRAIN_ELEVATION_UNITS;
-  const order=Array.from({length:SIDE*SIDE},(_,i)=>i).sort((a,b)=>
+  const count=SIDE/sample,offset=Math.floor(sample/2);
+  const order=Array.from({length:count*count},(_,i)=>(i%count+Math.floor(i/count)*SIDE)*sample).sort((a,b)=>
     projector.order(a%SIDE,Math.floor(a/SIDE))-projector.order(b%SIDE,Math.floor(b/SIDE)));
   const a={x:0,y:0},b={x:0,y:0},c={x:0,y:0},d={x:0,y:0};
   const e={x:0,y:0},f={x:0,y:0};
@@ -64,18 +66,20 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D,hit:DepthPicking,w:
     const paint=tilePaint(index),palette=terrainSwatches(paint.color,paint.water);
     const walls=terrainWalls(palette);
     const decorated=plots?.decoratedTiles.has(index)?plots.squares:undefined;
-    for(const offset of order){
-      const x=baseX+offset%SIDE,y=baseY+Math.floor(offset/SIDE),i=y*columns+x;
+    for(const cell of order){
+      const x=baseX+cell%SIDE,y=baseY+Math.floor(cell/SIDE);
+      const i=(y+offset)*columns+x+offset;
       const z=level(i);
       const plot=decorated?.get(i);
       const surface=cellPixel(grid,i,palette,paint.grain);
       const color=plot?paintPlotSquare(surface,plot.color):surface;
       a.x=origin.x*density+x*ux+y*vx;a.y=origin.y*density+x*uy+y*vy-z*rise;
-      b.x=a.x+ux;b.y=a.y+uy;
-      c.x=b.x+vx;c.y=b.y+vy;
-      d.x=a.x+vx;d.y=a.y+vy;
-      const zX=x+frontX>=0&&x+frontX<columns?level(i+frontX):seaHeight;
-      const zY=y+frontY>=0&&y+frontY<rows?level(i+frontY*columns):seaHeight;
+      b.x=a.x+ux*sample;b.y=a.y+uy*sample;
+      c.x=b.x+vx*sample;c.y=b.y+vy*sample;
+      d.x=a.x+vx*sample;d.y=a.y+vy*sample;
+      const tx=frontX*sample,ty=frontY*sample;
+      const zX=x+tx>=0&&x+tx<columns?level(i+tx):seaHeight;
+      const zY=y+ty>=0&&y+ty<rows?level(i+ty*columns):seaHeight;
       if(frontX&&zX<z){
         e.x=horizontal[1].x;e.y=horizontal[1].y+(z-zX)*rise;
         f.x=horizontal[0].x;f.y=horizontal[0].y+(z-zX)*rise;

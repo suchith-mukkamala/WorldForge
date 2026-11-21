@@ -67,7 +67,7 @@ export function findInteriorBuilding(world:World,reference:RoomReference):Mortal
 }
 
 export function canEnterMortalBuilding(world:World,site:MortalBuilding):boolean{
-  if(world.descent?.interior||site.distance>1)return false;
+  if(world.descent?.interior||world.descent?.ship?.underway||site.distance>1)return false;
   const door=findInteriorBuilding(world,{settlementId:site.settlementId,buildingId:site.building.id});
   return !!door&&door.distance<=1;
 }

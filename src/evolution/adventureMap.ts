@@ -14,6 +14,8 @@ import {riverCourses,type RiverCourse} from './riverCourses';
 import {springFlood,waterSeason} from './riverSeasons';
 import {boardwalkSite} from './riverArchitecture';
 import {isRiverDiscovery} from './riverDiscoveries';
+import {seaNeighbors,seaPoint,type Shipyard} from './shipSave';
+import {topographyForWorld} from './topography';
 
 export type AdventureLandscape='meadow'|'woodland'|'coast'|'highland'|'ash'|
   'taiga'|'wetlands'|'savanna';
@@ -49,6 +51,7 @@ export type AdventureMap={
   routes:Map<string,Route>;
   landmarkTrails:Map<string,Route>;
   ferries:Map<number,AdventureGate[]>;
+  shipyards:ReadonlyMap<number,Shipyard>;
   regions:Map<string,AdventureRegion>;
 };
 
@@ -87,6 +90,46 @@ function trace(parents:Int32Array,from:number):number[]{
   const path:number[]=[];
   for(let i=from;i>=0;i=parents[i])path.push(i);
   return path;
+}
+
+function coastShipyards(world:World,map:AdventureMap):Map<number,Shipyard>{
+  const {width,tiles}=world,{owners,open,parents,buildings,towns,bridges}=map;
+  const heights=topographyForWorld(world).heights,shipyards=new Map<number,Shipyard>();
+  const waters=new Int32Array(tiles.length),sizes=[0];
+  for(let i=0;i<tiles.length;i++){
+    if(waters[i]||tiles[i].biome!=='water'||bridges.has(i))continue;
+    const id=sizes.length,queue=[i];waters[i]=id;
+    for(const at of queue)for(const next of seaNeighbors(at,width,tiles.length)){
+      if(next<0||waters[next]||tiles[next].biome!=='water'||bridges.has(next))continue;
+      waters[next]=id;queue.push(next);
+    }
+    sizes.push(queue.length);
+  }
+  const scores=new Map<number,number>();
+  for(let shore=0;shore<tiles.length;shore++){
+    const town=towns[owners[shore]-1];
+    if(!town||!open[shore]||tiles[shore].biome==='water')continue;
+    const settlement=town.settlement,distance=adventureDistance(seaPoint(width,shore),settlement);
+    if(distance>8)continue;
+    const building=buildings.get(shore)?.building;
+    if(building&&building.type!=='dock')continue;
+    const dock=building?.type==='dock'&&building.stage==='complete'&&building.condition>0;
+    for(const water of seaNeighbors(shore,width,tiles.length)){
+      if(water<0||sizes[waters[water]]<6)continue;
+      const drop=Math.abs(heights[shore]-heights[water]);
+      if(drop>28)continue;
+      const score=Number(dock)*50-distance*3-drop*.15+
+        Math.min(12,Math.log2(sizes[waters[water]]));
+      if(score<=(scores.get(settlement.id)??-Infinity))continue;
+      scores.set(settlement.id,score);
+      shipyards.set(settlement.id,{settlementId:settlement.id,shore,water});
+    }
+  }
+  for(const town of towns){
+    const yard=shipyards.get(town.place.id);
+    if(yard)for(const i of trace(parents,yard.shore))town.area.add(i);
+  }
+  return shipyards;
 }
 
 function trimRoute(path:number[],first:ReadonlySet<number>,last:ReadonlySet<number>,
@@ -157,7 +200,7 @@ function buildAdventureMap(world:World):AdventureMap{
   }
   const owners=new Int32Array(open.length),parents=new Int32Array(open.length).fill(-1);
   const map:AdventureMap={width,height,open,owners,parents,roads,bridges,buildings,
-    towns:[],routes:new Map(),landmarkTrails:new Map(),ferries:new Map(),regions:new Map()};
+    towns:[],routes:new Map(),landmarkTrails:new Map(),ferries:new Map(),shipyards:new Map(),regions:new Map()};
   if(!world.settlements.length)return map;
 
   const costs=new Float64Array(open.length).fill(Infinity);
@@ -246,6 +289,7 @@ function buildAdventureMap(world:World):AdventureMap{
       }
     }
   }
+  map.shipyards=coastShipyards(world,map);
   addLandmarkTrails(world,map);
   return map;
 }
@@ -387,6 +431,26 @@ function wildRoute(map:AdventureMap,place:WildStop,area:ReadonlySet<number>):Rou
     fromName:'Wilderness',toName:town.settlement.name};
 }
 
+function expeditionGates(map:AdventureMap,place:WildStop,area:ReadonlySet<number>):AdventureGate[]{
+  const {width,open}=map,gates:AdventureGate[]=[];
+  for(const [axis,heading] of ['north','east','south','west'].entries()){
+    const d=directions[axis];
+    let distance=Infinity,border=-1,exit=-1;
+    for(const i of area){
+      const here=point(width,i),span=(here.x-place.x)*d.x+(here.y-place.y)*d.y;
+      if(span!==5)continue;
+      const next=seaNeighbors(i,width,open.length)[axis];
+      if(next<0||!open[next]||area.has(next))continue;
+      const offset=(here.x-place.x)*d.y-(here.y-place.y)*d.x;
+      if(Math.abs(offset)>=distance)continue;
+      distance=Math.abs(offset);border=i;exit=next;
+    }
+    if(border>=0)gates.push(gate(width,border,exit,
+      {kind:'wild',...point(width,border),expedition:true},'Continue '+heading));
+  }
+  return gates;
+}
+
 function routeRegion(world:World,map:AdventureMap,route:Route):AdventureRegion{
   const {path,place,fromName,toName}=route,{width}=map;
   const area=new Set(path);
@@ -432,15 +496,19 @@ function regionFor(world:World,map:AdventureMap,place:AdventurePlace):AdventureR
     for(const sign of gates){
       for(let i=tile(width,sign.point);i>=0&&area.has(i);i=map.parents[i])trail.add(i);
     }
+    const yard=map.shipyards.get(place.id);
+    if(yard)for(const i of trace(map.parents,yard.shore))trail.add(i);
     region={place,name:settlement.name,landscape:landscapeAt(world,settlement),
       focus:settlement,bounds:areaBounds(width,area),area,trail,gates,settlement};
   }else if(place.kind==='wild'){
     const area=connectedArea(map,tile(width,place),boundsAround(map,place,5));
     const landmark=map.landmarkTrails.get(key);
     const route=landmark??wildRoute(map,place,area);
-    region={place,name:landmark?.fromName??'Wilderness',landscape:landscapeAt(world,place),focus:place,
+    region={place,name:landmark?.fromName??(place.expedition?'Coastal expedition':'Wilderness'),
+      landscape:landscapeAt(world,place),focus:place,
       bounds:areaBounds(width,area),area,trail:new Set(),
-      gates:[...(route?[stopGate(width,route,true)]:[]),...riverGates(world,map,area)]};
+      gates:[...(route?[stopGate(width,route,true)]:[]),...riverGates(world,map,area),
+        ...(place.expedition?expeditionGates(map,place,area):[])]};
   }else if(place.kind==='river'){
     region=riverRegion(world,map,place);
   }else{
@@ -532,6 +600,7 @@ export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
   if(world.descent?.mode!=='mortal'||world.descent.agentId!==actor.id)
     return {world,moved:false,reason:'Resume your mortal to travel.'};
   if(world.descent.interior)return {world,moved:false,reason:'Leave the room before traveling.'};
+  if(world.descent.ship?.underway)return {world,moved:false,reason:'Land the ship before traveling on foot.'};
   if(!region.gates.includes(exit)||adventureDistance(actor,exit.point)>1)
     return {world,moved:false,reason:exit.ferry?'Walk to the ferry landing to sail.':
       'Walk to the signpost to travel.'};

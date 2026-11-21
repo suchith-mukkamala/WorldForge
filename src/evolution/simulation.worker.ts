@@ -5,7 +5,7 @@
  */
 import {advanceWorldDays} from './calendar';
 import type {World} from './engine';
-import type {SimulationRequest,SimulationReply} from './simulationProtocol';
+import {packSimulationWorld,type SimulationRequest,type SimulationReply} from './simulationProtocol';
 let activeWorld:World|null=null;
 self.onmessage=(event:MessageEvent<SimulationRequest>)=>{
   const request=event.data;
@@ -14,11 +14,11 @@ self.onmessage=(event:MessageEvent<SimulationRequest>)=>{
   try{
     if(request.world)activeWorld=request.world;
     if(!activeWorld)throw Error('Background world not initialized');
-    const before=performance.now();
-    const world=advanceWorldDays(activeWorld,request.days);
+    const start=performance.now(),before=activeWorld;
+    const world=advanceWorldDays(before,request.days);
     activeWorld=world;
-    reply={kind:'advanced',id:request.id,world,
-      elapsedMs:Math.max(0,performance.now()-before)};
+    reply={kind:'advanced',id:request.id,...packSimulationWorld(before,world),
+      elapsedMs:Math.max(0,performance.now()-start)};
   }catch(error){
     reply={kind:'failed',id:request.id,
       message:error instanceof Error?error.message:String(error)};

@@ -1,8 +1,9 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Agent,World} from './engine';
-import {advanceWorldDays,calendarDate,MONTH_NAMES} from './calendar';
+import {calendarDate,MONTH_NAMES} from './calendar';
 import {BUILDING_LABELS,settlementStage} from './construction';
 import {AdventureCanvas} from './AdventureCanvas';
+import {AdventureDirections} from './AdventureDirections';
 import {MortalHUD,mortalName} from './MortalHUD';
 import {MortalInterior} from './MortalInterior';
 import {ErrandTracker,TownNoticeBoard} from './TownErrands';
@@ -20,7 +21,7 @@ import type {RoomReference} from './roomSave';
 import {facingActions} from './adventureCamera';
 import {interactWithMortal,isMortalSolidBuilding,mortalMovementDelay,nearbyMortalBuildings,nearbyMortals,
   type MortalAction,type MortalBuilding} from './mortalGameplay';
-import {useAdventureControls,WALK_DIRECTIONS} from './useAdventureControls';
+import {useAdventureControls} from './useAdventureControls';
 import {abandonErrand,abandonErrandLabel,acceptErrand,availableErrands,buyMeal,
   deliverErrand,errandObjective,gatherErrand,journalFor,noticeBoard,
   type ErrandResult} from './mortalErrands';
@@ -30,6 +31,9 @@ import {isRiverDiscovery} from './riverDiscoveries';
 import {waterSeason} from './riverSeasons';
 import type {AncientSite} from './knowledge';
 import {directionBetween,samePoint as equal,type Facing,type Point} from './motion';
+import {launchShip,recoverShip,shipMooring} from './mortalSailing';
+import {MortalSailing} from './MortalSailing';
+import {seaPoint} from './shipSave';
 
 const buildingKey=(site:MortalBuilding)=>site.settlementId+':'+site.building.id;
 const buildingRef=(site:MortalBuilding):RoomReference=>({
@@ -44,12 +48,23 @@ function directionTo(from:Point,to:Point){
   return vertical+horizontal;
 }
 
-export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
+type AdventureProps={
   world:World;actor:Agent;notice?:string;onChange:(next:World)=>void;onAscend:()=>void;
-}){
+  running:boolean;onToggleTime:()=>void;
+};
+
+export function MortalAdventure(props:AdventureProps){
+  const {world,onChange}=props,ship=world.descent?.ship;
+  useEffect(()=>{
+    const recovered=recoverShip(world);
+    if(recovered!==world)onChange(recovered);
+  },[world,onChange]);
+  return ship?.underway?<MortalSailing {...props} ship={ship}/>:<MortalOnFoot {...props}/>;
+}
+
+function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime}:AdventureProps){
   const current=useRef(world);
   current.current=world;
-  const [running,setRunning]=useState(true);
   const [focus,setFocus]=useState<Focus|null>(null);
   const [facing,setFacing]=useState<Facing>(world.descent?.interior?'north':'south');
   const [residentTarget,setResidentTarget]=useState<number|null>(null);
@@ -61,6 +76,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const [errandMessage,setErrandMessage]=useState('');
   const [landmarkPin,setLandmarkPin]=useState<number|null>(null);
   const [markRiver,setMarkRiver]=useState(false);
+  const [markedBerth,setMarkedBerth]=useState(false);
   const map=adventureMapFor(world),region=adventureRegion(world,map,actor);
   const scene=adventurePlaceKey(region.place);
   const interiorSite=occupiedMortalRoom(world);
@@ -68,6 +84,13 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   const residents=interiorSite?livingHousehold(world,interiorSite).present:[];
   const roomItems=interiorSite?INTERIOR_TEMPLATES[interiorSite.building.type].props:[];
   const markedDoor=doorPin&&findInteriorBuilding(world,doorPin);
+  const mooring=shipMooring(world,map);
+  const localYard=[...map.shipyards.values()].find(yard=>region.area.has(yard.shore));
+  const berth=mooring&&region.area.has(mooring.shore)?mooring:localYard;
+  const berthPoint=berth&&seaPoint(world.width,berth.shore);
+  const berthDistance=berthPoint?adventureDistance(actor,berthPoint):Infinity;
+  const ownBerth=berth&&berth.shore===mooring?.shore&&berth.water===mooring.water;
+  const boatLabel=ownBerth?'Board sailboat':'Launch sailboat';
   const board=noticeBoard(world,region),boardNear=!!board&&adventureDistance(actor,board)<=1;
   const journal=journalFor(world),activeErrand=journal.active;
   const objective=activeErrand&&errandObjective(world,map,region,activeErrand);
@@ -105,15 +128,6 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     onChange(next);
   };
   useEffect(()=>{
-    if(!running)return;
-    const timer=window.setInterval(()=>{
-      const before=current.current;
-      const after=advanceWorldDays(before,1);
-      if(after!==before)commit(after);
-    },2000);
-    return ()=>window.clearInterval(timer);
-  },[running,onChange]);
-  useEffect(()=>{
     if(world.descent?.interior&&!interiorSite){
       commit(leaveMortalRoom(current.current));
       setResidentTarget(null);
@@ -143,7 +157,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     if(site)setFacing(directionBetween(site.building,site.entrance));
     commit(leaveMortalRoom(before));setResidentTarget(null);clear();
   };
-  const toggleTime=()=>setRunning(value=>!value);
+  const toggleTime=onToggleTime;
   const selectPerson=(person:Agent)=>{
     setFacing(value=>directionBetween(actor,person,value));
     setFocus({personId:person.id});setMessage('');
@@ -259,6 +273,13 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     setFacing(value=>directionBetween(interior.position,resident.position,value));
     setResidentTarget(id);setMessage('');
   };
+  const boardShip=()=>{
+    if(!berth)return;
+    if(berthDistance>1){setMarkedBerth(value=>!value);return;}
+    const result=launchShip(current.current,berth);
+    if(result.moved)commit(result.world);
+    else setMessage(result.reason??'The berth is unavailable.');
+  };
   let actions:Interaction[];
   if(interior&&interiorSite){
     const position=interior.position;
@@ -278,6 +299,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
       run:()=>selectLandmark(closeLandmark)}]:[];
     const exits=gates.filter(g=>g.distance<=1).map(g=>gateAction(g.gate));
     actions=[
+      ...(berthDistance<=1?[{label:boatLabel,point:berthPoint,run:boardShip}]:[]),
       ...(workAction?[workAction]:[]),
       ...(region.place.kind==='wild'?[...surveyActions,...exits]:[...exits,...surveyActions]),
       ...buildings.filter(site=>site.distance===0).map(buildingAction),
@@ -345,6 +367,8 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
   };
   const selectTile=(point:Point)=>{
     if(showBoard)return;
+    const index=point.y*world.width+point.x;
+    if(berth&&(index===berth.shore||index===berth.water)){boardShip();return;}
     if(workAction?.point&&equal(workAction.point,point)){
       workAction.run();return;
     }
@@ -389,13 +413,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
     '';
   const movementControls=(
     <div className="adventure-controls" role="group" aria-label="Adventure controls">
-      <div className="adventure-dpad" role="group" aria-label="Walk with touch controls">
-        {WALK_DIRECTIONS.map(d=><button key={d.id} className={'walk-'+d.id}
-          aria-label={d.label} onPointerDown={event=>controls.start(event,d.id)}
-          onPointerUp={controls.stop} onPointerCancel={controls.stop}
-          onLostPointerCapture={controls.stop}
-          onClick={event=>{if(event.detail===0)controls.tap(d);}}>{d.icon}</button>)}
-      </div>
+      <AdventureDirections controls={controls}/>
       <div className="adventure-controls-main">
         <div className="adventure-hints">
           <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</span>
@@ -450,7 +468,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
                 board={board} landmarks={landmarks} gather={objective?.action==='gather'?goalPoint:undefined}
                 focused={focusedBuilding?.building??markedDoor?.building}
                 marked={focusedBuilding?.entrance??focusedPerson??markedDoor?.entrance??
-                  (boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
+                  (markedBerth?berthPoint:undefined)??(boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
                   goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
                 onSelect={selectTile}/>
               {showBoard?<TownNoticeBoard world={world} journal={journal}
@@ -477,6 +495,19 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
                 <span className="adventure-purse">{coinLabel(journal.coins)}</span>}
             </div>
           </section>
+          {!interior&&berthPoint&&<section className="adventure-exits" aria-label="Shipyard and mooring">
+            <h2>{ownBerth?'Sailboat mooring':'Shipyard'}</h2>
+            <button onClick={boardShip} aria-pressed={berthDistance>1?markedBerth:undefined}>
+              <span className="adventure-direction" aria-hidden="true">{berthDistance<=1?'≈':directionTo(actor,berthPoint)}</span>
+              <span><strong>{berthDistance<=1?boatLabel:ownBerth?'Mark sailboat':'Mark shipyard'}</strong>
+                {berthDistance>1&&<small>{berthDistance} tiles {directionTo(actor,berthPoint)}</small>}</span>
+              <span aria-hidden="true">›</span>
+            </button>
+          </section>}
+          {!interior&&!berthPoint&&mooring&&<section className="adventure-exits">
+            <h2>Sailboat mooring</h2>
+            <p>{adventureDistance(actor,seaPoint(world.width,mooring.shore))} tiles {directionTo(actor,seaPoint(world.width,mooring.shore))}</p>
+          </section>}
           {(!interior||activeErrand)&&<ErrandTracker world={world} journal={journal}
             objective={objective}
             readyAction={!interior&&!showBoard&&workAction&&(!showAction||primary!==workAction)?

@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.22.0 — Seafaring** adds shipyards to coastal towns and lets you steer a sailboat in Descend. Choose a shipyard as your starting location or visit one on foot. Use the sea chart to find shores, go ashore to explore, and return to your moored boat. The game saves your ship and charted landfalls. The atlas reuses terrain during playback and renders full terrain detail in the background on large worlds. Descend now runs its clock on the simulation worker too.
+
 - **v2.21.0 — Building Plots** gives structures cleared yards edged by low brush. New buildings use dry sites, with docks extending into the water and mills set on stream banks. Follow the paving from doors to nearby streets, with stone steps on slopes and plank walks over wet ground. Select a building to see its plot and look through overlapping foliage in the raised atlas or in Descend. Saved towns pick up the new scenery when opened.
 
 - **v2.20.0 — Grounded Structures** fits foundations to the small terrain squares below each building. Stone and timber supports follow slopes, docks face nearby water, and approaches connect to the same entrances used in Descend. All eleven building types, settlement centers, and landmarks have updated block models. Local stone, timber, roof materials, and floodplain or snowy details vary with the site. Existing worlds gain the new scenery.

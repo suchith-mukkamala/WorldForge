@@ -1,5 +1,5 @@
 export type TownStop={kind:'town';id:number};
-export type WildStop={kind:'wild';x:number;y:number};
+export type WildStop={kind:'wild';x:number;y:number;expedition?:true};
 export type AdventureStop=TownStop|WildStop;
 export type AdventureRoute={kind:'route';from:AdventureStop;to:TownStop};
 export type RiverTrail={kind:'river';mouth:number};
@@ -7,7 +7,7 @@ export type AdventurePlace=AdventureStop|AdventureRoute|RiverTrail;
 
 export function adventurePlaceKey(place:AdventurePlace):string{
   if(place.kind==='town')return 'town:'+place.id;
-  if(place.kind==='wild')return 'wild:'+place.x+':'+place.y;
+  if(place.kind==='wild')return 'wild:'+place.x+':'+place.y+(place.expedition?':expedition':'');
   if(place.kind==='river')return 'river:'+place.mouth;
   return adventurePlaceKey(place.from)+'>'+adventurePlaceKey(place.to);
 }
@@ -21,7 +21,8 @@ export function validAdventurePlace(value:unknown,width:number,height:number):bo
   const wild=(p:unknown):p is WildStop=>!!p&&typeof p==='object'&&
     'kind' in p&&p.kind==='wild'&&'x' in p&&'y' in p&&
     typeof p.x==='number'&&typeof p.y==='number'&&Number.isInteger(p.x)&&
-    Number.isInteger(p.y)&&p.x>=0&&p.x<width&&p.y>=0&&p.y<height;
+    Number.isInteger(p.y)&&p.x>=0&&p.x<width&&p.y>=0&&p.y<height&&
+    (!('expedition' in p)||p.expedition===true);
   if(town(value)||wild(value))return true;
   if(!!value&&typeof value==='object'&&'kind' in value&&value.kind==='river')
     return 'mouth' in value&&typeof value.mouth==='number'&&Number.isInteger(value.mouth)&&

@@ -159,6 +159,10 @@
 .adventure-exits button[aria-pressed="true"] { border-color: var(--accent-ui); }
 .adventure-exits strong { display: block; overflow-wrap: anywhere; }
 .adventure-exits small { display: block; color: var(--muted-ui); font-size: 11px; font-weight: 500; margin-top: 4px; }
+.sea-chart canvas { display: block; width: 100%; image-rendering: pixelated; border: 1px solid #678477; border-radius: 3px; }
+.sea-chart small { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin-top: 9px; }
+.sea-chart i { width: 7px; height: 7px; background: #cba273; }
+.sea-chart i:nth-of-type(2) { margin-left: 4px; background: #96cfbd; }
 .adventure-direction {
   color: var(--accent-ui);
   background: #e9c88c14;
@@ -367,6 +371,7 @@
 .evo-descent-form .evo-descent-label { font: 700 13px/1.35 var(--reading-font); color: #e1dfc9; }
 .evo-descent-page .evo-descent-label:first-child { margin-top: 0; }
 .evo-descent-page .evo-descent-form input, .evo-descent-page .evo-descent-form button { border-radius: 5px; font-family: var(--reading-font); font-size: 13px; }
+.evo-descent-form select { color: #e1dfc9; background: #172a29; border: 1px solid #65755d; border-radius: 5px; padding: 8px; font: inherit; }
 .evo-descent-customize { margin-top: 5px; }
 .evo-descent-customize .evo-descent-label { margin: 10px 0 5px; }
 .evo-descent-arrival { display: flex; gap: 8px; align-items: flex-start; color: #e1dfc9; font: 700 13px/1.45 var(--reading-font); margin-top: 7px; cursor: pointer; }

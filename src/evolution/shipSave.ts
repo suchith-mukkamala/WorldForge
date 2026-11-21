@@ -1,0 +1,29 @@
+import type {DivineDescent} from './engine';
+import type {Facing,Point} from './motion';
+
+export type MortalShip={at:number;shore:number;underway:boolean;heading:Facing;landfalls:number[]};
+export type Shipyard={settlementId:number;shore:number;water:number};
+
+export const seaPoint=(width:number,i:number):Point=>({x:i%width,y:Math.floor(i/width)});
+export const seaNeighbors=(index:number,width:number,count:number)=>[
+  index>=width?index-width:-1,
+  index%width<width-1?index+1:-1,
+  index+width<count?index+width:-1,
+  index%width>0?index-1:-1,
+];
+
+export function validMortalShip(value:unknown,width:number,height:number):value is MortalShip{
+  if(!value||typeof value!=='object')return false;
+  const ship=value as Partial<MortalShip>,count=width*height;
+  const position=(i:unknown):i is number=>typeof i==='number'&&Number.isInteger(i)&&i>=0&&i<count;
+  return position(ship.at)&&position(ship.shore)&&typeof ship.underway==='boolean'&&
+    (ship.underway||seaNeighbors(ship.shore,width,count).includes(ship.at))&&
+    !!ship.heading&&['north','east','south','west'].includes(ship.heading)&&
+    Array.isArray(ship.landfalls)&&ship.landfalls.length<=128&&ship.landfalls.every(position)&&
+    new Set(ship.landfalls).size===ship.landfalls.length;
+}
+
+/** While a vessel is underway the mortal's land tile is reserved for the
+ * simulation. Navigation uses the ship's saved position until landing. */
+export const controlsMortal=(descent:DivineDescent|undefined,id:number)=>
+  descent?.agentId===id&&(descent.mode==='mortal'||descent.ship?.underway);

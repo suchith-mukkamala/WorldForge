@@ -9,6 +9,7 @@ import {activeTraitBonus,activeTraitEffect,activeTraitPurposeBonus} from './trai
 import {RouteFrontier} from './routeFrontier';
 import {experiencePreference,stepExperiencePreference} from './experienceLearning';
 import type {Agent,World} from './engine';
+import {controlsMortal} from './shipSave';
 import type {Household} from './development';
 import {cloneDevelopment,lifeStage} from './development';
 import {residentIndex,tileCapacity,addResident,removeResident} from './density';
@@ -540,7 +541,7 @@ export function advanceMindDay(previous:World,day:number,
     return copy;
   };
   for(const old of previous.agents){
-    if(previous.descent?.mode==='mortal'&&previous.descent.agentId===old.id)
+    if(controlsMortal(previous.descent,old.id))
       continue;
     const active=old.cognition?.agenda.some(p=>p.status==='active');
     const due=day%7===1||!!active||!!urgency(old);

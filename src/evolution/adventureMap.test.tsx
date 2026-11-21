@@ -117,6 +117,7 @@ describe('towns and trails',()=>{
   it('shows an exploration-led HUD for older worlds with no towns',()=>{
     const {world,agent}=createMortal(createWorld({seed:5174,size:'small'}),options);
     const markup=renderToStaticMarkup(<MortalAdventure world={world} actor={agent}
+      running onToggleTime={()=>{}}
       onChange={()=>{}} onAscend={()=>{}}/>);
     expect(markup).toContain('Wilderness exploration map');
     expect(markup).toContain('Ascend');
