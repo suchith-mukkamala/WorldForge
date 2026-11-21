@@ -17,6 +17,9 @@ import {inheritedTraitHeritage,inheritedPotentialUpgrade} from './traitHeritage'
 import {initialMind} from './mind';
 import {divineFactor} from './divine';
 import {residentIndex} from './density';
+import {climateField} from './climate';
+import {inheritSurvivalGenes,pairStress,partnerLean,personStress,
+  reproductiveEdge,type LocalStress} from './selection';
 
 const clamp=(n:number,a:number,b:number)=>Math.min(b,Math.max(a,n));
 const round=(n:number)=>Math.round(n*1000)/1000;
@@ -75,7 +78,7 @@ export function compatibility(a:Agent,b:Agent,allowHybrids=true):number{
   return round(clamp(hereditary*temperament*(.74+.26*vitality),0,1));
 }
 export function inheritedGenes(a:Genes,b:Genes,rand:()=>number):Genes{
-  const inherit=(key:keyof Genes)=>round(clamp(
+  const inherit=(key:'vigor'|'curiosity'|'fertility'|'social')=>round(clamp(
     (a[key]+b[key])/2+(rand()-.5)*.20,.65,1.4));
   return {vigor:inherit('vigor'),curiosity:inherit('curiosity'),
     fertility:inherit('fertility'),social:inherit('social')};
@@ -93,6 +96,11 @@ export function livingRecord(a:Agent):LineageRecord{
 }
 const cheby=(a:{x:number;y:number},b:{x:number;y:number})=>
   Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
+function stressFor(world:World,agent:Agent):LocalStress{
+  const field=climateField(world);
+  const index=agent.y*world.width+agent.x;
+  return personStress(agent,world.tiles[index],field.temperature[index]);
+}
 /** Food-regrowth surplus per nearby household determines reproductive support.
  * Unlike a headcount ceiling, this varies with the landscape and population.
  */
@@ -208,8 +216,11 @@ export function growBonds(world:World,rand:()=>number):number{
       }
     }
     if(!candidates.length)continue;
-    candidates.sort((x,y)=>compatibility(a,y,world.settings.interbreeding)-
-      compatibility(a,x,world.settings.interbreeding)||x.id-y.id);
+    const home=stressFor(world,a);
+    candidates.sort((x,y)=>compatibility(a,y,world.settings.interbreeding)+
+      partnerLean(y.genes,home)-
+      (compatibility(a,x,world.settings.interbreeding)+
+      partnerLean(x.genes,home))||x.id-y.id);
     const b=candidates[0],score=compatibility(a,b,world.settings.interbreeding);
     const bond:Bond={id:world.nextBondId++,a:a.id,b:b.id,since:world.year,
       stage:'courting',strength:round(.41+score*.19),children:[]};
@@ -280,13 +291,15 @@ export function offspringFromBonds(
     const minorityBoost=(a.species==='human'||a.species==='demon'||
       b.species==='human'||b.species==='demon')&&
       Math.min(populations[a.species],populations[b.species])<65?1.25:1;
+    const edge=reproductiveEdge(a.genes,b.genes,pairStress(
+      stressFor(world,a),stressFor(world,b)));
     const chance=clamp(fertility*1.65*comp*minorityBoost*
       Math.min(localSupport(a),localSupport(b))*
       Math.min(a.genes.fertility,b.genes.fertility)*
       (divineFactor(a,'fertility',world.year)+
         divineFactor(b,'fertility',world.year))/2*
       (divineFactor(a,'luck',world.year)+divineFactor(b,'luck',world.year))/2*
-      Math.min(a.energy,b.energy)/100*world.settings.resourceLevel,0,.78);
+      Math.min(a.energy,b.energy)/100*world.settings.resourceLevel*(1+edge),0,.78);
     if(rand()>=chance)continue;
     const ancestry=mixAncestry(a.ancestry,b.ancestry);
     const site=findSpace(a,ancestry);
@@ -296,6 +309,8 @@ export function offspringFromBonds(
       energy:77,health:94,genes:inheritedGenes(a.genes,b.genes,rand),
       generation:Math.max(a.generation,b.generation)+1,parents:[a.id,b.id],
       mind:initialMind(world.year)};
+    baby.genes={...baby.genes,...inheritSurvivalGenes(world.settings.seed,baby.id,
+      a.genes,b.genes)};
     baby.traitHeritage=inheritedTraitHeritage(world.settings.seed,baby.id,
       baby.genes,a,b);
     baby.potentialRank=inheritedPotentialUpgrade(world.settings.seed,baby.id,

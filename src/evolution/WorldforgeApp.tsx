@@ -47,6 +47,7 @@ import {freshWorldSeed} from './worldSeeds';
 import {DEFAULT_WORLD_LAYOUT,geographyForSeed,isMultiIslandLayout,
   WORLD_LAYOUT_NAMES} from './worldGeography';
 import {EvolutionHistory} from './EvolutionHistory';
+import {EvolutionView} from './EvolutionView';
 import {WorldFamily} from './WorldFamily';
 import {PeopleDirectory} from './PeopleDirectory';
 import {DivineCodex} from './DivineCodex';
@@ -92,7 +93,7 @@ function initialWorld():World{
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
-type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
+type Tab='world'|'creator'|'history'|'evolution'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture'|'descent';
 type AtlasPoint=Point&{elevation?:number};
 const format=(n:number)=>n.toLocaleString('en-US');
@@ -1035,7 +1036,8 @@ export function WorldforgeApp(){
               ['people','◉ PEOPLE'],['family','♡ FAMILIES'],
               ['knowledge','✧ EXPEDITIONS & KNOWLEDGE'],
               ['culture','⚖ BELIEFS & GOVERNMENT'],
-              ['codex','✦ DIVINE CODEX'],['history','≋ HISTORY']] as const)
+              ['codex','✦ DIVINE CODEX'],['history','≋ HISTORY'],
+              ['evolution','✺ EVOLUTION']] as const)
               .map(([page,title])=><button key={page}
                 className={tab===page?'active':''}
                 aria-current={tab===page?'page':undefined}
@@ -1055,6 +1057,7 @@ export function WorldforgeApp(){
     tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
       current={world.settings} onCreate={startWorld} onReturn={()=>navigate('world')}/>:
     tab==='history'?<EvolutionHistory world={world}/>:
+    tab==='evolution'?<EvolutionView world={world}/>:
     tab==='settlements'?<Suspense fallback={<main className="evo-history-page" role="status">
       Opening the settlement atlas…</main>}><SettlementView world={world}
       selectedId={selectedSettlementId} onFindOnMap={findSettlement}

@@ -282,6 +282,7 @@ export function migrateLegacyWorld(input:unknown):World|null{
     agents.push({id:raw.id as number,species:sp,x:raw.x as number,y:raw.y as number,
       age:raw.age as number,born:raw.born as number,
       energy:raw.energy as number,health:raw.health as number,
+      // social, and the later survival loci, default when an old life omits them.
       genes:{vigor:g.vigor,curiosity:g.curiosity,fertility:g.fertility,social:1},
       ancestry:pureAncestry(sp),generation:parents?1:0,parents});
   }
@@ -331,6 +332,10 @@ export function readSavedWorld(raw:string|null):World|null{
       return isWorld(candidate)?candidate:null;
     }
     if(parsed.version===1)return migrateLegacyWorld(parsed);
+    // Survival genes and the evolution record are optional. Older saves omit
+    // them; readers treat a missing locus as ordinary (1) and start the
+    // yearly record on the next tick. Do not invent those fields here, or a
+    // restored save would no longer match the bytes that were stored.
     return isWorld(parsed)?parsed:null;
   }catch{return null;}
 }

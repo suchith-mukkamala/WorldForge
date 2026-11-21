@@ -27,6 +27,7 @@ import './evolution-v19.css';
 import './evolution-v25.css';
 import './evolution-v26.css';
 import './evolution-v27.css';
+import './evolution-v28.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><WorldforgeErrorBoundary><WorldforgeApp />

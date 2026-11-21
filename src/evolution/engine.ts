@@ -55,6 +55,9 @@ import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
 import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woodland';
 import {annualGrowthFactor,climateField} from './climate';
+import {advanceEvolution,applySelectionHealth,cloneEvolution,
+  founderSurvivalGenes,mortalWoundIsFatal,personStress,validEvolution,
+  woundSurvivalHealth,type EvolutionState} from './selection';
 import {advanceClimateEcology} from './climateEcology';
 import {advanceWildlife,seedWildlife,validWildlife,type Herd} from './wildlife';
 import {LANDFORM_NAMES,settlementGeography,
@@ -80,7 +83,9 @@ export type WorldSettings={
   /** Seasons, rainfall and herds shape habitats. Absent on older saves. */
   climateEcology?:boolean;
 };
-export type Genes={vigor:number;curiosity:number;fertility:number;social:number};
+export type Genes={vigor:number;curiosity:number;fertility:number;social:number;
+  /** Survival loci. Missing on older lives; treated as 1 (ordinary). */
+  cold?:number;heat?:number;scarcity?:number;immunity?:number;mending?:number};
 export type Ancestry=Record<Species,number>;
 /** A mortal's chosen appearance is optional: older NPCs retain seeded looks. */
 export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
@@ -127,7 +132,7 @@ export type Settlement={id:number;species:Species;name:string;x:number;y:number;
   archives?:Topic[]};
 export type WorldEvent={id:number;year:number;
   type:'world'|'birth'|'death'|'settlement'|'collapse'|'milestone'|'bond'|'hybrid'|
-    'trade'|'guild'|'diplomacy'|'knowledge'|'culture'|'plague';
+    'trade'|'guild'|'diplomacy'|'knowledge'|'culture'|'plague'|'evolution';
   message:string};
 export type DeathCause='old_age'|'starvation'|'exposure'|'ill_health'|'plague';
 export const DEATH_CAUSES:DeathCause[]=['old_age','starvation','exposure','ill_health','plague'];
@@ -154,7 +159,10 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   skylands?:Skyland[];
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
-  events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
+  events:WorldEvent[];history:Sample[];
+  /** Yearly trait means and notable shifts. Absent on older saves. */
+  evolution?:EvolutionState;
+  totalBirths:number;totalDeaths:number;
   demography?:Demography;codex?:WorldCodex;
   descent?:DivineDescent;
   publicHealth?:PublicHealthState;
@@ -270,7 +278,7 @@ function log(world:World,type:WorldEvent['type'],message:string){
   if(world.events.length>90)world.events=world.events.slice(-90);
 }
 function genes(state:{n:number},parents?:[Genes,Genes]):Genes{
-  const inherit=(key:keyof Genes)=>{
+  const inherit=(key:'vigor'|'curiosity'|'fertility'|'social')=>{
     const value=parents?(parents[0][key]+parents[1][key])*.5+
       (random(state)-.5)*.16:.8+random(state)*.4;
     return round(clamp(value,.65,1.4));
@@ -343,6 +351,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
         x:point.x,y:point.y,age,energy:round(78+random(state)*19),
         health:round(84+random(state)*16),genes:genes(state),born:age===0?0:-age,
         mind:initialMind(0)};
+      founder.genes={...founder.genes,...founderSurvivalGenes(settings.seed,founder.id)};
       founder.potentialRank=birthPotentialRank(settings.seed,founder.id,founder.genes);
       founder.innateTrait=birthInnateTrait(settings.seed,founder.id,founder.genes);
       world.agents.push(founder);
@@ -353,6 +362,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   prepareDevelopment(world);
   log(world,'world','A world awakens. Humans, elves, dwarves and demons explore their homelands.');
   world.history.push(sample(world,0,0));
+  advanceEvolution(world);
   return world;
 }
 const adult=(a:Agent)=>{
@@ -415,6 +425,7 @@ export function stepWorld(previous:World):World{
       partnerIds:[...r.partnerIds],divineOrigins:r.divineOrigins?[...r.divineOrigins]:undefined,
       knownKnowledge:r.knownKnowledge?.map(k=>({...k}))})),
     events:[...previous.events],history:[...previous.history],
+    evolution:cloneEvolution(previous.evolution),
     codex:previous.codex?{
       favoritePeople:[...previous.codex.favoritePeople],
       favoriteSettlements:[...previous.codex.favoriteSettlements],
@@ -509,6 +520,7 @@ export function stepWorld(previous:World):World{
     [shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];
   }
   const survivors:Agent[]=[];
+  const selectionTemps=world.agents.length?climateField(world).temperature:undefined;
   const sailors=new Map((world.shipments??[]).filter(t=>t.mode==='sea')
     .map(t=>[t.carrierId,t]));
   const careOutcomes=new Map<number,CareOutcome>();
@@ -626,18 +638,31 @@ export function stepWorld(previous:World):World{
     if(stage==='infant'&&!care.providerId)a.health-=1.65;
     if(juvenile&&!care.shelter)a.health-=stage==='infant'?.45:.09;
     if(!comfortable)a.health-=.45*(1-suitability)*(care.protected?.45:1);
+    if(selectionTemps)applySelectionHealth(a,personStress(a,current,
+      selectionTemps[offset(world.width,a.x,a.y)]));
     // Very low senescence until old age, then sharply increasing mortality.
     const ageRatio=a.age/info.lifespan;
     const senescence=ageRatio>.84?
       Math.min(.9,Math.pow((ageRatio-.84)/.30,2)*.20):0;
     let cause:DeathCause|null=null;
-    if(a.mortalWound){
+    // A mortal wound stays fatal for an ordinary constitution. A seeded hash
+    // lets only a very hardy mending trait survive, without drawing world RNG
+    // unless that person actually lives and reaches the age check below.
+    const fatalWound=!!a.mortalWound&&mortalWoundIsFatal(world.settings.seed,
+      a.id,world.year,a.genes.mending);
+    if(fatalWound){
       cause='ill_health';
-    }else if(a.energy<=0||a.health<=0){
-      cause=a.energy<30?'starvation':a.health<=0&&a.disease?.stage==='sick'?
-        'plague':suitability<.45?'exposure':'ill_health';
-    }else if(ageRatio>1.22||random(state)<senescence){
-      cause='old_age';
+    }else{
+      if(a.mortalWound){
+        a.mortalWound=undefined;
+        a.health=Math.min(a.health,woundSurvivalHealth(a.genes.mending));
+      }
+      if(a.energy<=0||a.health<=0){
+        cause=a.energy<30?'starvation':a.health<=0&&a.disease?.stage==='sick'?
+          'plague':suitability<.45?'exposure':'ill_health';
+      }else if(ageRatio>1.22||random(state)<senescence){
+        cause='old_age';
+      }
     }
     if(cause){
       leave(offset(world.width,a.x,a.y),a.id);
@@ -807,6 +832,7 @@ export function stepWorld(previous:World):World{
   world.rngState=state.n;
   world.history.push(sample(world,births,deaths,yearVitals));
   if(world.history.length>400)world.history=world.history.slice(-400);
+  for(const message of advanceEvolution(world))log(world,'evolution',message);
   return world;
 }
 export function advanceWorld(world:World,years:number):World{
@@ -826,7 +852,8 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
     previous.agents.some(a=>a.x===x&&a.y===y))return previous;
   const world:World={...previous,agents:[...previous.agents],
     tiles:[...previous.tiles],lineage:[...previous.lineage],
-    events:[...previous.events],deposits:previous.deposits?.map(d=>({...d})),
+    events:[...previous.events],evolution:cloneEvolution(previous.evolution),
+    deposits:previous.deposits?.map(d=>({...d})),
     transport:previous.transport?cloneTransport(previous.transport):undefined,
     tradeRelations:previous.tradeRelations?.map(r=>({...r}))};
   if(brush.kind==='spawn'){
@@ -836,6 +863,8 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
       ancestry:pureAncestry(brush.species),generation:0,x,y,
       age,energy:88,health:95,genes:genes(state),born:world.year-age,
       mind:initialMind(world.year)};
+    newcomer.genes={...newcomer.genes,
+      ...founderSurvivalGenes(world.settings.seed,newcomer.id)};
     newcomer.potentialRank=birthPotentialRank(world.settings.seed,
       newcomer.id,newcomer.genes);
     newcomer.innateTrait=birthInnateTrait(world.settings.seed,
@@ -943,7 +972,9 @@ export function isWorld(value:unknown):value is World{
     .map(t=>[t.carrierId,t]));
   const checkGenes=(g:Genes)=>!!g&&
     (['vigor','curiosity','fertility','social'] as const).every(k=>
-      Number.isFinite(g[k])&&g[k]>=.5&&g[k]<=1.5);
+      Number.isFinite(g[k])&&g[k]>=.5&&g[k]<=1.5)&&
+    (['cold','heat','scarcity','immunity','mending'] as const).every(k=>
+      g[k]===undefined||Number.isFinite(g[k])&&g[k]!>=.5&&g[k]!<=1.5);
   const checkAppearance=(a:MortalAppearance)=>!!a&&
     [a.skin,a.hair].every(n=>Number.isInteger(n)&&n>=0&&n<4)&&
     Number.isInteger(a.hairStyle)&&a.hairStyle>=0&&a.hairStyle<3&&
@@ -1190,8 +1221,9 @@ export function isWorld(value:unknown):value is World{
   if(!w.events.every(e=>Number.isSafeInteger(e.id)&&
     Number.isInteger(e.year)&&e.year>=0&&
     ['world','birth','death','settlement','collapse','milestone','bond','hybrid',
-      'trade','guild','diplomacy','knowledge','culture','plague']
+      'trade','guild','diplomacy','knowledge','culture','plague','evolution']
       .includes(e.type)&&typeof e.message==='string'&&e.message.length<500))
     return false;
+  if(w.evolution!==undefined&&!validEvolution(w.evolution,year))return false;
   return true;
 }
