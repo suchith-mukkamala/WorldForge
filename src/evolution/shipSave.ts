@@ -4,6 +4,8 @@ import type {Facing,Point} from './motion';
 export type MortalShip={at:number;shore:number;underway:boolean;heading:Facing;landfalls:number[]};
 export type Shipyard={settlementId:number;shore:number;water:number};
 
+export const MAX_LANDING_RISE=28;
+
 export const seaPoint=(width:number,i:number):Point=>({x:i%width,y:Math.floor(i/width)});
 export const seaNeighbors=(index:number,width:number,count:number)=>[
   index>=width?index-width:-1,

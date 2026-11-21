@@ -6,7 +6,7 @@ import type {World} from './engine';
 /** Supply world only when UI has changed it. Otherwise the worker keeps the
  * last successfully computed state, saving one structured clone per tick. */
 export type SimulationRequest={kind:'advance';id:number;days:number;world?:World};
-const reusableFields=['settings','tiles','topography','terrainCells','skylands','settlements','transport',
+const reusableFields=['settings','tiles','topography','terrainCells','skylands','worldTree','settlements','transport',
   'ancientSites','ruins','trails','deposits','bonds','codex','descent'] as const;
 type RetainedField=typeof reusableFields[number];
 type SimulationSnapshot=Omit<World,RetainedField>&Partial<Pick<World,RetainedField>>;

@@ -12,6 +12,7 @@ import {useAdventureControls} from './useAdventureControls';
 function SeaChart({world,map,ship}:{world:World;map:AdventureMap;ship:MortalShip}){
   const ref=useRef<HTMLCanvasElement>(null);
   const terrain=useRef<{tiles:World['tiles'];image:HTMLCanvasElement}|null>(null);
+  const treeLanding=world.worldTree?.trail.at(-1);
   const here=seaPoint(world.width,ship.at);
   useEffect(()=>{
     const canvas=ref.current,ctx=canvas?.getContext('2d');
@@ -36,13 +37,14 @@ function SeaChart({world,map,ship}:{world:World;map:AdventureMap;ship:MortalShip
     };
     for(const yard of map.shipyards.values())marker(yard.shore,'#cba273',1);
     for(const i of ship.landfalls)marker(i,'#96cfbd',1);
+    if(treeLanding!==undefined)marker(treeLanding,'#cba5e6',1);
     marker(ship.at,'#ffe4a6',2);
-  },[world.tiles,world.width,world.height,map.shipyards,ship]);
+  },[world.tiles,world.width,world.height,map.shipyards,ship,treeLanding]);
   return <section className="adventure-exits sea-chart" aria-label="Navigation">
     <h2>Sea chart</h2>
     <canvas ref={ref} width={world.width} height={world.height} role="img"
       aria-label={'Your ship at X '+here.x+', Y '+here.y}/>
-    <small><i/> Shipyards <i/> Charted landfalls</small>
+    <small><i/> Shipyards <i/> Charted landfalls{treeLanding!==undefined&&<><i/> World Tree landing</>}</small>
   </section>;
 }
 
@@ -55,6 +57,7 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
   const map=adventureMapFor(world),landings=landingSites(world,map);
   const position=seaPoint(world.width,ship.at),front=inFrontOf(position,ship.heading);
   const ahead=front.y*world.width+front.x;
+  const treeLanding=world.worldTree?.trail.at(-1);
   const landing=front.x>=0&&front.x<world.width&&landings.includes(ahead)?ahead:landings[0];
   const land=(i:number)=>{
     const result=landShip(current.current,i);
@@ -98,7 +101,7 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
               <div className="adventure-hints"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Steer</span>
                 {landing!==undefined&&<span><kbd>E</kbd> Land</span>}</div>
               {landing!==undefined&&<button className="adventure-primary" aria-keyshortcuts="E"
-                onClick={()=>land(landing)}>Go ashore</button>}
+                onClick={()=>land(landing)}>{landing===treeLanding?'Land at World Tree':'Go ashore'}</button>}
             </div>
             <p className="adventure-feedback" role="status">{message}</p>
           </div>
@@ -110,7 +113,7 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
             <ul>{landings.map(i=>{
               const direction=directionBetween(position,seaPoint(world.width,i));
               const town=map.towns[map.owners[i]-1];
-              const label=town?.area.has(i)?town.settlement.name:'Shore';
+              const label=i===treeLanding?'World Tree landing':town?.area.has(i)?town.settlement.name:'Shore';
               return <li key={i}><button onClick={()=>land(i)}>
                 <span className="adventure-direction" aria-hidden="true">{direction[0].toUpperCase()}</span>
                 <span><strong>{label}</strong><small>{direction}</small></span><span aria-hidden="true">›</span>

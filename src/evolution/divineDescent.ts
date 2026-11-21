@@ -24,7 +24,7 @@ export type MortalCreation={name:string;species:Species;
 /** Choose a safe, available plot near a living settlement of this species.
  * On worlds without settlements, favor the species' native biome. This is a
  * one-time O(map area + population) query, never part of the frame loop. */
-function arrival(world:World,species:Species,mouth?:number,shipyard?:number):{
+function arrival(world:World,species:Species,mouth?:number,shipyard?:number,atWorldTree=false):{
   point:{x:number;y:number};place?:TownStop|RiverTrail}|null{
   const settlement=world.settlements.find(s=>s.species===species);
   const home=biomeHome(world.settings.seed,species);
@@ -40,6 +40,12 @@ function arrival(world:World,species:Species,mouth?:number,shipyard?:number):{
   }
   const available=(i:number)=>world.tiles[i].biome!=='water'&&
     (occupancy.get(i)??0)<capacity[i];
+  if(atWorldTree){
+    const tree=world.worldTree;
+    const map=adventureMapFor(world);
+    const site=tree?.trail.slice(0,4).find(i=>map.open[i]&&available(i));
+    return site===undefined?null:{point:seaPoint(world.width,site)};
+  }
   if(mouth!==undefined)return riverTrailArrival(world,mouth,available)??null;
   if(shipyard!==undefined){
     const map=adventureMapFor(world),yard=map.shipyards.get(shipyard);
@@ -68,7 +74,7 @@ export function mortalArrivalSite(world:World,species:Species):{x:number;y:numbe
   return arrival(world,species)?.point??null;
 }
 
-export function createMortal(world:World,options:MortalCreation,mouth?:number,shipyard?:number):{
+export function createMortal(world:World,options:MortalCreation,mouth?:number,shipyard?:number,atWorldTree=false):{
   world:World;agent:Agent}{
   const name=cleanIdentityName(options.name);
   if(!name)throw Error('Please choose a name of 2–64 letters or characters.');
@@ -82,8 +88,9 @@ export function createMortal(world:World,options:MortalCreation,mouth?:number,sh
     throw Error('Choose a valid appearance.');
   if(world.descent&&world.agents.some(a=>a.id===world.descent!.agentId))
     throw Error('You already have a living mortal. Resume their story first.');
-  const start=arrival(world,options.species,mouth,shipyard);
-  if(!start)throw Error(shipyard!==undefined?'This shipyard has no open ground for a new mortal.':
+  const start=arrival(world,options.species,mouth,shipyard,atWorldTree);
+  if(!start)throw Error(atWorldTree?'The root trail has no open ground for a new mortal.':
+    shipyard!==undefined?'This shipyard has no open ground for a new mortal.':
     mouth!==undefined?'This river trailhead has no open ground for a new mortal.':
       'This world has no safe space for a new mortal.');
   const location=start.point;

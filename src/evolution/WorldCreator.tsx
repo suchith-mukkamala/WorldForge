@@ -39,6 +39,7 @@ export function WorldCreator({
     riverlands:current.riverlands??true,
     landforms:current.landforms??DEFAULT_LANDFORMS,
     terrainCells:current.terrainCells??true,
+    worldTree:true,
     floatingIslands:current.floatingIslands??true,
     climateEcology:current.climateEcology??true,
   }));
@@ -46,17 +47,18 @@ export function WorldCreator({
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
-  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,climateEcology}=draft;
+  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,climateEcology,worldTree}=draft;
   const map=useMemo(()=>{
     const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes,
-      riverlands,floatingIslands,climateEcology};
+      riverlands,floatingIslands,climateEcology,worldTree};
     const terrain=generateWorldLandscape(width,height,settings);
     const tiles=terrain.biomes.map(biome=>({biome,food:0}));
-    const landscape={width,height,tiles,settings,topography:terrain.topography};
+    const landscape={width,height,tiles,settings,topography:terrain.topography,worldTree:terrain.worldTree};
     const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined,
       skylands:floatingIslands?generateSkylands(landscape):undefined};
     return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
-  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,climateEcology]);
+  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,
+    climateEcology,worldTree]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -160,7 +162,7 @@ export function WorldCreator({
                 <button type="button" onClick={()=>setDraft(settings=>({...settings,
                   seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms,
                   regionalBiomes:current.regionalBiomes??false,riverlands:current.riverlands??false,
-                  floatingIslands:current.floatingIslands??false,
+                  worldTree:current.worldTree??false,floatingIslands:current.floatingIslands??false,
                   climateEcology:current.climateEcology??false}))}
                   title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>

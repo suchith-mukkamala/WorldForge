@@ -16,7 +16,7 @@ export type CameraPitch=keyof typeof CAMERA_PITCHES;
 export type DepthCamera={yaw:number;pitch:number};
 export const DEFAULT_DEPTH_CAMERA:DepthCamera={yaw:0,pitch:30};
 
-type WorldSize=Pick<World,'width'|'height'|'skylands'>;
+type WorldSize=Pick<World,'width'|'height'|'skylands'|'worldTree'>;
 type Pt={x:number;y:number};
 const RAD=Math.PI/180;
 
@@ -56,7 +56,7 @@ export function createDepthProjector(w:WorldSize,relief=1,
   const ys=corners.map(p=>p.x*uy+p.y*vy);
   const minX=Math.min(...xs),maxX=Math.max(...xs);
   const minY=Math.min(...ys),maxY=Math.max(...ys);
-  const topMargin=Math.ceil((skylandCeiling(w.skylands)-SEA_LEVEL)/DEPTH_RISE*relief*vertical)+20;
+  const topMargin=Math.ceil((skylandCeiling(w.skylands)-SEA_LEVEL)/DEPTH_RISE*relief*vertical)+(w.worldTree?110:20);
   const offsetX=MARGIN_X-minX,offsetY=topMargin-minY;
   const size={width:Math.ceil(maxX-minX+MARGIN_X*2),
     height:Math.ceil(maxY-minY+topMargin+MARGIN_BOTTOM+SKIRT+

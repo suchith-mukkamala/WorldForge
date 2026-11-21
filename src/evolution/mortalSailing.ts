@@ -2,7 +2,7 @@ import {adventureMapFor,type AdventureMap} from './adventureMap';
 import type {World} from './engine';
 import {mortalTileCapacity,walkMortal,type MortalStep} from './mortalGameplay';
 import {directionBetween,type Point} from './motion';
-import {seaNeighbors,seaPoint,type MortalShip,type Shipyard} from './shipSave';
+import {MAX_LANDING_RISE,seaNeighbors,seaPoint,type MortalShip,type Shipyard} from './shipSave';
 import {topographyForWorld} from './topography';
 
 const at=(w:World,p:Point)=>p.y*w.width+p.x;
@@ -59,7 +59,7 @@ export function landingSites(world:World,map:AdventureMap):number[]{
   if(!ship?.underway)return [];
   const heights=topographyForWorld(world).heights;
   return seaNeighbors(ship.at,world.width,world.tiles.length).filter(i=>
-    i>=0&&world.tiles[i].biome!=='water'&&map.open[i]&&Math.abs(heights[i]-heights[ship.at])<=28);
+    i>=0&&world.tiles[i].biome!=='water'&&map.open[i]&&Math.abs(heights[i]-heights[ship.at])<=MAX_LANDING_RISE);
 }
 
 export function landShip(world:World,shore:number):MortalStep{

@@ -15,7 +15,7 @@ const regionalCanopy:Partial<Record<Biome,string[]>>={
   savanna:woodlandPalette('#ab925c','#65764f'),
 };
 
-export type AtlasLand=Pick<World,'width'|'height'|'tiles'|'settings'|'woodland'|'topography'|'skylands'>;
+export type AtlasLand=Pick<World,'width'|'height'|'tiles'|'settings'|'woodland'|'topography'|'skylands'|'worldTree'>;
 
 export function overheadTerrainColor(biome:Biome,waterDepth:number,cover?:number):string{
   if(biome==='water')return OCEAN_TONES[waterDepth];

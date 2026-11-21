@@ -12,7 +12,7 @@ import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
-import {blockLandmark,blockSailboat,blockSettlement,blockShipyard} from './blockModels';
+import {blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockWorldTree} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -98,6 +98,13 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         if(art)scenery.push({x,y,depth:y*TILE+16,opacity,art,canopy:isTreeKind(prop)});
       }
     }
+  }
+  const tree=world.worldTree;
+  if(tree&&tree.x>=origin.x-3&&tree.x<origin.x+cols+3&&
+    tree.y>=origin.y-3&&tree.y<origin.y+rows+5){
+    const p={x:(tree.x+.5)*TILE,y:(tree.y+.5)*TILE};
+    const art=blockSceneryArt(blockWorldTree(tree.variant),p,DESCENT_BLOCK_VIEW,3.1);
+    scenery.push({x:tree.x,y:tree.y,depth:p.y,opacity:1,art,canopy:true});
   }
   return scenery;
 }
