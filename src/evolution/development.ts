@@ -6,7 +6,7 @@ import {traitProfile} from './family';
 import {trainedSkillGain} from './skillTraining';
 import {appendLifeMoment} from './identity';
 import {divineFactor,mortalWhisper} from './divine';
-import type {Agent,Biome,Species,World} from './engine';
+import type {Agent,Biome,LineageRecord,Species,World} from './engine';
 
 export type LifeStage='infant'|'child'|'adolescent'|'adult'|'elder';
 export const LIFE_STAGES:LifeStage[]=['infant','child','adolescent','adult','elder'];
@@ -199,6 +199,26 @@ export function guidingBelief(d:Development):string{
     tradition:'The wisdom of earlier generations deserves respect.',
     discovery:'Experience and discovery can change what we believe.'}[strongest];
 }
+const AMBITION_NAME:Record<string,string>={
+  learn:'learning',explore:'exploration',connect:'closer relationships',
+  care:'caring for others',work:'useful work',create:'making things',
+  reflect:'a considered belief',
+};
+/** Ambitions are chosen during the year. The chronicle catches up at the
+ * next annual boundary, once, without inventing a pursuit. */
+function noteSettledAmbition(w:World,a:Agent,
+  records:Map<number,LineageRecord>):void{
+  const ambition=a.cognition?.ambition;
+  if(!ambition||ambition.since.year!==w.year-1)return;
+  const name=AMBITION_NAME[ambition.purpose];
+  if(!name)return;
+  const prior=records.get(a.id)?.moments??[];
+  if(prior.some(m=>m.kind==='milestone'&&m.year===ambition.since.year&&
+    m.text.startsWith('Chose a lasting ambition')))return;
+  appendLifeMoment(w,a.id,{year:ambition.since.year,kind:'milestone',
+    text:('Chose a lasting ambition: '+name+'. '+ambition.reason).slice(0,220)},
+  records);
+}
 function chooseCareer(d:Development):Career{
   let best:Career='forager',score=-Infinity;
   for(const career of CAREERS){
@@ -262,6 +282,7 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
       d.values.discovery=round(clamp(d.values.discovery+1.5));
       remember(a,'discovery',w.year,'Explored unfamiliar '+here+' terrain.');
     }
+    noteSettledAmbition(w,a,lifeRecords);
     if(stage==='infant'||stage==='child'||stage==='adolescent'){
       const observed=care.get(a.id),provider=byId.get(observed?.providerId??-1);
       if(provider){
@@ -337,6 +358,11 @@ export function developSociety(w:World,care:Map<number,CareOutcome>,
         appendLifeMoment(w,a.id,{year:w.year,kind:'career',
           text:'Began working as a '+CAREER_LABELS[d.career].toLowerCase()+'.'},
         lifeRecords);
+        const maturity=traitProfile(a.ancestry).maturity;
+        if(a.age-1<maturity&&a.age>=maturity)
+          appendLifeMoment(w,a.id,{year:w.year,kind:'milestone',
+            text:'Came of age at '+a.age+'.',
+            ...(a.parents?{relatedIds:[...a.parents]}:{})},lifeRecords);
       }
       const focus=CAREER_SKILLS[d.career];
       addSkill(d,focus[0],(a.mind?.goal==='vocation'?1.1:.52)*learning,lifespan);

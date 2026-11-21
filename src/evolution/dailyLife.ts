@@ -10,6 +10,8 @@ import {trainedSkillGain} from './skillTraining';
 import {traitProfile} from './family';
 import {relationshipScore,refusesConversation} from './socialJudgment';
 import {heardReputation,rememberSocialEpisode} from './socialMemory';
+import {spareLean,temperamentOf} from './temperament';
+import {customNear,type CustomId} from './customs';
 
 export const ACTIVITIES=['rest','work','forage','study','care','socialize',
   'travel','craft','reflect'] as const;
@@ -64,7 +66,7 @@ export function validDailyLife(d:DailyLife,year:number):boolean{
 }
 
 function decide(a:Agent,week:number,youngInHome:Set<number>,
-  seed:number):[Activity,string]{
+  seed:number,custom?:CustomId):[Activity,string]{
   const d=a.development,life=a.dailyLife!,stage=lifeStage(a);
   const curiosity=d?.values.discovery??50,community=d?.values.community??50;
   if(life.fatigue>67||a.health<48)
@@ -104,6 +106,15 @@ function decide(a:Agent,week:number,youngInHome:Set<number>,
   if(d?.career==='artisan'||d?.skills.craft&&d.skills.craft>12)
     return ['craft','Practicing a personal craft.'];
   if(life.socialNeed>34)return ['socialize','Catching up with familiar people.'];
+  // Only an hour that nothing more urgent claimed. About two weeks in five.
+  const slot=(week+a.id)%5;
+  if((slot===1||slot===2)&&(stage==='adult'||stage==='elder')&&
+    life.fatigue<48&&a.energy>60){
+    const choice=spareLean(temperamentOf(seed,a),{
+      custom:slot===2?custom:undefined,hasWork:!!a.work,
+      canCare:!!(d?.householdId&&youngInHome.has(d.householdId))});
+    if(choice)return [choice.activity,choice.reason];
+  }
   if(week%3===0)return ['rest','Taking time for rest and recovery.'];
   return ['forage','Maintaining personal food security.'];
 }
@@ -140,7 +151,8 @@ export function advanceWeeklyLife(world:World,day:number):World{
   const people=world.agents.map(old=>{
     const a:Agent={...old,dailyLife:cloneDailyLife(old.dailyLife??initialDailyLife())};
     const life=a.dailyLife!;
-    const [activity,reason]=decide(a,week,youngInHome,world.settings.seed);
+    const [activity,reason]=decide(a,week,youngInHome,world.settings.seed,
+      customNear(world,a.x,a.y)?.custom);
     life.activity=activity;life.reason=reason;life.year=year;life.day=day;
     const tiring=activity==='work'?6:activity==='travel'?7:
       activity==='forage'?4:activity==='craft'?3:activity==='study'?2:

@@ -16,6 +16,8 @@ import {residentIndex,tileCapacity,addResident,removeResident} from './density';
 import {traitProfile} from './family';
 import {trainedSkillGain} from './skillTraining';
 import {developAmbition,type PersonalAmbition} from './ambitions';
+import {ambitionLean,temperamentNudge,temperamentOf} from './temperament';
+import {CUSTOM_INFO,customNear} from './customs';
 import {hasPhysicalTerrain,terrainStepEffort} from './terrainPhysics';
 
 export const PURPOSES=['survive','recover','learn','explore','connect','care',
@@ -238,6 +240,8 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
         'Tradition value '+Math.round(d?.values.tradition??50)+'/100']},
   ];
   const gift=activeTraitEffect(w.settings.seed,a);
+  const temper=temperamentOf(w.settings.seed,a);
+  const favored=customNear(w,a.x,a.y)?.custom;
   return opportunities.map(m=>{
     const bonus=activeTraitPurposeBonus(w.settings.seed,a,m.purpose);
     // Urgent physical needs remain independent of experiential preferences.
@@ -246,10 +250,14 @@ function motives(w:World,a:Agent,context:MindContext):Motivation[]{
       stepExperiencePreference(a.cognition,m.purpose,w.year);
     const ambition=a.cognition?.ambition?.purpose===m.purpose?
       a.cognition.ambition.commitment:0;
-    return {...m,score:m.score+bonus+learned+ambition,
+    const temperNudge=temperamentNudge(temper,m.purpose);
+    const customNudge=favored&&CUSTOM_INFO[favored].purpose===m.purpose?2:0;
+    return {...m,score:m.score+bonus+learned+ambition+temperNudge+customNudge,
       reasons:[...m.reasons,
         ...(bonus?['Awakened '+gift!.name+' favors this pursuit']:[]),
         ...(ambition?['A long-term ambition gives this meaning']:[]),
+        ...(temperNudge>=1.5?['Temperament favors this pursuit']:[]),
+        ...(customNudge?['Settlement custom favors this pursuit']:[]),
         ...(learned?['Past '+(learned>0?'successes encourage':'setbacks temper')+
           ' this pursuit']:[])]};
   });
@@ -401,7 +409,13 @@ export function reviewMind(w:World,a:Agent,day:number,
   if(!reviewDue||c.lastReview?.year===at.year&&
     c.lastReview.day===at.day)return;
   c.lastReview=at;
-  c.ambition=developAmbition(c,at,adult(a));
+  const bias=ambitionLean(temperamentOf(w.settings.seed,a));
+  const localCustom=customNear(w,a.x,a.y);
+  if(localCustom){
+    const favored=CUSTOM_INFO[localCustom.custom].purpose;
+    bias[favored]=Math.min(1,Math.round(((bias[favored]??0)+.2)*1000)/1000);
+  }
+  c.ambition=developAmbition(c,at,adult(a),bias);
   for(const p of [...c.agenda]){
     const required=p.steps.some(s=>s.personId&&!context.live.has(s.personId));
     if(required&&['connect','care'].includes(p.purpose)){

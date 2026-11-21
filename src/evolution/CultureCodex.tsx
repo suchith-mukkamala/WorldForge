@@ -2,6 +2,7 @@ import {useState} from 'react';
 import type {World} from './engine';
 import {FAITH_LABELS,GOVERNMENT_LABELS,POLICY_LABELS,
   type CivicPolicy} from './culture';
+import {CUSTOM_INFO} from './customs';
 
 const IMPACT:Record<CivicPolicy,string>={
   mutual_aid:'Uses local food and community funds to help vulnerable residents.',
@@ -45,11 +46,14 @@ export function CultureCodex({world,onFindSettlement,onOpenPerson}:{world:World;
       {governments.map(g=>{
         const s=world.settlements.find(v=>v.id===g.settlementId);
         if(!s)return null;
+        const custom=world.culture?.customs?.find(item=>item.settlementId===s.id);
         return <article className="evo-section-card evo-culture-card" key={s.id}>
           <div className="evo-card-heading"><strong>⚖ {s.name.toUpperCase()}</strong>
             <span>{GOVERNMENT_LABELS[g.kind]}</span></div>
           <h3>{POLICY_LABELS[g.policy]}</h3>
           <p>{IMPACT[g.policy]}</p>
+          {custom&&<p><b>{CUSTOM_INFO[custom.custom].name}</b>
+            {' — '}{custom.voice}</p>}
           <div className="evo-culture-meters">
             <label>Legitimacy <b>{Math.round(g.legitimacy)}%</b>
               <progress max="100" value={g.legitimacy}/></label>

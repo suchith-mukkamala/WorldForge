@@ -9,6 +9,7 @@ import {appendLifeMoment} from './identity';
 import {residentIndex} from './density';
 import {knows} from './knowledge';
 import type {Value} from './development';
+import {CUSTOM_INFO,planCustoms,isCustomId,type SettlementCustom} from './customs';
 
 export const FAITH_THEMES=['nature','ancestors','stars','craft','renewal',
   'harmony','mystery'] as const;
@@ -35,10 +36,10 @@ export type Faith={id:number;name:string;theme:FaithTheme;founderId:number;
 export type Government={settlementId:number;kind:GovernmentKind;
   leaderId:number;formed:number;elected:number;policy:CivicPolicy;
   legitimacy:number;unrest:number;turnout:number};
-export type CultureMoment={year:number;kind:'faith'|'election'|'reform'|'dissent';
+export type CultureMoment={year:number;kind:'faith'|'election'|'reform'|'dissent'|'custom';
   description:string;faithId?:number;settlementId?:number};
 export type CultureState={faiths:Faith[];nextFaithId:number;
-  governments:Government[];history:CultureMoment[]};
+  governments:Government[];history:CultureMoment[];customs?:SettlementCustom[]};
 
 const clamp=(n:number,min=0,max=100)=>Math.min(max,Math.max(min,n));
 const round=(n:number)=>Math.round(n*100)/100;
@@ -49,7 +50,8 @@ const state=():CultureState=>({faiths:[],nextFaithId:1,governments:[],history:[]
 export function cloneCulture(c:CultureState):CultureState{
   return {faiths:c.faiths.map(f=>({...f})),nextFaithId:c.nextFaithId,
     governments:c.governments.map(g=>({...g})),
-    history:c.history.map(m=>({...m}))};
+    history:c.history.map(m=>({...m})),
+    ...(c.customs?{customs:c.customs.map(item=>({...item}))}:{})};
 }
 export function faithOf(w:World,a:Pick<Agent,'belief'>):Faith|undefined{
   return w.culture?.faiths.find(f=>f.id===a.belief?.faithId);
@@ -356,6 +358,27 @@ export function advanceCulture(w:World,rand:()=>number):void{
   const records=new Map(w.lineage.map(r=>[r.id,r]));
   evolveFaiths(w,rand,locals,people,residents,records);
   evolveGovernments(w,residents);
+  adoptCustoms(w,residents);
+}
+function adoptCustoms(w:World,residents:Map<number,Agent[]>):void{
+  // Customs wait until a town has had time to live together. They never
+  // draw the world RNG, so they cannot shift faith, birth or building rolls.
+  if(w.year<4||!w.culture)return;
+  const adultsByTown=new Map<number,Agent[]>();
+  for(const [id,people] of residents)
+    adultsByTown.set(id,people.filter(adult));
+  const previous=w.culture.customs;
+  const next=planCustoms(w.year,w.settlements,adultsByTown,previous);
+  if(!next.length&&!previous)return;
+  const prevKind=new Map((previous??[]).map(item=>[item.settlementId,item.custom]));
+  for(const item of next){
+    if(prevKind.get(item.settlementId)===item.custom)continue;
+    const name=w.settlements.find(s=>s.id===item.settlementId)?.name??'A settlement';
+    const info=CUSTOM_INFO[item.custom];
+    record(w,'custom',name+' keeps '+info.name+'. '+info.blurb,
+      undefined,item.settlementId);
+  }
+  w.culture.customs=next;
 }
 
 export function validCulture(w:World):boolean{
@@ -395,8 +418,21 @@ export function validCulture(w:World):boolean{
       g.turnout<1||g.turnout>160)return false;
     towns.add(g.settlementId);
   }
+  if(c.customs!==undefined){
+    if(!Array.isArray(c.customs)||c.customs.length>w.settlements.length)return false;
+    const seen=new Set<number>();
+    for(const item of c.customs){
+      if(!item||!validId(item.settlementId)||seen.has(item.settlementId)||
+        !w.settlements.some(s=>s.id===item.settlementId)||
+        !isCustomId(item.custom)||!Number.isInteger(item.since)||
+        item.since<0||item.since>w.year||!Number.isFinite(item.strength)||
+        item.strength<1||item.strength>100||typeof item.voice!=='string'||
+        item.voice.length<8||item.voice.length>180)return false;
+      seen.add(item.settlementId);
+    }
+  }
   return c.history.every(e=>e&&Number.isInteger(e.year)&&e.year>=0&&
-    e.year<=w.year&&['faith','election','reform','dissent'].includes(e.kind)&&
+    e.year<=w.year&&['faith','election','reform','dissent','custom'].includes(e.kind)&&
     typeof e.description==='string'&&e.description.length<=220&&
     (e.faithId===undefined||validId(e.faithId))&&
     (e.settlementId===undefined||validId(e.settlementId)));
