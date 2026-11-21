@@ -15,7 +15,7 @@ import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
-import {blockLandmark,blockSailboat,blockSettlement,blockShipyard} from './blockModels';
+import {blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -28,18 +28,21 @@ import type {AncientSite} from './knowledge';
 import {shipMooring} from './mortalSailing';
 import {seaPoint} from './shipSave';
 import {directionBetween} from './motion';
+import {coastTide,type TidalCave} from './tidalCaves';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;facing:Facing;
-  marked:Point|null;focused?:Point;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
+  marked:Point|null;caves?:readonly TidalCave[];focused?:Point;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
   onSelect:(point:Point)=>void};
 
 type Scenery={x:number;y:number;depth:number;opacity:number;
   draw?:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void;
   art?:PlacedArt;canopy?:boolean;worldTree?:boolean;building?:Building;target?:Point};
 
-function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
+function sceneScenery({world,map,region,landmarks,caves}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
   const signs=new Map<number,AdventureGate>();
+  const caveTiles=new Map(caves?.map(cave=>[cave.mouth,cave]));
+  const low=coastTide(world).low;
   const tree=world.worldTree,treeCover=tree?surfaceGrid(world).treeCover:undefined;
   const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
   const yards=new Map([...map.shipyards.values()].map(site=>[site.shore,site]));
@@ -50,7 +53,7 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
   for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+rows);y++){
     for(let x=Math.max(0,origin.x);x<Math.min(world.width,origin.x+cols);x++){
       const index=y*world.width+x,site=map.buildings.get(index),sign=signs.get(index);
-      const ruin=ruins.get(index),townCenter=region.settlement;
+      const ruin=ruins.get(index),townCenter=region.settlement,cave=caveTiles.get(index);
       const hub=townCenter?.x===x&&townCenter.y===y&&!townCenter.infrastructure?.buildings.length?
         townCenter:undefined;
       const opacity=region.area.has(index)||site&&site.settlementId===region.settlement?.id?
@@ -95,7 +98,12 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         const model=blockSettlement(settlementStage(hub),hub.species,structureSite(world,hub));
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py,1.35)});
       }
-      const natural=!treeCover?.has(index)&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
+      if(cave){
+        const model=blockTidalMouth(cave.stone,cave.face,cave.seed,low);
+        const art=blockSceneryArt(model,{x:(x+.5)*TILE,y:(y+.58)*TILE},DESCENT_BLOCK_VIEW,1.62);
+        scenery.push({x,y,depth:depth+3,opacity:1,art,target:{x,y}});
+      }
+      const natural=!cave&&!treeCover?.has(index)&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
         adventureProp(world,map,region,x,y):undefined;
       const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
       if(prop){
@@ -135,6 +143,7 @@ export function AdventureCanvas(props:Props){
     let faded=new Set<Scenery>();
     let people:Agent[]=[];
     let swimmers:Fish[]=[];
+    let caveStamp='';
     let frameSize={width:312,height:184},density=1;
     let frame=0;
     const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -180,8 +189,10 @@ export function AdventureCanvas(props:Props){
       const plotsChanged=!plots||previous?.map!==map||previous?.world.topography!==world.topography||
         previous.world.terrainCells!==world.terrainCells||waterSeason(previous.world)!==waterSeason(world);
       if(!plots||plotsChanged)plots=buildingPlots(world);
-      const restage=!samePoint(grid,origin)||plotsChanged||previous?.region!==region;
+      const entrances=view.caves?.length?view.caves.map(cave=>cave.mouth).join(',')+':'+coastTide(world).low:'';
+      const restage=!samePoint(grid,origin)||plotsChanged||previous?.region!==region||caveStamp!==entrances;
       if(restage){
+        caveStamp=entrances;
         origin=grid;
         background.width=cols*TILE*density;background.height=rows*TILE*density;
         ground.setTransform(density,0,0,density,0,0);

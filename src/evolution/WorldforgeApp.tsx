@@ -20,6 +20,7 @@ import {TerrainCellPanel} from './TerrainCellPanel';
 import {DEFAULT_LANDFORMS,settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
 import {WORLD_TREE_BLOCK} from './worldTree';
+import {CAVE_FINDS,chartedTidalCaves,coastTide} from './tidalCaves';
 import {createDepthProjector,DEPTH_RISE,DEPTH_TILE_WIDTH,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
@@ -718,12 +719,13 @@ export function WorldforgeApp(){
     currentWorld.current=next;
     setWorld(next);
   },[setWorld]);
-  const atSea=!!world.descent?.ship?.underway;
+  const hasShip=!!world.descent?.ship,atSea=!!world.descent?.ship?.underway;
+  const caveMouth=world.descent?.tidal?.inside?.mouth,caveChart=world.descent?.tidal?.chart;
   useEffect(()=>{
-    if(!storageReady||!world.descent?.ship)return;
+    if(!storageReady||!hasShip&&!caveChart?.length)return;
     const timer=window.setTimeout(()=>checkpoint(currentWorld.current),300);
     return ()=>window.clearTimeout(timer);
-  },[storageReady,atSea,checkpoint]);
+  },[storageReady,hasShip,atSea,caveMouth,caveChart,checkpoint]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -748,6 +750,9 @@ export function WorldforgeApp(){
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
   const drainage=displayed?hydrologyForWorld(world):null;
   const drainageIndex=displayed?displayed.y*world.width+displayed.x:-1;
+  const selectedCave=displayed?chartedTidalCaves(world).find(({cave})=>
+    cave.mouth===drainageIndex||cave.shore===drainageIndex):undefined;
+  const onCaveBeach=selectedCave&&selectedCave.cave.mouth!==drainageIndex;
   const selectedTerrain=displayed?terrainCellsIn(world,drainageIndex):undefined;
   const treeCover=tile&&woodlandHabitat(tile.biome)?
     woodlandCover(world.woodland,drainageIndex):undefined;
@@ -831,6 +836,10 @@ export function WorldforgeApp(){
       setOverlay('terrain');locateAtlasPoint(treeFocus(x,y),1.65);setZoom(1.65);
     }else locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
     focusMap();
+  };
+  const findCoast=(index:number)=>{
+    setOverlay('terrain');
+    findAncientSite(index%world.width,Math.floor(index/world.width));
   };
   const findSkyland=(id:number,zoomTo:boolean)=>{
     const site=world.skylands?.find(candidate=>candidate.id===id);
@@ -1166,9 +1175,11 @@ export function WorldforgeApp(){
           <div className="evo-card-heading evo-map-heading">
             <div className="atlas-map-title" aria-live="polite">
               <strong>{selectedSkyland?skylandName(selectedSkyland):treeSelected?'World Tree':
+                selectedCave?selectedCave.cave.name:
                 closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
                 (waterfallBasin?'Waterfall basin':detail==='street'?'Street map':'Local map')):'World map'}</strong>
               <small>{selectedSkyland?'Floating islands':building?BUILDING_LABELS[building.type]:
+                selectedCave?(onCaveBeach?'Cave landing':'Sea cave'):
                 detail==='street'?'Buildings & people':detail==='town'?'Buildings':
                   isMultiIslandLayout(world.settings.layout)?
                     WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]:
@@ -1176,7 +1187,7 @@ export function WorldforgeApp(){
             </div>
             <div className="evo-map-actions">
               <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}
-                onSkyland={id=>findSkyland(id,true)}/>
+                onSkyland={id=>findSkyland(id,true)} onCave={findCoast}/>
               <button type="button" aria-expanded={showRivers} onClick={()=>{
                 setShowRivers(value=>!value);setOverlay('terrain');setBrush({kind:'inspect'});
               }}>Rivers</button>
@@ -1485,6 +1496,15 @@ export function WorldforgeApp(){
                 <strong>{skylandName(waterfallBasin)} waterfall basin</strong>
                 <span>Water from the floating islands lands here.</span>
                 <button onClick={()=>findSkyland(waterfallBasin.id,true)}>Return to floating islands</button>
+              </div>}
+              {selectedCave&&<div className="evo-selected-settlement" aria-label="Sea cave details">
+                <strong>{selectedCave.cave.name}</strong>
+                <span>{onCaveBeach?'Coastal landing':coastTide(world).low?
+                  'Low tide · Entrance exposed':'High tide · Entrance flooded'}</span>
+                {selectedCave.find&&<p>{CAVE_FINDS[selectedCave.find].name} recorded in the coastal journal.</p>}
+                {onCaveBeach?<button onClick={()=>findCoast(selectedCave.cave.mouth)}>Show cave entrance</button>:
+                  selectedCave.cave.shore!==selectedCave.cave.mouth&&
+                  <button onClick={()=>findCoast(selectedCave.cave.shore)}>Show landing</button>}
               </div>}
               {settlement&&<AtlasTownCard town={settlement} building={building}
                 landform={settlementGeography(world,settlement.y*world.width+settlement.x).landform}

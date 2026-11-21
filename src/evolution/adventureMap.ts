@@ -601,6 +601,7 @@ export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
   const before=world;
   if(world.descent?.mode!=='mortal'||world.descent.agentId!==actor.id)
     return {world,moved:false,reason:'Resume your mortal to travel.'};
+  if(world.descent.tidal?.inside)return {world,moved:false,reason:'Leave the cave before traveling.'};
   if(world.descent.interior)return {world,moved:false,reason:'Leave the room before traveling.'};
   if(world.descent.ship?.underway)return {world,moved:false,reason:'Land the ship before traveling on foot.'};
   if(!region.gates.includes(exit)||adventureDistance(actor,exit.point)>1)

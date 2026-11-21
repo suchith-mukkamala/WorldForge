@@ -67,7 +67,7 @@ export function findInteriorBuilding(world:World,reference:RoomReference):Mortal
 }
 
 export function canEnterMortalBuilding(world:World,site:MortalBuilding):boolean{
-  if(world.descent?.interior||world.descent?.ship?.underway||site.distance>1)return false;
+  if(world.descent?.interior||world.descent?.tidal?.inside||world.descent?.ship?.underway||site.distance>1)return false;
   const door=findInteriorBuilding(world,{settlementId:site.settlementId,buildingId:site.building.id});
   return !!door&&door.distance<=1;
 }
@@ -78,7 +78,7 @@ export function occupiedMortalRoom(world:World):MortalBuilding|null{
 }
 
 export function enterMortalRoom(world:World,reference:RoomReference):World{
-  if(!world.descent||world.descent.interior)return world;
+  if(!world.descent||world.descent.interior||world.descent.tidal?.inside||world.descent.ship?.underway)return world;
   const site=findInteriorBuilding(world,reference);
   if(!site||site.distance!==0)return world;
   return {...world,descent:{...world.descent,interior:{...reference,position:{...INTERIOR_DOOR}}}};
