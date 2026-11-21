@@ -1,5 +1,6 @@
 import {terrainHash,terrainNoise} from './biomeGeneration';
 import type {Biome} from './engine';
+import {MAX_LANDING_RISE} from './shipSave';
 import {SEA_LEVEL} from './topography';
 
 export type WorldTree={x:number;y:number;variant:number;trail:number[];pools:number[]};
@@ -24,7 +25,8 @@ export function plantWorldTree(w:number,h:number,seed:number,biomes:Biome[],
     if(!ocean[n]&&biomes[n]==='water'){ocean[n]=1;water.push(n);}
   }
   for(let i=0;i<biomes.length;i++){
-    if(!safe(i)||!neighbors(i,w,h).some(n=>ocean[n]))continue;
+    if(!safe(i)||!neighbors(i,w,h).some(n=>ocean[n]&&
+      Math.abs(heights[i]-heights[n])<=MAX_LANDING_RISE))continue;
     distance[i]=0;queue.push(i);
   }
   for(let head=0;head<queue.length;head++){
@@ -56,19 +58,19 @@ export function plantWorldTree(w:number,h:number,seed:number,biomes:Biome[],
   const nearby=biomes.slice();
   for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++){
     const i=(y+dy)*w+x+dx,r=Math.hypot(dx,dy);
-    if(r>6||!safe(i))continue;
+    if(r>6||!safe(i)||path.has(i))continue;
     const angle=Math.atan2(dy,dx)+variant*.29;
     const root=Math.max(0,Math.cos(angle*5+r*.36))**4;
     const influence=1-r/6,noise=terrainNoise(x+dx,y+dy,3,seed+973);
     const wet=nearby[i]==='wetland'||neighbors(i,w,h).some(n=>nearby[n]==='wetland');
-    const bank=r>1&&r<5&&root<.12&&!path.has(i)&&
+    const bank=r>1&&r<5&&root<.12&&
       (wet?noise>-.22:noise>.26)&&heights[i]<94;
     if(bank)pools.push(i);
     const change=bank?-5:root*16*influence;
     heights[i]=Math.round(Math.max(SEA_LEVEL,Math.min(255,heights[i]+change)));
     // Preserve the local wetland and cold forest. Plains gradually become
     // woodland toward the trunk, with a jagged edge set by the local seed.
-    if(nearby[i]==='plains'&&influence+noise*.45>.49&&!path.has(i)){
+    if(nearby[i]==='plains'&&influence+noise*.45>.49){
       biomes[i]=neighbors(i,w,h).some(n=>nearby[n]==='taiga')?'taiga':'forest';
     }
   }

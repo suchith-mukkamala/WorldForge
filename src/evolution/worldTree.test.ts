@@ -3,6 +3,8 @@ import {adventureMapFor} from './adventureMap';
 import {createWorld} from './engine';
 import {createMortal} from './divineDescent';
 import {compactWorld,readSavedWorld} from './storage';
+import {MAX_LANDING_RISE,seaNeighbors} from './shipSave';
+import {topographyForWorld} from './topography';
 import {Shore,surfaceGrid} from './surfaceGrid';
 import {validWorldTree} from './worldTree';
 import {WORLD_LAYOUTS} from './worldGeography';
@@ -21,8 +23,10 @@ describe('World Tree',()=>{
       expect(map.open[tree.y*world.width+tree.x]).toBe(0);
       expect(tree.trail.every(i=>map.open[i])).toBe(true);
       const shore=tree.trail.at(-1)!;
-      expect([shore-world.width,shore+world.width,shore-1,shore+1]
-        .some(i=>world.tiles[i]?.biome==='water')).toBe(true);
+      const {heights}=topographyForWorld(world);
+      expect(seaNeighbors(shore,world.width,world.tiles.length)
+        .some(i=>world.tiles[i]?.biome==='water'&&
+          Math.abs(heights[shore]-heights[i])<=MAX_LANDING_RISE)).toBe(true);
       const base=createWorld({...settings,worldTree:false});
       expect(base.worldTree).toBeUndefined();
       expect(world.topography).not.toEqual(base.topography);
