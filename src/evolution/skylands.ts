@@ -23,7 +23,7 @@ export const skylandCeiling=(skylands?:readonly Skyland[])=>Math.max(255,
 const origin=(n:number)=>Math.round((n+.5)*SIDE);
 const cellCenter=(n:number)=>(n+.5)/SIDE-.5;
 
-type SiteWorld=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'>;
+type SiteWorld=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'worldTree'>;
 
 /** Place a handful of permanent groups above broad shores and valleys. The
  * generator uses a separate seed stream, so lifting an island leaves the
@@ -44,8 +44,10 @@ export function generateSkylands(world:SiteWorld):Skyland[]{
   candidates.sort((a,b)=>b.score-a.score);
   const count=Math.min(5,1+Math.ceil(shortSide/65)),spacing=Math.max(19,shortSide*.43);
   const groups:Skyland[]=[];
+  const tree=world.worldTree;
   for(const {x,y} of candidates){
     if(groups.length>=count)break;
+    if(tree&&Math.hypot(x-tree.x,y-tree.y)<16)continue;
     if(groups.some(({islands:[a]})=>Math.hypot(x-a.x,y-a.y)<spacing))continue;
     const id=groups.length+1,random=(n:number)=>terrainHash(x+n*19,y-n*7,seed+39841);
     const mainSeed=(Math.floor(random(1)*2147483647)+id)%2147483647;

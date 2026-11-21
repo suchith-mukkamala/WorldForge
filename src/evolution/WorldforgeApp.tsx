@@ -87,7 +87,7 @@ function initialWorld():World{
   // First-time visitors get their own world; existing local saves always win.
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
     livingBiomes:true,regionalGeography:true,regionalBiomes:true,riverlands:true,
-    landforms:DEFAULT_LANDFORMS,terrainCells:true,floatingIslands:true,
+    landforms:DEFAULT_LANDFORMS,terrainCells:true,floatingIslands:true,worldTree:true,
     climateEcology:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
@@ -194,6 +194,7 @@ export function WorldforgeApp(){
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
   const [showRivers,setShowRivers]=useState(false);
   const [riverMouth,setRiverMouth]=useState<number|null>(null);
+  const [descentTree,setDescentTree]=useState(false);
   const [descentRiver,setDescentRiver]=useState<number|null>(null);
   const rivers=showRivers||descentRiver!==null?riverCourses(world):[];
   const chartedRiver=rivers.find(r=>r.mouth===riverMouth)??rivers[0];
@@ -737,6 +738,11 @@ export function WorldforgeApp(){
     setNotice('Your mortal has passed away. You have returned to God Mode.');
   },[storageReady,isMortal,mortal,setWorld]);
   const displayed=agent?{x:agent.x,y:agent.y}:selected;
+  const tree=world.worldTree;
+  const treeSelected=tree&&displayed?.x===tree.x&&displayed.y===tree.y;
+  const treeShore=tree?.trail.at(-1);
+  const treeShoreSelected=treeShore!==undefined&&displayed&&
+    displayed.x===treeShore%world.width&&displayed.y===Math.floor(treeShore/world.width);
   const tile=displayed?world.tiles[displayed.y*world.width+displayed.x]:null;
   const altitude=displayed?elevationAt(world,displayed.x,displayed.y):null;
   const drainage=displayed?hydrologyForWorld(world):null;
@@ -816,6 +822,7 @@ export function WorldforgeApp(){
     setTab('world');setMapFocus(id);
   };
   const findAncientSite=(x:number,y:number)=>{
+    if(tree?.x===x&&tree.y===y)setOverlay('terrain');
     if(tab!=='world')setPlaying(false);
     locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
     focusMap();
@@ -962,7 +969,7 @@ export function WorldforgeApp(){
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
-    setDescentRiver(null);setTab(next);setNotice('');
+    setDescentRiver(null);setDescentTree(false);setTab(next);setNotice('');
   };
   const enterMortalView=()=>{
     const before=currentWorld.current;
@@ -978,7 +985,7 @@ export function WorldforgeApp(){
       setStartingDescent(true);
       const startingWorld=settledStart?await growSettlements(before):before;
       if(currentWorld.current!==before||tabRef.current!=='descent')return;
-      const result=createMortal(startingWorld,options,descentRiver??undefined,shipyard);
+      const result=createMortal(startingWorld,options,descentRiver??undefined,shipyard,descentTree);
       setPlaying(false);setTab('world');setNotice('');
       changeMortalWorld(result.world);
     }catch(error){setNotice(error instanceof Error?error.message:
@@ -1049,7 +1056,7 @@ export function WorldforgeApp(){
         {saveWarning&&<small role="status"> · {saveWarning}</small>}</div>
     </header>
     {tab==='descent'?<DivineDescentCreator world={world} error={notice}
-      onCreate={createDescent} starting={startingDescent} arrivalName={riverArrival?.name}
+      onCreate={createDescent} starting={startingDescent} arrivalName={riverArrival?.name} atWorldTree={descentTree}
       onResume={enterMortalView}
       onReturn={leaveMortalView}/>:
     tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
@@ -1153,7 +1160,7 @@ export function WorldforgeApp(){
         <section className="evo-map-card" aria-label="World map" data-map-detail={detail}>
           <div className="evo-card-heading evo-map-heading">
             <div className="atlas-map-title" aria-live="polite">
-              <strong>{selectedSkyland?skylandName(selectedSkyland):
+              <strong>{selectedSkyland?skylandName(selectedSkyland):treeSelected?'World Tree':
                 closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
                 (waterfallBasin?'Waterfall basin':detail==='street'?'Street map':'Local map')):'World map'}</strong>
               <small>{selectedSkyland?'Floating islands':building?BUILDING_LABELS[building.type]:
@@ -1454,6 +1461,19 @@ export function WorldforgeApp(){
               <button className="evo-guide-descend" onClick={()=>navigate('descent')}>
                 {world.descent?'Resume adventure':'Start an adventure'} ↗</button>
             </div>:<>
+              {treeSelected&&<div className="evo-selected-settlement" aria-label="World Tree details">
+                <strong>World Tree</strong>
+                <p>Follow the root trail from the coast to the ancient grove.</p>
+                {treeShore!==undefined&&<button onClick={()=>locateAtlasPoint({
+                  x:treeShore%world.width,y:Math.floor(treeShore/world.width)},ATLAS_PLACE_ZOOM)}>
+                  Show coastal landing</button>}
+                {!world.descent&&<button onClick={()=>{navigate('descent');setDescentTree(true);}}>
+                  Descend at the World Tree</button>}
+              </div>}
+              {treeShoreSelected&&tree&&<div className="evo-selected-settlement">
+                <strong>World Tree landing</strong>
+                <button onClick={()=>findAncientSite(tree.x,tree.y)}>Find the World Tree</button>
+              </div>}
               {waterfallBasin&&<div className="evo-selected-settlement" aria-label="Waterfall basin details">
                 <strong>{skylandName(waterfallBasin)} waterfall basin</strong>
                 <span>Water from the floating islands lands here.</span>

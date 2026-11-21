@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.24.0 — World Tree** adds a giant tree to newly generated worlds. Its roots raise ridges around a grove that blends into the local biome. Find it in **Places**, start a mortal on its root trail, or sail to the landing marked on the sea chart and follow the trail inland.
+
 - **v2.23.0 — Floating Islands** adds seeded islands with stepped rock undersides, smaller fragments, and waterfalls that feed pools on the ground. Find them in **Places** and use **Show waterfall basin** to see where the water lands. New worlds include floating islands by default. In an older world, choose **Map options → Add floating islands**.
 
 - **v2.22.0 — Seafaring** adds shipyards to coastal towns and lets you steer a sailboat in Descend. Choose a shipyard as your starting location or visit one on foot. Use the sea chart to find shores, go ashore to explore, and return to your moored boat. The game saves your ship and charted landfalls. The atlas reuses terrain during playback and renders full terrain detail in the background on large worlds. Descend now runs its clock on the simulation worker too.

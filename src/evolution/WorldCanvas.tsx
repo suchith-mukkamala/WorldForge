@@ -1,3 +1,4 @@
+import {paintOverheadWorldTree} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
 import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
@@ -92,7 +93,7 @@ export function WorldCanvas({
     ancientSites:World['ancientSites'];
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     street:boolean;regional:boolean;
-    terrainCells:World['terrainCells'];skylands:World['skylands'];
+    terrainCells:World['terrainCells'];skylands:World['skylands'];worldTree:World['worldTree'];
     width:number;height:number;season:string;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
@@ -135,7 +136,7 @@ export function WorldCanvas({
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
-      stamp.terrainCells!==terrainCells||stamp.skylands!==world.skylands||stamp.season!==season||
+      stamp.terrainCells!==terrainCells||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||stamp.season!==season||
       stamp.woodland!==woodland||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
@@ -322,6 +323,7 @@ export function WorldCanvas({
         plots.push({building:b,...placeBlockArt(art,p,unit)});
       }
       for(const plot of plots)paintAtlasBuilding(ctx,plot);
+      if(overlay==='terrain'&&world.worldTree)paintOverheadWorldTree(ctx,world.worldTree,CELL);
     }
     buildingPlotsRef.current=plots;
     backgroundStamp.current={tiles:world.tiles,
@@ -329,7 +331,7 @@ export function WorldCanvas({
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
-      terrainCells,skylands:world.skylands,
+      terrainCells,skylands:world.skylands,worldTree:world.worldTree,
       width:canvas.width,height:canvas.height,season};
     }
     else if(stamp)stamp.tiles=world.tiles;
@@ -585,7 +587,7 @@ export function WorldCanvas({
     world.settings.regionalGeography,
     terrainCells,season,density,mapWidth,mapHeight,river,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
-    world.topography,world.dayOfYear,world.ancientSites,world.trails,world.skylands,skylands]);
+    world.topography,world.dayOfYear,world.ancientSites,world.trails,world.skylands,world.worldTree,skylands]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const px=(event.clientX-rect.left)/rect.width*world.width*CELL;

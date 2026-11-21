@@ -679,3 +679,33 @@ export function blockLandmark(kind:AncientKind,visited=false,site?:StructureSite
     if(visited)grid.box(-1,2,1,2,1,2,'#b9a875');
   });
 }
+
+export function blockWorldTree(variant:number):BlockModel{
+  return model('world-tree:'+variant,g=>{
+    const leaves=variant%3===0?['#315f55','#4a7967','#6e9a7d']:
+      variant%3===1?['#506445','#728754','#a2a365']:['#375f48','#527d50','#81a065'];
+    const bark='#72523f',heart='#92724d';
+    for(let turn=0;turn<4;turn++){
+      g.box(-2,-12,0,4,12,2,bark,turn);
+      g.box(-2,-8,2,3,8,2,heart,turn);
+      g.box(-1,-5,4,2,6,4,bark,turn);
+      const reach=8+(variant+turn*3)%4;
+      g.box(-1,-reach,13+turn,3,reach,3,bark,turn);
+      g.box(-2,-reach,15+turn,4,4,5,heart,turn);
+      g.box(-5,-reach-3,19+turn,10,8,4,leaves[0],turn);
+      g.box(-4,-reach-4,22+turn,8,9,4,leaves[1],turn);
+      g.box(-3,-reach-2,26+turn,6,5,2,leaves[2],turn);
+    }
+    g.box(-3,-3,0,6,6,14,bark);
+    g.box(-2,-2,14,5,5,12,heart);
+    g.box(-2,-2,24,4,4,6,bark);
+    g.box(-6,-6,26,12,12,4,leaves[0]);
+    g.box(-5,-5,30,10,10,4,leaves[1]);
+    g.box(-3,-4,34,6,8,3,leaves[2]);
+    g.box(-1,-3,0,1,1,12,'#a88355');
+    // Broken stonework sits in one of the gaps between the buttress roots.
+    g.box(5,5,0,4,2,2,'#7b837a');
+    g.box(5,5,2,2,2,4,'#91988a');
+    g.box(8,5,2,1,2,2,'#8d9587');
+  },variant%4,'timber');
+}

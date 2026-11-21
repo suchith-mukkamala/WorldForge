@@ -8,28 +8,29 @@ import {skylandMesh,skylandShadows} from './skylands';
 
 export {VISUAL_TERRAIN_SIDE};
 export const Shore={ground:0,wetSand:1,drySand:2,shallows:3,channel:4,
-  gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12,pool:13,spray:14} as const;
+  gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12,pool:13,spray:14,rootTrail:15} as const;
 export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array;shadow?:Uint8Array};
-export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'>;
+export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldTree'>;
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
 const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
 const cache=new WeakMap<TerrainGrid,{season:string;riverlands:boolean;
-  skylands:World['skylands'];grid:SurfaceGrid}>();
+  skylands:World['skylands'];worldTree:World['worldTree'];grid:SurfaceGrid}>();
 
-export const surfaceHasWater=(grid:SurfaceGrid,index:number)=>{
+export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:number)=>{
   const shore=grid.shore[index];
   return !!grid.openWater?.[index]||shore===Shore.channel||shore===Shore.foam||
-    shore===Shore.ice||shore===Shore.shallows||shore>=Shore.reefBase;
+    shore===Shore.ice||shore===Shore.shallows||shore>=Shore.reefBase&&shore<=Shore.spray;
 };
 
 /** Every tile has the same 8×8 visual lattice. Four-by-four simulation
  * samples are interpolated here so saves and erosion retain their grid. */
 export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const base=terrainRenderGrid(world),season=waterSeason(world),riverlands=!!world.settings.riverlands;
-  const skylands=world.skylands;
+  const {skylands,worldTree}=world;
   const previous=cache.get(base);
-  if(previous?.season===season&&previous.riverlands===riverlands&&previous.skylands===skylands)
+  if(previous?.season===season&&previous.riverlands===riverlands&&previous.skylands===skylands&&
+    previous.worldTree===worldTree)
     return previous.grid;
   const {width,height,tiles}=world,heights=topographyForWorld(world).heights;
   const columns=width*SIDE,rows=height*SIDE,count=columns*rows;
@@ -153,8 +154,30 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       }
     }
   }
+  for(const tile of worldTree?.pools??[]){
+    const cx=(tile%width)*SIDE+SIDE/2,cy=Math.floor(tile/width)*SIDE+SIDE/2;
+    const level=ground[cy*columns+cx];
+    for(let y=cy-3;y<=cy+2;y++)for(let x=cx-3;x<=cx+2;x++){
+      const index=y*columns+x;
+      if((x-cx+.5)**2+(y-cy+.5)**2>8||openWater[index]||
+        Math.abs(ground[index]-level)>6||shore[index]!==Shore.ground)continue;
+      ground[index]=Math.max(0,level-2);water[index]=Math.min(2,level);shore[index]=Shore.pool;
+    }
+  }
+  if(worldTree){
+    const trail=[worldTree.y*width+worldTree.x,...worldTree.trail];
+    for(let step=1;step<trail.length;step++){
+      const from=trail[step-1],to=trail[step];
+      const cx=from%width*SIDE+SIDE/2,cy=Math.floor(from/width)*SIDE+SIDE/2;
+      const dx=to%width-from%width,dy=Math.floor(to/width)-Math.floor(from/width);
+      for(let n=0;n<SIDE;n++)for(let across=-1;across<=0;across++){
+        const index=(cy+dy*n+dx*across)*columns+cx+dx*n+dy*across;
+        if(!surfaceHasWater({openWater,shore},index))shore[index]=Shore.rootTrail;
+      }
+    }
+  }
   const shadow=skylands?.length?skylandShadows(skylands,columns,rows):undefined;
   const grid={columns,rows,ground,water,material,shore,openWater,shadow};
-  cache.set(base,{season,riverlands,skylands,grid});
+  cache.set(base,{season,riverlands,skylands,worldTree,grid});
   return grid;
 }

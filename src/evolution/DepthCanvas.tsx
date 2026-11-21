@@ -42,7 +42,7 @@ import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,interpolatedGroundH
 import {atlasLevel} from './atlasMap';
 import {atlasBuildingBounds,opaqueArtAt,overlappingArt,paintAtlasBuilding,
   type PlacedArt} from './atlasBuildingArt';
-import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
+import {blockWorldTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
 import {blockBuildingArt,blockSceneryArt,depthBlockView,placeBlockArt,type BlockStamp} from './blockScenery';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
@@ -214,6 +214,12 @@ function renderTerrain(w:World,overlay:MapOverlay,
         ctx.fillStyle='#89b9be';ctx.fillRect(p.x-2,p.y-1,4,2);
       }
   }
+  if(overlay==='terrain'&&w.worldTree){
+    const tree=w.worldTree,ground=surfaceHeightAt(grid!,tree.x,tree.y);
+    const p=projector.projectSmooth(tree.x,tree.y,ground);
+    const sprite=blockSceneryArt(blockWorldTree(tree.variant),p,blockView,2.7);
+    if(sprite)actors.push({order:projector.depth(tree.x,tree.y,ground),sprite,canopy:true,landmark:tree});
+  }
   if(showBuildings){
     if(overlay==='terrain')paintDepthRoads(ctx,w,heights,projector,plots?.streetLinks);
     for(const site of w.ancientSites??[]){
@@ -240,7 +246,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
   return actors;
 }
 
-type DepthActor={order:number;sprite:PlacedArt;building?:Building;canopy?:boolean};
+type DepthActor={order:number;sprite:PlacedArt;building?:Building;canopy?:boolean;landmark?:Pt};
 /** Geometry and structures are immutable throughout an animation. Build
  * projected actors only when the world or camera changes. */
 function prepareDepthStructures(w:World,
@@ -366,7 +372,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     yaw:number;pitch:number;detail:DepthArtDetail;
     structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
-    woodland:World['woodland'];skylands:World['skylands'];
+    woodland:World['woodland'];skylands:World['skylands'];worldTree:World['worldTree'];
     terrainCells:World['terrainCells'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
@@ -442,7 +448,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     plotCacheRef.current=ground&&plots?{ground,key:plotKey,plots}:null;
     const worker=tiled?rasterWorker.current:null;
     const geometry=[world.settings,world.width,world.height,topographyForWorld(world),terrainCells,
-      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands];
+      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands,world.worldTree];
     let job=rasterJob.current;
     if(!worker||landChanged||!job||geometry.some((part,i)=>part!==job?.geometry[i])){
       if(job?.result!==displayedRaster.current?.result)job?.result?.bitmap.close();
@@ -451,9 +457,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     }
     if(worker&&job&&!job.result&&!orbiting&&!rasterBusy.current){
       rasterBusy.current=true;
-      const {width,height,settings,tiles,topography,terrainCells,dayOfYear,woodland,skylands}=world;
+      const {width,height,settings,tiles,topography,terrainCells,dayOfYear,woodland,skylands,worldTree}=world;
       const message:DepthRasterRequest={id:job.id,world:{width,height,settings,tiles,topography,
-        terrainCells,dayOfYear,woodland,skylands},relief,camera,density:sceneryDensity,
+        terrainCells,dayOfYear,woodland,skylands,worldTree},relief,camera,density:sceneryDensity,
         plots:plots&&{squares:plots.squares,decoratedTiles:plots.decoratedTiles}};
       try{worker.postMessage(message);}catch{setRasterFailed(true);}
     }
@@ -489,7 +495,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       ids:new Uint32Array(pickWidth*pickHeight)});
     pickingRef.current=picking;
     if(!stamp||!reusePicking||landChanged||stamp.topography!==world.topography||
-      stamp.woodland!==woodland||stamp.skylands!==world.skylands||
+      stamp.woodland!==woodland||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||
       stamp.terrainCells!==terrainCells||stamp.season!==season||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
@@ -504,7 +510,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       sceneryActors.current=renderTerrain(world,overlay,backdrop,picking,projector,blockView,
         sceneScale,showBuildings,showResidents,plots,exact,preview);
     }
-    stampRef.current={tiles:world.tiles,topography:world.topography,woodland,skylands:world.skylands,
+    stampRef.current={tiles:world.tiles,topography:world.topography,woodland,skylands:world.skylands,worldTree:world.worldTree,
       terrainCells,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
       yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,
@@ -660,11 +666,12 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       const island=skylandHit(sky.art,px,py);
       if(island!==undefined){onSkyland(island);return;}
     }
-    if(brush.kind==='inspect'&&showBuildings){
+    if(brush.kind==='inspect'){
       const scene=inspectActors.current;
       if(scene)for(let i=scene.actors.length-1;i>=0;i--){
         const actor=scene.actors[i];
         if(scene.faded.has(actor)||!opaqueArtAt(actor.sprite,px,py))continue;
+        if(actor.landmark){onSelect(actor.landmark.x,actor.landmark.y);return;}
         if(actor.building){onSelect(actor.building.x,actor.building.y);return;}
         break;
       }

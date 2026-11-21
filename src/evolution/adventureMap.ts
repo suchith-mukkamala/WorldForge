@@ -198,6 +198,7 @@ function buildAdventureMap(world:World):AdventureMap{
       if(isMortalSolidBuilding(building))open[i]=0;
     }
   }
+  if(world.worldTree)open[tile(width,world.worldTree)]=0;
   const owners=new Int32Array(open.length),parents=new Int32Array(open.length).fill(-1);
   const map:AdventureMap={width,height,open,owners,parents,roads,bridges,buildings,
     towns:[],routes:new Map(),landmarkTrails:new Map(),ferries:new Map(),shipyards:new Map(),regions:new Map()};
@@ -298,18 +299,19 @@ function buildAdventureMap(world:World):AdventureMap{
 // or transport changes, never for each sprite frame or player step.
 const maps=new WeakMap<World['tiles'],{
   settlements:World['settlements'];transport:World['transport'];topography:World['topography'];
-  sites:World['ancientSites'];
+  sites:World['ancientSites'];worldTree:World['worldTree'];
   layout:World['settings']['layout'];riverlands:World['settings']['riverlands'];map:AdventureMap}>();
 export function adventureMapFor(world:World):AdventureMap{
   const cached=maps.get(world.tiles);
   if(cached?.settlements===world.settlements&&cached?.transport===world.transport&&
     cached?.layout===world.settings.layout&&cached.riverlands===world.settings.riverlands&&
-    cached.sites===world.ancientSites&&cached.topography===world.topography)
+    cached.sites===world.ancientSites&&cached.topography===world.topography&&
+    cached.worldTree===world.worldTree)
     return cached.map;
   const map=buildAdventureMap(world);
   maps.set(world.tiles,{settlements:world.settlements,transport:world.transport,
     layout:world.settings.layout,riverlands:world.settings.riverlands,
-    sites:world.ancientSites,topography:world.topography,map});
+    sites:world.ancientSites,topography:world.topography,worldTree:world.worldTree,map});
   return map;
 }
 
