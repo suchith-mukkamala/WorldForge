@@ -1,4 +1,6 @@
-# v1.8 stability release checklist
+# Stability release checklist
+
+These scripted gates run on every pull request (`.github/workflows/ci.yml`) for the current release, including v2.23.0. The manual checks below are still part of accepting a build. The v1.8 contracts have not been retired.
 
 ## Automated release gates
 - [ ] `npm run build` passes

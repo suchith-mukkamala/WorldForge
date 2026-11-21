@@ -90,8 +90,10 @@ distinguishes implemented foundations from aspirational features.
   day-night cycles, combat animation and a full character avatar editor remain
   future work. Rapid multi-tile travel uses an abbreviated onscreen path, not
   a record of every intermediate tile the agent actually traversed.
-- No playable first-person/mortal perspective yet. The current interface is
-  god-mode, with mortal exploration remaining a future direction.
+- Mortal exploration is playable from Descend: walk settlements and trails,
+  enter buildings, sail, and take errands. The Mind Engine is still
+  rules-based. Inhabiting an already-living resident, instead of a created
+  mortal, remains future work.
 - Early accords and voluntary guilds are **not** complete nations, elections,
   complete nations or geopolitical warfare. v1.5 adds elections and settlement-
   level governments, but **not** unified nation states, enforceable criminal

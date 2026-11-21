@@ -19,6 +19,7 @@ import {sceneAtmosphere} from './sceneAtmosphere';
 import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
+import {godModeShortcut} from './appShortcuts';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
   isMapPanDrag,mapScrollForDrag,restoreWorldZoomAnchor,
   type WorldZoomAnchor} from './mapGestures';
@@ -60,9 +61,9 @@ const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.Kno
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
 const MortalAdventure=lazy(()=>import('./MortalAdventure').then(m=>({default:m.MortalAdventure})));
-import {compactWorld,loadBrowserWorld,loadBrowserWorldSnapshot,readSavedWorld,WORLD_STORAGE_KEY,
-  WORLD_STORAGE_TIME_KEY,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
-  saveDatabaseWorld} from './storage';
+import {readSavedWorld,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
+  saveDatabaseWorld,persistBrowserWorld,readBrowserSaveKeys,resolveStartupSave,
+} from './storage';
 export {readSavedWorld} from './storage';
 import {
   BIOME_INFO,BIOMES,DEFAULT_SETTINGS,SPECIES,SPECIES_INFO,
@@ -73,8 +74,11 @@ import {
 function initialWorld():World{
   if(typeof window!=='undefined'){
     try{
-      const restored=loadBrowserWorld(window.localStorage);
-      if(restored)return restored;
+      const decision=resolveStartupSave({
+        ...readBrowserSaveKeys(window.localStorage),
+        database:null,storageBlocked:false,
+      });
+      if(decision.kind==='restored')return decision.world;
     }catch{/* Restricted storage: continue with an in-memory world. */}
   }
   // First-time visitors get their own world; existing local saves always win.
@@ -103,28 +107,10 @@ const downloadJson=(world:World)=>{
 // do not need a new multi-MB serialization or IndexedDB transaction.
 const snapshotSaves=new WeakMap<World,Promise<void>>();
 async function persistSnapshot(world:World):Promise<void>{
-  const raw=compactWorld(world);
-  const savedAt=Date.now();
-  // A small synchronous fallback survives reloads even if a pagehide event
-  // cannot finish its asynchronous IndexedDB transaction.
-  let localSaved=false;
-  if(raw.length<2_000_000){
-    try{
-      window.localStorage.setItem(WORLD_STORAGE_KEY,raw);
-      window.localStorage.setItem(WORLD_STORAGE_TIME_KEY,String(savedAt));
-      localSaved=true;
-    }
-    catch{/* IndexedDB is the primary save location. */}
-  }
-  try{await saveDatabaseWorld(raw,savedAt,true);}
-  catch(error){
-    if(localSaved)return;
-    try{
-      window.localStorage.setItem(WORLD_STORAGE_KEY,raw);
-      window.localStorage.setItem(WORLD_STORAGE_TIME_KEY,String(savedAt));
-    }
-    catch{throw error;}
-  }
+  // localStorage is written before the IndexedDB transaction so a reload
+  // during pagehide still has a snapshot. Oversized worlds leave a marker
+  // only after the database commit, instead of keeping a stale local copy.
+  await persistBrowserWorld(world,window.localStorage,saveDatabaseWorld);
 }
 function saveSnapshot(world:World):Promise<void>{
   const existing=snapshotSaves.get(world);
@@ -248,7 +234,19 @@ export function WorldforgeApp(){
   const orbitFocusRef=useRef<AtlasPoint|null>(null);
   const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
+  const [saveWarning,setSaveWarning]=useState('');
   const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
+  const holdAutosave=useRef(false);
+  const checkpoint=useCallback((current:World)=>{
+    if(holdAutosave.current)return;
+    void saveSnapshot(current).then(()=>{
+      setSavedDate(calendarDate(current));
+      setSaveWarning('');
+    }).catch(()=>{
+      setSaveWarning('Autosave failed');
+      setNotice('Autosave failed. Export World JSON to keep your progress.');
+    });
+  },[]);
   const fileRef=useRef<HTMLInputElement>(null);
   const currentWorld=useRef(world);
   currentWorld.current=world;
@@ -506,41 +504,64 @@ export function WorldforgeApp(){
   },[zoom]);
   useEffect(()=>{
     let active=true;
-    loadDatabaseSnapshot().then(restored=>{
-      let localTime=0;
-      try{
-        localTime=loadBrowserWorldSnapshot(window.localStorage)?.savedAt??0;
-      }catch{/* Restricted storage does not suppress database recovery. */}
-      if(active&&restored&&restored.savedAt>=localTime)
-        setWorld(restored.world);
-    }).catch(()=>{/* localStorage / newly created world remains available. */})
-      .finally(()=>{if(active)setStorageReady(true);});
+    const finish=(database:{world:World;savedAt:number}|null)=>{
+      if(!active)return;
+      let storageBlocked=false;
+      let keys={localRaw:null as string|null,localTimeRaw:null as string|null,
+        legacyRaw:null as string|null};
+      try{keys=readBrowserSaveKeys(window.localStorage);}
+      catch{storageBlocked=true;}
+      const decision=resolveStartupSave({...keys,database,storageBlocked});
+      if(decision.kind==='restored'&&decision.source==='database')
+        setWorld(decision.world);
+      if(decision.kind==='unreadable'){
+        holdAutosave.current=true;
+        setSaveWarning('Autosave paused');
+        setNotice(decision.reason);
+      }
+      setStorageReady(true);
+    };
+    loadDatabaseSnapshot().then(restored=>finish(restored))
+      .catch(()=>finish(null));
     return ()=>{active=false;};
-  },[]);
+  },[setWorld]);
+  useEffect(()=>{
+    const onKey=(event:KeyboardEvent)=>{
+      if(!storageReady||currentWorld.current.descent?.mode==='mortal')return;
+      const command=godModeShortcut(event);
+      if(!command)return;
+      if(command==='shortcut-help'){
+        event.preventDefault();
+        setNotice('P pauses or resumes time on the atlas. ? shows this hint. Mortal controls keep their own keys.');
+        return;
+      }
+      const open=tabRef.current;
+      if(open!=='world'&&open!=='settlements')return;
+      const current=currentWorld.current;
+      if(!current.agents.length||current.year>=9999)return;
+      event.preventDefault();
+      setPlaying(value=>!value);
+    };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[storageReady,setPlaying]);
   // Playback may update the world 16 times/second. A debounce alone would
   // *never* fire while playing, so retain periodic checkpoints as well.
   useEffect(()=>{
     if(!storageReady)return;
-    const save=()=>{
-      const current=currentWorld.current;
-      void saveSnapshot(current).then(()=>setSavedDate(calendarDate(current)))
-        .catch(()=>setNotice('Autosave failed. Export World JSON to keep your progress.'));
-    };
+    const save=()=>checkpoint(currentWorld.current);
     const timer=window.setInterval(save,10000);
     window.addEventListener('pagehide',save);
     return ()=>{window.clearInterval(timer);window.removeEventListener('pagehide',save);save();};
-  },[storageReady]);
+  },[storageReady,checkpoint]);
   useEffect(()=>{
     if(playing||world.descent?.mode==='mortal'||!storageReady)return;
     // Direct-control movement can commit several times a second. During
     // descent, the periodic checkpoint owns saves; debounce would serialize
     // the entire population after nearly every single footstep.
-    const timer=window.setTimeout(()=>{
-      void saveSnapshot(world).then(()=>setSavedDate(calendarDate(world)))
-        .catch(()=>setNotice('Autosave failed. Export World JSON to keep your progress.'));
-    },500);
+    const timer=window.setTimeout(()=>checkpoint(world),500);
     return ()=>window.clearTimeout(timer);
-  },[world,playing,storageReady]);
+  },[world,playing,storageReady,checkpoint]);
   useEffect(()=>{if(tab!=='world'&&tab!=='settlements')setPlaying(false);},[tab]);
   const requestSimulation=useCallback(()=>{
     const worker=simulationWorker.current,current=currentWorld.current;
@@ -694,12 +715,9 @@ export function WorldforgeApp(){
   const atSea=!!world.descent?.ship?.underway;
   useEffect(()=>{
     if(!storageReady||!world.descent?.ship)return;
-    const timer=window.setTimeout(()=>{
-      void saveSnapshot(currentWorld.current).catch(()=>setNotice(
-        'Autosave failed. Export World JSON to keep your voyage.'));
-    },300);
+    const timer=window.setTimeout(()=>checkpoint(currentWorld.current),300);
     return ()=>window.clearTimeout(timer);
-  },[storageReady,atSea]);
+  },[storageReady,atSea,checkpoint]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -878,6 +896,7 @@ export function WorldforgeApp(){
   const startWorld=(settings:WorldSettings)=>{
     if(!window.confirm('Generate a new world? This replaces your current simulation. '+
       'Use Export World JSON first to keep this timeline.'))return;
+    holdAutosave.current=false;setSaveWarning('');
     setPlaying(false);setWorld(createWorld(settings));setTab('world');
     setSavedDate(null);
     setFollowId(null);
@@ -895,6 +914,7 @@ export function WorldforgeApp(){
       '';
     if(!window.confirm(note+'Restart from year 0 using seed '+world.settings.seed+
       '? Your current timeline will be replaced. Export World JSON first to keep it.'))return;
+    holdAutosave.current=false;setSaveWarning('');
     setPlaying(false);setWorld(createWorld(world.settings));
     setSavedDate(null);
     setFollowId(null);
@@ -914,6 +934,7 @@ export function WorldforgeApp(){
     try{
       const obj=readSavedWorld(await file.text());
       if(!obj)throw Error('Invalid or unsupported Worldforge world JSON.');
+      holdAutosave.current=false;setSaveWarning('');
       setPlaying(false);setWorld(obj);setTab('world');
       setSavedDate(null);
       setFollowId(null);
@@ -974,7 +995,8 @@ export function WorldforgeApp(){
   if(mortal)return <Suspense fallback={<div className="evo-app evo-loading-world"
     role="status">Opening your adventure…</div>}>
     <MortalAdventure key={world.settings.seed+':'+mortal.id}
-      world={world} actor={mortal} notice={notice}
+      world={world} actor={mortal}
+      notice={[notice,saveWarning].filter(Boolean).join(' · ')||undefined}
       running={mortalRunning} onToggleTime={()=>setMortalRunning(value=>!value)}
       onChange={changeMortalWorld} onAscend={leaveMortalView}/>
   </Suspense>;
@@ -1015,7 +1037,8 @@ export function WorldforgeApp(){
       </nav>
       <div className="evo-nav-status"><span/> YEAR {world.year}
         {savedDate&&<small> · SAVED Y{savedDate.year} {MONTH_NAMES[savedDate.month]}
-          {' '}{savedDate.day}</small>}</div>
+          {' '}{savedDate.day}</small>}
+        {saveWarning&&<small role="status"> · {saveWarning}</small>}</div>
     </header>
     {tab==='descent'?<DivineDescentCreator world={world} error={notice}
       onCreate={createDescent} starting={startingDescent} arrivalName={riverArrival?.name}
@@ -1064,9 +1087,11 @@ export function WorldforgeApp(){
         <div className="evo-sim-controls">
           <button className="evo-new-world-button" onClick={()=>navigate('creator')}>
             ✧ NEW WORLD</button>
-          <button className={playing?'playing evo-play-main':'evo-play-main'}
+          <button type="button" className={playing?'playing evo-play-main':'evo-play-main'}
             disabled={!world.agents.length||world.year>=9999||
               world.descent?.mode==='mortal'}
+            aria-pressed={playing} aria-keyshortcuts="P"
+            title="Play or pause (P)"
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
           <button onClick={()=>step(365)} title="Advance one year">+YEAR</button>
           <details className="evo-time-settings">

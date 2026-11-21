@@ -106,15 +106,30 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now(),
 const ALPHABET='PFMCVWRTBS';
 const TILE_BIOMES:Biome[]=['plains','forest','mountain','cave','volcanic','wasteland','water',
   'taiga','wetland','savanna'];
+/** localStorage ceiling for a full snapshot. Larger worlds stay in IndexedDB. */
+export const LOCAL_SNAPSHOT_LIMIT=2_000_000;
+/** Replaces an oversized local snapshot after IndexedDB has the real world. */
+export const OMITTED_LOCAL_FORMAT='evo-local-omitted';
 const packedBiome=(s:string)=>TILE_BIOMES[ALPHABET.indexOf(s)];
-function encodeTiles(tiles:Tile[]):string{
+/** Exactly four characters, and the same food value after decoding.
+ * Unknown biomes and finer food values must not be clipped into this alphabet. */
+function packTile(tile:Tile):string|null{
+  const index=TILE_BIOMES.indexOf(tile.biome);
+  if(index<0||!Number.isFinite(tile.food)||tile.food<0||tile.food>20)return null;
+  const cents=Math.round(tile.food*100);
+  if(cents<0||cents>46655||cents/100!==tile.food)return null;
+  return ALPHABET[index]+cents.toString(36).padStart(3,'0');
+}
+function encodeTiles(tiles:Tile[]):string|null{
   const chunks:string[]=[];
   // Chunk arrays to avoid quadratic string copies on very large worlds.
   for(let i=0;i<tiles.length;i+=1024){
     let chunk='';
-    for(const t of tiles.slice(i,i+1024))
-      chunk+=ALPHABET[TILE_BIOMES.indexOf(t.biome)]+
-        Math.round(t.food*100).toString(36).padStart(3,'0');
+    for(const tile of tiles.slice(i,i+1024)){
+      const code=packTile(tile);
+      if(!code)return null;
+      chunk+=code;
+    }
     chunks.push(chunk);
   }
   return chunks.join('');
@@ -133,8 +148,11 @@ function decodeTiles(raw:string,count:number):Tile[]|null{
 }
 export function compactWorld(world:World):string{
   const {tiles,...rest}=world;
-  const core={schemaVersion:WORLD_SCHEMA_VERSION,world:rest,
-    terrain:encodeTiles(tiles)};
+  const terrain=encodeTiles(tiles);
+  // A packed save that cannot represent a tile exactly would come back
+  // altered or unreadable. Ordinary JSON is larger and already accepted.
+  if(terrain===null||!terrain)return JSON.stringify(world);
+  const core={schemaVersion:WORLD_SCHEMA_VERSION,world:rest,terrain};
   // Build the large world JSON only once. The original save performed two
   // full JSON.stringify passes: first for checksum, then for final envelope.
   // The envelope retains exactly the same field order and checksum bytes.
@@ -255,19 +273,151 @@ export function readSavedWorld(raw:string|null):World|null{
     return isWorld(parsed)?parsed:null;
   }catch{return null;}
 }
+function finiteTime(raw:unknown):number{
+  const savedAt=Number(raw);
+  return Number.isFinite(savedAt)?savedAt:0;
+}
+export type LocalSaveRecord=
+  |{kind:'empty'}
+  |{kind:'world';world:World;savedAt:number}
+  |{kind:'omitted';savedAt:number}
+  |{kind:'corrupt'};
+/** A present but unreadable v2 key must not fall through to a v1 world.
+ * An omitted marker means IndexedDB holds the snapshot that no longer fit. */
+export function inspectLocalRecord(raw:string|null,savedAtRaw:string|null):LocalSaveRecord{
+  if(!raw)return {kind:'empty'};
+  try{
+    const parsed:unknown=JSON.parse(raw);
+    if(isRecord(parsed)&&parsed.format===OMITTED_LOCAL_FORMAT)
+      return {kind:'omitted',savedAt:finiteTime(parsed.savedAt??savedAtRaw)};
+  }catch{/* Invalid JSON is corrupt, not a legacy world. */}
+  const world=readSavedWorld(raw);
+  if(!world)return {kind:'corrupt'};
+  return {kind:'world',world,savedAt:finiteTime(savedAtRaw)};
+}
+export function readBrowserSaveKeys(storage:Pick<Storage,'getItem'>):{
+  localRaw:string|null;localTimeRaw:string|null;legacyRaw:string|null;
+}{
+  return {
+    localRaw:storage.getItem(WORLD_STORAGE_KEY),
+    localTimeRaw:storage.getItem(WORLD_STORAGE_TIME_KEY),
+    legacyRaw:storage.getItem(LEGACY_STORAGE_KEY),
+  };
+}
+export const UNREADABLE_SAVE_NOTICE=
+  'Saved world was not loaded. Autosave is paused so a new world is not written over the browser backup. Reload to try again, or import a JSON backup.';
+export type StartupSave=
+  |{kind:'restored';world:World;source:'local'|'legacy'|'database'}
+  |{kind:'new'}
+  |{kind:'unreadable';reason:string};
+/** Pick the newest readable snapshot. Never promote a blank world over a
+ * save that exists but could not be opened. */
+export function resolveStartupSave(input:{
+  localRaw:string|null;localTimeRaw:string|null;legacyRaw:string|null;
+  database:{world:World;savedAt:number}|null;
+  storageBlocked:boolean;
+}):StartupSave{
+  const local=inspectLocalRecord(input.localRaw,input.localTimeRaw);
+  const legacy=local.kind==='empty'&&!input.storageBlocked?
+    readSavedWorld(input.legacyRaw):null;
+  const database=input.database;
+  if(local.kind==='world'){
+    if(database&&database.savedAt>local.savedAt)
+      return {kind:'restored',world:database.world,source:'database'};
+    return {kind:'restored',world:local.world,source:'local'};
+  }
+  if(legacy){
+    // Legacy v1 has no timestamp. A database snapshot is the primary copy
+    // even when its saved time was not recorded.
+    if(database)return {kind:'restored',world:database.world,source:'database'};
+    return {kind:'restored',world:legacy,source:'legacy'};
+  }
+  if(database)return {kind:'restored',world:database.world,source:'database'};
+  if(local.kind==='omitted'||local.kind==='corrupt'||input.storageBlocked)
+    return {kind:'unreadable',reason:UNREADABLE_SAVE_NOTICE};
+  return {kind:'new'};
+}
+export type BrowserSnapshotWrite='stored'|'too-large'|'failed';
+export function writeBrowserSnapshot(
+  storage:Pick<Storage,'setItem'|'removeItem'>,raw:string,savedAt:number,
+  force=false,
+):BrowserSnapshotWrite{
+  if(!force&&raw.length>=LOCAL_SNAPSHOT_LIMIT)return 'too-large';
+  const write=()=>{
+    storage.setItem(WORLD_STORAGE_KEY,raw);
+    storage.setItem(WORLD_STORAGE_TIME_KEY,String(savedAt));
+  };
+  try{write();return 'stored';}
+  catch{
+    try{storage.removeItem(LEGACY_STORAGE_KEY);write();return 'stored';}
+    catch{return 'failed';}
+  }
+}
+export function writeOmittedLocalSnapshot(
+  storage:Pick<Storage,'setItem'>,savedAt:number,
+):boolean{
+  try{
+    storage.setItem(WORLD_STORAGE_KEY,JSON.stringify({
+      format:OMITTED_LOCAL_FORMAT,savedAt,
+    }));
+    storage.setItem(WORLD_STORAGE_TIME_KEY,String(savedAt));
+    return true;
+  }catch{return false;}
+}
 /** Compare timestamps only for valid saves. Corrupt localStorage records
- * must not suppress an older working IndexedDB checkpoint at startup. */
+ * must not suppress an older working IndexedDB checkpoint at startup, and
+ * must not be replaced by an older v1 save. */
 export function loadBrowserWorldSnapshot(storage:Pick<Storage,'getItem'>):
     {world:World;savedAt:number}|null{
   try{
-    const current=readSavedWorld(storage.getItem(WORLD_STORAGE_KEY));
-    if(current){
-      const savedAt=Number(storage.getItem(WORLD_STORAGE_TIME_KEY));
-      return {world:current,savedAt:Number.isFinite(savedAt)?savedAt:0};
-    }
-    const legacy=readSavedWorld(storage.getItem(LEGACY_STORAGE_KEY));
+    const keys=readBrowserSaveKeys(storage);
+    const local=inspectLocalRecord(keys.localRaw,keys.localTimeRaw);
+    if(local.kind==='world')return {world:local.world,savedAt:local.savedAt};
+    if(local.kind!=='empty')return null;
+    const legacy=readSavedWorld(keys.legacyRaw);
     return legacy?{world:legacy,savedAt:0}:null;
   }catch{return null;}
+}
+export type StoredWorldRecovery=
+  |{kind:'export';world:World}
+  |{kind:'database-only'}
+  |{kind:'unreadable'}
+  |{kind:'none'};
+/** Last local snapshot a crashed page can still offer for download. */
+export function recoverStoredWorld(storage:Pick<Storage,'getItem'>|null):
+    StoredWorldRecovery{
+  if(!storage)return {kind:'none'};
+  try{
+    const keys=readBrowserSaveKeys(storage);
+    const local=inspectLocalRecord(keys.localRaw,keys.localTimeRaw);
+    if(local.kind==='world')return {kind:'export',world:local.world};
+    if(local.kind==='omitted')return {kind:'database-only'};
+    if(local.kind==='corrupt')return {kind:'unreadable'};
+    const legacy=readSavedWorld(keys.legacyRaw);
+    return legacy?{kind:'export',world:legacy}:{kind:'none'};
+  }catch{return {kind:'none'};}
+}
+export async function commitBrowserSnapshot(
+  raw:string,savedAt:number,storage:Pick<Storage,'setItem'|'removeItem'>,
+  saveDatabase:(raw:string,savedAt:number,canonical:boolean)=>Promise<void>,
+):Promise<void>{
+  const local=writeBrowserSnapshot(storage,raw,savedAt);
+  try{await saveDatabase(raw,savedAt,true);}
+  catch(error){
+    if(local==='stored')return;
+    if(writeBrowserSnapshot(storage,raw,savedAt,true)==='stored')return;
+    throw error;
+  }
+  // The database has this world. Drop a stale local copy that would
+  // otherwise look current the next time IndexedDB does not open.
+  if(local!=='stored')writeOmittedLocalSnapshot(storage,savedAt);
+}
+export function persistBrowserWorld(
+  world:World,storage:Pick<Storage,'setItem'|'removeItem'>,
+  saveDatabase:(raw:string,savedAt:number,canonical:boolean)=>Promise<void>,
+  savedAt=Date.now(),
+):Promise<void>{
+  return commitBrowserSnapshot(compactWorld(world),savedAt,storage,saveDatabase);
 }
 export function loadBrowserWorld(storage:Pick<Storage,'getItem'>):World|null{
   return loadBrowserWorldSnapshot(storage)?.world??null;
