@@ -7,6 +7,8 @@ export const waterSeason=(world:Pick<World,'dayOfYear'>)=>visualSeason(world.day
 
 type WaterwayLand=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'dayOfYear'>;
 export type RiverLink={dx:number;dy:number;tier:number;other:number};
+export const bankSides=[{x:0,y:1},{x:1,y:0},{x:0,y:-1},{x:-1,y:0}] as const;
+export const DOCK_BANK_DROP=28;
 const linkCache=new WeakMap<Hydrology,Map<number,RiverLink[]>>();
 export function riverLinks(world:WaterwayLand):ReadonlyMap<number,readonly RiverLink[]>{
   const drainage=hydrologyForWorld(world),cached=linkCache.get(drainage);
@@ -25,6 +27,22 @@ export function riverLinks(world:WaterwayLand):ReadonlyMap<number,readonly River
   }
   linkCache.set(drainage,links);
   return links;
+}
+
+export function riverBank(world:WaterwayLand,index:number){
+  const {width,height,tiles}=world,x=index%width,y=Math.floor(index/width);
+  const links=riverLinks(world),heights=topographyForWorld(world).heights;
+  let best=-Infinity,bank:typeof bankSides[number]|undefined;
+  for(const side of bankSides){
+    const nx=x+side.x,ny=y+side.y,near=ny*width+nx;
+    if(nx<0||nx>=width||ny<0||ny>=height||tiles[near].biome==='water')continue;
+    for(const link of links.get(near)??[]){
+      const score=link.tier*4+Math.max(0,-side.x*link.dx-side.y*link.dy)*2-
+        Math.abs(heights[index]-heights[near]);
+      if(score>best){best=score;bank=side;}
+    }
+  }
+  return bank;
 }
 
 const floodCache=new WeakMap<Hydrology,Uint8Array>();

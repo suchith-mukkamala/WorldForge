@@ -1,7 +1,7 @@
 import type {Biome,World} from './engine';
 import type {Building} from './construction';
 import {blockProp,type BlockModel} from './blockModels';
-import {DESCENT_BLOCK_VIEW,paintBlockContact,paintBlockScenery} from './blockScenery';
+import {blockSceneryArt,DESCENT_BLOCK_VIEW,paintBlockContact,paintBlockScenery} from './blockScenery';
 import {biomeTreeAt,isTreeKind,type TreeKind} from './biomeTrees';
 import {terrainDetailAt} from './terrainDetails';
 import {topographyForWorld} from './topography';
@@ -194,7 +194,7 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
   }
 }
 
-export type AdventureProp=TreeKind|'rocks'|'flowers'|'reeds'|'embers'|'lantern';
+export type AdventureProp=TreeKind|'rocks'|'flowers'|'reeds'|'scrub'|'embers'|'lantern';
 export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
   x:number,y:number):AdventureProp|undefined{
   const i=y*world.width+x,biome=world.tiles[i]?.biome;
@@ -235,12 +235,12 @@ export function adventureProp(world:World,map:ArtMap,region:AdventureRegion,
     if(seed<39)return 'flowers';
   }
 }
-export function paintAdventureProp(ctx:CanvasRenderingContext2D,prop:AdventureProp,
+export function adventurePropArt(prop:AdventureProp,
   x:number,y:number,variant:number,season?:VisualSeason){
   const kind=prop==='rocks'?'boulder':prop;
   const large=isTreeKind(kind)||kind==='boulder';
   const anchor={x:x+(kind==='lantern'?5:12),y:y+16};
-  paintBlockScenery(ctx,blockProp(kind,variant,season),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
+  return blockSceneryArt(blockProp(kind,variant,season),anchor,DESCENT_BLOCK_VIEW,large?1.75:1.22);
 }
 
 export function paintDoorstep(ctx:CanvasRenderingContext2D,x:number,y:number,side:Point){

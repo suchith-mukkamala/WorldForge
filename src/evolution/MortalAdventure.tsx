@@ -448,6 +448,7 @@ export function MortalAdventure({world,actor,notice,onChange,onAscend}:{
             <div className="adventure-picture" key={scene}>
               <AdventureCanvas world={world} map={map} region={region} actor={actor} facing={facing}
                 board={board} landmarks={landmarks} gather={objective?.action==='gather'?goalPoint:undefined}
+                focused={focusedBuilding?.building??markedDoor?.building}
                 marked={focusedBuilding?.entrance??focusedPerson??markedDoor?.entrance??
                   (boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
                   goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}

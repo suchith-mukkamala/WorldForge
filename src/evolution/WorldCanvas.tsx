@@ -34,9 +34,10 @@ import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
 import {blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
-import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,blockStampScale,paintBlockContact,
+import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,placeBlockArt,paintBlockContact,
   paintBlockScenery,type BlockStamp} from './blockScenery';
-import {paintStructureApproach,structureForBuilding,structureSite} from './structureGround';
+import {structureForBuilding,structureSite} from './structureGround';
+import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
 import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
 import {wornPathTiles} from './trailNetwork';
@@ -77,6 +78,7 @@ export function WorldCanvas({
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
   const buildingArtRef=useRef<Map<string,BlockStamp>>(new Map());
   const buildingPlotsRef=useRef<AtlasBuilding[]>([]);
+  const plotGroundRef=useRef<BuildingPlots|undefined>(undefined);
   const backgroundStamp=useRef<{
     tiles:World['tiles'];topography:World['topography'];woodland:World['woodland'];
     settlementKey:string;
@@ -146,6 +148,8 @@ export function WorldCanvas({
       ctx.fillRect(0,0,mapWidth,mapHeight);
     }
     const occupied=overlay==='terrain'?occupiedScenery(world):null;
+    const yard=showBuildings&&tiled?buildingPlots(world):undefined;
+    plotGroundRef.current=yard;
     if(occupied&&!terrainAtlasRef.current){
       const atlas=document.createElement('canvas');
       if(buildTerrainDetailAtlas(atlas))terrainAtlasRef.current=atlas;
@@ -164,6 +168,7 @@ export function WorldCanvas({
       const upland=world.settings.landforms?highlandColor(biome,heights[index],grain):undefined;
       return {color:upland??overheadTerrainColor(biome,ocean[index],cover),grain,water:biome==='water'};
     },ATLAS_SEA);
+    if(yard)paintPlotGround(ctx,yard,CELL);
     for(let y=0;y<H;y++)for(let x=0;x<W;x++){
       const tile=world.tiles[y*W+x],biome=BIOME_INFO[tile.biome];
       if(!multiShore&&!visibleCoastTile(x,y,W,H,tile.biome,world.settings.seed))continue;
@@ -191,14 +196,15 @@ export function WorldCanvas({
         tile.biome,overlay==='elevation'?'elevation':'terrain');
       const scenery=tile.biome==='water'?ocean&&ocean[index]<=2&&grain%9===0:
         showBuildings?showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover):grain%3!==0;
-      if(occupied&&!occupied.has(index)&&scenery){
+      if(occupied&&!occupied.has(index)&&!yard?.clear.has(index)&&scenery){
         const water=tile.biome==='water';
         const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
           x>0&&(world.tiles[index-1].biome==='water')!==water||
           x<W-1&&(world.tiles[index+1].biome==='water')!==water;
         const detail=terrainDetailAt(tile.biome,x,y,world.settings.seed,h,shore,cover);
-        const prop=upland&&h>=175?'snowstone':terrainBlockProp(detail.motif);
+        const natural=upland&&h>=175?'snowstone':terrainBlockProp(detail.motif);
+        const prop=yard?.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
         if(prop){
           const tree=isTreeKind(prop);
           paintBlockScenery(ctx,blockProp(prop,detail.variant,season),{x:px+CELL/2,y:py+CELL/2},
@@ -237,7 +243,7 @@ export function WorldCanvas({
       const worn=wornPathTiles(world.trails??[],world.width,world.height);
       for(const s of world.settlements){
         for(const id of s.infrastructure?.roads??[]){
-          if(!worn.has(id))continue;
+          if(!worn.has(id)&&!yard?.streetLinks.has(id))continue;
           const x=id%W,y=Math.floor(id/W);
           const walk=boardwalkSite(world,id);
           if(!walk&&springFlood(world,id))continue;
@@ -296,17 +302,18 @@ export function WorldCanvas({
     if(showBuildings){
       const buildings=world.settlements.flatMap(town=>
         (town.infrastructure?.buildings??[]).map(b=>({b,town})));
-      buildings.sort((a,b)=>a.b.y-b.b.y);
-      for(const {b,town} of buildings){
-        const {model,site,door}=structureForBuilding(world,town,b);
+      const arranged=buildings.map(({b,town})=>{
+        const plot=yard?.buildings.get(b.y*W+b.x);
+        return {b,model:plot?.model??structureForBuilding(world,town,b).model,
+          at:plot?.placement.at??b,fit:plot?.placement.scale??1};
+      }).sort((a,b)=>a.at.y-b.at.y);
+      for(const {b,model,at,fit} of arranged){
         const art=blockBuildingArt(buildingArtRef.current,model,OVERHEAD_BLOCK_VIEW,1.2);
         if(!art)continue;
-        const unit=buildingVisualScale(b.type),scale=blockStampScale(unit);
-        const p={x:(b.x+.5)*CELL,y:(b.y+.5)*CELL};
-        if(door)paintStructureApproach(ctx,p,door,CELL,site);
+        const unit=buildingVisualScale(b.type)*fit;
+        const p={x:(at.x+.5)*CELL,y:(at.y+.5)*CELL};
         paintBlockContact(ctx,model,p,OVERHEAD_BLOCK_VIEW,unit*1.2);
-        const plot={building:b,art,scale,x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale};
-        plots.push(plot);
+        plots.push({building:b,...placeBlockArt(art,p,unit)});
       }
       for(const plot of plots)paintAtlasBuilding(ctx,plot);
     }
@@ -519,13 +526,17 @@ export function WorldCanvas({
         }
       }
       if(selected&&world.descent?.mode!=='mortal'){
-        const marked=ordered.find(a=>a.x===selected.x&&a.y===selected.y);
-        const marker=marked?positions.get(marked.id):selected;
-        const px=(marker?.x??selected.x)*CELL,py=(marker?.y??selected.y)*CELL;
-        visible.strokeStyle='#fff3b4';visible.lineWidth=2;
-        visible.strokeRect(px+.5,py+.5,CELL-1,CELL-1);
-        visible.strokeStyle='#15192e';visible.lineWidth=1;
-        visible.strokeRect(px-.5,py-.5,CELL+1,CELL+1);
+        const plot=plotGroundRef.current?.buildings.get(selected.y*W+selected.x);
+        if(plot?.outline.length)paintPlotOutline(visible,plot,(x,y)=>({x:(x+.5)*CELL,y:(y+.5)*CELL}),.42);
+        else{
+          const marked=ordered.find(a=>a.x===selected.x&&a.y===selected.y);
+          const marker=marked?positions.get(marked.id):selected;
+          const px=(marker?.x??selected.x)*CELL,py=(marker?.y??selected.y)*CELL;
+          visible.strokeStyle='#fff3b4';visible.lineWidth=2;
+          visible.strokeRect(px+.5,py+.5,CELL-1,CELL-1);
+          visible.strokeStyle='#15192e';visible.lineWidth=1;
+          visible.strokeRect(px-.5,py-.5,CELL+1,CELL+1);
+        }
       }
       if(followId!==null){
         const tracked=positions.get(followId);

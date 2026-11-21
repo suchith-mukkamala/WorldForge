@@ -78,6 +78,9 @@ export function createDepthProjector(w:WorldSize,relief=1,
     frontX:Math.abs(uy)<1e-9?0:Math.sign(uy),
     frontY:Math.abs(vy)<1e-9?0:Math.sign(vy),
     order:(x:number,y:number)=>x*uy+y*vy,
+    depth:(x:number,y:number,elevation:number)=>
+      horizontal*(x*(s+c)+y*(c-s))*Math.cos(pitch)+
+      (elevation-SEA_LEVEL)/DEPTH_RISE*relief/Math.cos(30*RAD)*Math.sin(pitch),
     riseScale:relief*vertical};
 }
 

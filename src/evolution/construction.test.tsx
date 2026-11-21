@@ -11,6 +11,7 @@ import {SettlementView} from './SettlementView';
 import {WorldCanvas} from './WorldCanvas';
 import {compactWorld,readSavedWorld} from './storage';
 import {settlementStockRoom} from './economy';
+import {riverLinks} from './riverSeasons';
 
 const placeAt=(w:World,x:number,y:number):Settlement=>({
   id:w.nextSettlementId++,species:'human',name:'Test Haven',x,y,founded:w.year,
@@ -106,6 +107,29 @@ describe('Evolution Lab v0.7 — living settlements and construction',()=>{
     }
     expect(isWorld(current)).toBe(true);
   },30000);
+
+  it('uses the dry plot when a competing site contains a visible waterway',()=>{
+    const {w,settlement}=activeCommunity(321721),links=riverLinks(w);
+    const stream=[...links.keys()].find(i=>w.tiles[i].biome!=='water');
+    expect(stream).toBeDefined();
+    const dry=w.tiles.findIndex((t,i)=>t.biome==='plains'&&!links.has(i)&&
+      Math.max(Math.abs(i%w.width-stream!%w.width),
+        Math.abs(Math.floor(i/w.width)-Math.floor(stream!/w.width)))>=3);
+    expect(dry).toBeGreaterThanOrEqual(0);
+    const center=w.tiles.findIndex((t,i)=>t.biome==='plains'&&[stream!,dry].every(plot=>
+      Math.max(Math.abs(i%w.width-plot%w.width),
+        Math.abs(Math.floor(i/w.width)-Math.floor(plot/w.width)))>=3));
+    expect(center).toBeGreaterThanOrEqual(0);
+    Object.assign(settlement,{x:center%w.width,y:Math.floor(center/w.width)});
+    for(const agent of w.agents)if(agent.species===settlement.species)
+      Object.assign(agent,{x:settlement.x,y:settlement.y});
+    Object.assign(settlement.infrastructure!,{land:[stream],stock:{wood:100,stone:100,clay:100}});
+    advanceConstruction(w,[]);
+    expect(settlement.infrastructure!.buildings).toHaveLength(0);
+    settlement.infrastructure!.land.push(dry);
+    advanceConstruction(w,[]);
+    expect(settlement.infrastructure!.buildings.map(b=>b.y*w.width+b.x)).toEqual([dry]);
+  });
 
   it('does not produce construction labor or progress for an empty community',()=>{
     const w=createWorld({seed:77,size:'small'});
