@@ -323,7 +323,7 @@ export function WorldCanvas({
         plots.push({building:b,...placeBlockArt(art,p,unit)});
       }
       for(const plot of plots)paintAtlasBuilding(ctx,plot);
-      if(overlay==='terrain'&&world.worldTree)paintOverheadWorldTree(ctx,world.worldTree,CELL);
+      if(overlay==='terrain'&&world.worldTree)paintOverheadWorldTree(ctx,world,CELL);
     }
     buildingPlotsRef.current=plots;
     backgroundStamp.current={tiles:world.tiles,

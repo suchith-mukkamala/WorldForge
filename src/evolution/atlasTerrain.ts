@@ -66,6 +66,7 @@ export function occupiedScenery(w:World):Set<number>{
   }
   for(const road of w.transport?.roads??[])if(road.condition>25)occupied.add(road.index);
   for(const site of w.ancientSites??[])occupied.add(site.y*w.width+site.x);
+  if(w.worldTree)occupied.add(w.worldTree.y*w.width+w.worldTree.x);
   return occupied;
 }
 

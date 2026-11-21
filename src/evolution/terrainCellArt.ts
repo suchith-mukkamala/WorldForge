@@ -56,7 +56,7 @@ export function cellPixel(grid:SurfaceGrid,index:number,palette:Uint32Array,grai
       palette[grid.material[index]*4+((hash^(hash>>>15)^(hash>>>27))&3)];
   }
   const shadow=grid.shadow?.[index];
-  return shadow?shadeTerrainPixel(color,shadow===1?.81:.68):color;
+  return shadow?shadeTerrainPixel(color,shadow===3?.91:shadow===1?.81:.68):color;
 }
 
 export const firstTerrainSquare=(width:number,columns:number,index:number)=>

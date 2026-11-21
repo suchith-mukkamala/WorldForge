@@ -1,5 +1,6 @@
 import {ARCHITECTURE,buildingTier,type Building,type SettlementStage} from './construction';
 import type {Species} from './engine';
+import {terrainHash} from './biomeGeneration';
 import type {AncientKind} from './knowledge';
 import type {Facing,Point} from './motion';
 import type {TerrainMotif} from './terrainDetails';
@@ -33,7 +34,8 @@ function model(key:string,make:(grid:BlockGrid)=>void,quarter=0,
   const faces:Face[]=[];
   const feet:Point[]=[];
   for(const [index,color] of grid.cells){
-    const x=index%stride-16,y=Math.floor(index/stride)%stride-16,z=Math.floor(index/layer);
+    const z=Math.floor(index/layer),plane=index-z*layer;
+    const x=plane%stride-16,y=Math.floor(plane/stride)-16;
     if(z===0)feet.push({x,y});
     BLOCK_FACES.forEach(({dx,dy,dz},direction)=>{
       if(!grid.cells.has(cell(x+dx,y+dy,z+dz)))faces.push({x,y,z,direction,color});
@@ -680,32 +682,81 @@ export function blockLandmark(kind:AncientKind,visited=false,site?:StructureSite
   });
 }
 
-export function blockWorldTree(variant:number):BlockModel{
-  return model('world-tree:'+variant,g=>{
-    const leaves=variant%3===0?['#315f55','#4a7967','#6e9a7d']:
-      variant%3===1?['#506445','#728754','#a2a365']:['#375f48','#527d50','#81a065'];
-    const bark='#72523f',heart='#92724d';
-    for(let turn=0;turn<4;turn++){
-      g.box(-2,-12,0,4,12,2,bark,turn);
-      g.box(-2,-8,2,3,8,2,heart,turn);
-      g.box(-1,-5,4,2,6,4,bark,turn);
-      const reach=8+(variant+turn*3)%4;
-      g.box(-1,-reach,13+turn,3,reach,3,bark,turn);
-      g.box(-2,-reach,15+turn,4,4,5,heart,turn);
-      g.box(-5,-reach-3,19+turn,10,8,4,leaves[0],turn);
-      g.box(-4,-reach-4,22+turn,8,9,4,leaves[1],turn);
-      g.box(-3,-reach-2,26+turn,6,5,2,leaves[2],turn);
+export const worldTreeFoliage={
+  woodland:['#355643','#476b4c','#54794e','#668758'],
+  conifer:['#294b46','#365e53','#487064','#658478'],
+  wetland:['#365746','#4c6e50','#638256','#78945e'],
+  dry:['#4e593b','#646b42','#777e4a','#92965b'],
+} as const;
+export type TreeFoliage=keyof typeof worldTreeFoliage;
+export type WorldTreeRoot=Point&{ground:number;height:number;moss:boolean};
+export function blockWorldTree(seed:number,foliage:readonly TreeFoliage[],roots:readonly WorldTreeRoot[]):BlockModel{
+  const key='world-tree:'+seed+':'+foliage.join(',')+':'+
+    roots.map(({x,y,ground,height,moss})=>[x,y,ground,height,+moss].join(',')).join(';');
+  return model(key,g=>{
+    const bark=['#554539','#604b3b','#6e5642','#7d624a'];
+    const wood=(x:number,y:number)=>bark[Math.floor(terrainHash(x,y,seed)*bark.length)%bark.length];
+    for(const {x,y,ground,height,moss} of roots){
+      g.box(x,y,ground,1,1,height,wood(x,y));
+      if(moss)g.box(x,y,ground+height-1,1,1,1,'#566a44');
     }
-    g.box(-3,-3,0,6,6,14,bark);
-    g.box(-2,-2,14,5,5,12,heart);
-    g.box(-2,-2,24,4,4,6,bark);
-    g.box(-6,-6,26,12,12,4,leaves[0]);
-    g.box(-5,-5,30,10,10,4,leaves[1]);
-    g.box(-3,-4,34,6,8,3,leaves[2]);
-    g.box(-1,-3,0,1,1,12,'#a88355');
-    // Broken stonework sits in one of the gaps between the buttress roots.
-    g.box(5,5,0,4,2,2,'#7b837a');
-    g.box(5,5,2,2,2,4,'#91988a');
-    g.box(8,5,2,1,2,2,'#8d9587');
-  },variant%4,'timber');
+    const canopyCluster=(cx:number,cy:number,cz:number,rx:number,ry:number,rz:number,
+      palette:readonly string[],salt:number)=>{
+      for(let y=Math.max(-15,Math.floor(cy-ry-1));y<=Math.min(14,Math.ceil(cy+ry+1));y++){
+        for(let x=Math.max(-15,Math.floor(cx-rx-1));x<=Math.min(14,Math.ceil(cx+rx+1));x++){
+          for(let z=Math.floor(cz-rz);z<=Math.ceil(cz+rz);z++){
+            const d=((x-cx)/rx)**2+((y-cy)/ry)**2+((z-cz)/rz)**2;
+            const grain=terrainHash(x+z*19,y-z*31,seed+salt);
+            if(d>.8+grain*.36)continue;
+            const level=Math.max(0,Math.min(3,Math.floor((z-cz)/rz*1.25+1.2+grain*.95)));
+            g.box(x,y,z,1,1,1,palette[level]);
+          }
+        }
+      }
+    };
+    const trunk=(z:number)=>{
+      const t=z/30;
+      return {x:Math.sin(t*2.6+seed%5)*t*3,y:Math.cos(t*3.4+seed%3)*t*3};
+    };
+    for(let z=-1;z<32;z++){
+      const {x:cx,y:cy}=trunk(z);
+      const r=3.6-2.75*z/32+1.55*Math.exp(-Math.max(0,z)/3);
+      for(let y=-6;y<=6;y++)for(let x=-6;x<=6;x++){
+        if(Math.hypot(x-cx,y-cy)<r+.53*terrainHash(x,y,seed))g.box(x,y,z,1,1,1,wood(x,y));
+      }
+    }
+    const central=foliage[0];
+    for(let b=0;b<9;b++){
+      const angle=b*2.39996+(seed%629)/100;
+      const dx=Math.cos(angle),dy=Math.sin(angle),type=foliage[1+b];
+      const leaves=worldTreeFoliage[type];
+      const reach=5+terrainHash(b,19,seed)*(type==='conifer'?4:7);
+      const start=13+Math.floor(terrainHash(b,28,seed)*10);
+      const end=start+5+terrainHash(b,37,seed)*7;
+      const origin=trunk(start);
+      for(let step=0;step<=18;step++){
+        const t=step/18,curve=t*(1-t)*2;
+        const x=origin.x+dx*reach*t-dy*curve,y=origin.y+dy*reach*t+dx*curve;
+        const z=start+(end-start)*Math.pow(t,1.4);
+        const r=Math.max(.9,2.15-t*1.5);
+        for(let v=Math.floor(y-r);v<=Math.ceil(y+r);v++)for(let u=Math.floor(x-r);u<=Math.ceil(x+r);u++){
+          if(u>=-15&&u<=14&&v>=-15&&v<=14&&Math.hypot(u-x,v-y)<=r)g.box(u,v,Math.floor(z),1,1,Math.ceil(r),wood(u,v));
+        }
+      }
+      const ex=origin.x+dx*reach,ey=origin.y+dy*reach;
+      const tall=type==='conifer',flat=type==='dry',droop=type==='wetland';
+      canopyCluster(ex,ey,end+2,tall?3.7:5.1,tall?3.9:4.7,tall?5.2:flat?2.7:3.9,leaves,b);
+      canopyCluster(ex-dy*2.3,ey+dx*2.3,end+3,3.1,3.4,tall?4.2:2.8,leaves,b+9);
+      if(droop)canopyCluster(ex+dx*2,ey+dy*2,end-.8,1.7,2.1,4.1,leaves,b+27);
+    }
+    const top=trunk(30),leaves=worldTreeFoliage[central];
+    canopyCluster(top.x,top.y,31,central==='conifer'?3.6:5.6,4.6,
+      central==='conifer'?7.3:4.6,leaves,31);
+    canopyCluster(top.x+2.7,top.y-2,29.5,4.2,3.8,3.6,leaves,43);
+    // A low, broken ring is visible where roots leave a gap.
+    for(const [x,y,h] of [[5,4,2],[6,4,3],[7,4,1],[8,5,1]]){
+      const root=roots.find(root=>root.x===x&&root.y===y);
+      if(!root)g.box(x,y,0,1,1,h,'#686e5d');
+    }
+  },0,'timber');
 }
