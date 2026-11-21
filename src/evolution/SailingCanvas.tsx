@@ -4,7 +4,7 @@ import {useEffect,useRef} from 'react';
 import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {ADVENTURE_TILE as TILE} from './adventureArt';
 import {ATLAS_SEA,overheadTerrainColor} from './atlasTerrain';
-import {blockSailboat,blockProp,terrainBlockProp} from './blockModels';
+import {blockSailboat,blockTidalMouth,blockProp,terrainBlockProp} from './blockModels';
 import {DESCENT_BLOCK_VIEW,paintBlockScenery} from './blockScenery';
 import type {World} from './engine';
 import {canAnimate,motionFrame,samePoint,type Motion,type Point} from './motion';
@@ -16,8 +16,9 @@ import {terrainDetailAt} from './terrainDetails';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
 import {activeVessels} from './vessels';
+import {coastTide,type TidalCave} from './tidalCaves';
 
-type Props={world:World;ship:MortalShip;landings:readonly number[];onLand:(i:number)=>void};
+type Props={world:World;ship:MortalShip;landings:readonly number[];caves:readonly TidalCave[];onLand:(i:number)=>void};
 export const SAIL_STEP_MS=112;
 
 export function SailingCanvas(props:Props){
@@ -47,7 +48,7 @@ export function SailingCanvas(props:Props){
     const observer=new ResizeObserver(resize);observer.observe(canvas);resize();
     const draw=(now:number)=>{
       frame=requestAnimationFrame(draw);
-      const view=latest.current,{world,ship,landings}=view;
+      const view=latest.current,{world,ship,landings,caves}=view;
       const next=seaPoint(world.width,ship.at);
       if(!samePoint(next,motion.to)){
         const from=motionFrame(motion,now);
@@ -96,10 +97,11 @@ export function SailingCanvas(props:Props){
         paintBlockScenery(ctx,blockSailboat(vessel.heading,true),
           {x:(x+.5)*TILE-offset.x,y:(y+.5)*TILE-offset.y},DESCENT_BLOCK_VIEW,1.47);
       }
+      const entrances=new Set(caves.map(cave=>cave.mouth));
       for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+size.y);y++){
         for(let x=Math.max(0,origin.x);x<Math.min(world.width,origin.x+size.x);x++){
           const index=y*world.width+x,biome=world.tiles[index].biome;
-          if(biome==='water'||landings.includes(index)||treeCover?.has(index))continue;
+          if(biome==='water'||landings.includes(index)||treeCover?.has(index)||entrances.has(index))continue;
           const grain=pixelTerrainHash(x,y,world.settings.seed);
           if(grain%8!==0)continue;
           const detail=terrainDetailAt(biome,x,y,world.settings.seed,world.topography?.heights[index]??75,false);
@@ -107,6 +109,14 @@ export function SailingCanvas(props:Props){
           if(kind)paintBlockScenery(ctx,blockProp(kind,detail.variant,waterSeason(world)),
             {x:(x+.5)*TILE-offset.x,y:(y+.5)*TILE-offset.y},DESCENT_BLOCK_VIEW,1.25);
         }
+      }
+      const low=coastTide(world).low;
+      for(const cave of caves){
+        const {x,y}=seaPoint(world.width,cave.mouth);
+        if(x<origin.x-1||y<origin.y-1||x>=origin.x+size.x+1||y>=origin.y+size.y+1)continue;
+        const model=blockTidalMouth(cave.stone,cave.face,cave.seed,low);
+        paintBlockScenery(ctx,model,{x:(x+.5)*TILE-offset.x,y:(y+.5)*TILE-offset.y},
+          DESCENT_BLOCK_VIEW,1.64);
       }
       if(landings.length){
         ctx.strokeStyle='#ffe5a0';ctx.lineWidth=1;

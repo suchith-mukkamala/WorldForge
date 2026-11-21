@@ -794,3 +794,9 @@
   .adventure-errand-board button { padding: 6px; font-size: 12px; }
   .adventure-errand-board footer small { flex-basis: 100%; }
 }
+
+.adventure-picture.tidal-cave-picture { background: #121d26; }
+.tidal-status p { margin: 0 3px 9px; }
+.tidal-status li p { margin-top: 8px; }
+.tidal-status li strong { color: var(--paper); }
+.sea-chart i.sea-chart-cave { margin-left: 4px; background: #8bd6e3; }

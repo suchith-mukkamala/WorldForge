@@ -62,6 +62,8 @@ import {LANDFORM_NAMES,settlementGeography,
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
 import {generateSkylands,validSkylands,type Skyland} from './skylands';
 import {worldTreeBlocksBuilding,validWorldTree,type WorldTree} from './worldTree';
+import {tidalApproach,tidalCaves,validTidalExploration,validTidalSites,
+  type TidalCave,type TidalExploration} from './tidalCaves';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export const BIOMES=['plains','forest','mountain','cave','wasteland','volcanic','water',
   'taiga','wetland','savanna'] as const;
@@ -89,7 +91,7 @@ export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
 export type MortalAppearance={skin:number;hair:number;hairStyle:number;
   outfit:MortalOutfit};
 export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number;
-  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom;ship?:MortalShip};
+  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom;ship?:MortalShip;tidal?:TidalExploration};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   appearance?:MortalAppearance;
@@ -155,6 +157,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   terrainCells?:TerrainCells;
   skylands?:Skyland[];
   worldTree?:WorldTree;
+  tidalSites?:TidalCave[];
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -314,6 +317,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
     ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
   if(geography.worldTree)world.worldTree=geography.worldTree;
+  world.tidalSites=[...tidalCaves(world)];
   if(settings.livingBiomes)world.woodland=initialWoodland(world);
   if(settings.climateEcology)world.wildlife=seedWildlife(world);
   if(settings.floatingIslands)world.skylands=generateSkylands(world);
@@ -733,7 +737,8 @@ export function stepWorld(previous:World):World{
     const info=SPECIES_INFO[a.species];
     if(biomeSuitability(a.ancestry,world.tiles[offset(world.width,a.x,a.y)].biome)<.55)
       continue;
-    if(settlementCoverage[offset(world.width,a.x,a.y)]||worldTreeBlocksBuilding(world.worldTree,a.x,a.y))continue;
+    if(settlementCoverage[offset(world.width,a.x,a.y)]||worldTreeBlocksBuilding(world.worldTree,a.x,a.y)||
+      tidalApproach(world,offset(world.width,a.x,a.y)))continue;
     const nearby:Agent[]=[];
     for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
       const x=a.x+dx,y=a.y+dy;
@@ -749,7 +754,7 @@ export function stepWorld(previous:World):World{
         const x=a.x+dx,y=a.y+dy;
         if((!dx&&!dy)||!within(world.width,world.height,x,y))continue;
         const index=offset(world.width,x,y),tile=world.tiles[index];
-        if(settlementCoverage[index]||tile.biome==='water'||worldTreeBlocksBuilding(world.worldTree,x,y)||
+        if(settlementCoverage[index]||tile.biome==='water'||worldTreeBlocksBuilding(world.worldTree,x,y)||tidalApproach(world,index)||
           biomeSuitability(a.ancestry,tile.biome)<.55)continue;
         const score=settlementGeography(world,index).score-Math.hypot(dx,dy)*.10;
         if(score<=best||nearby.filter(resident=>distance(resident,{x,y})<=4).length<4)continue;
@@ -933,6 +938,7 @@ export function isWorld(value:unknown):value is World{
     !Array.isArray(w.history)||w.history.length>400||w.history.length===0)return false;
   const width=w.width,height=w.height,year=w.year as number;
   if(w.worldTree!==undefined&&!validWorldTree(w.worldTree,width,height))return false;
+  if(w.tidalSites!==undefined&&!validTidalSites(w.tidalSites,width,height))return false;
   if(w.skylands!==undefined&&!validSkylands(w.skylands,width,height))return false;
   if(w.topography!==undefined&&!validTopography(w.topography,width,height))
     return false;
@@ -1107,7 +1113,9 @@ export function isWorld(value:unknown):value is World{
       d.journal!==undefined&&!validMortalJournal(d.journal,year*365+(w.dayOfYear??0))||
       d.surveys!==undefined&&!validSiteSurveys(d.surveys,year)||
       d.ship!==undefined&&(!validMortalShip(d.ship,width,height)||d.ship.underway&&!!d.interior)||
-      d.interior!==undefined&&!validMortalRoom(d.interior))
+      d.interior!==undefined&&!validMortalRoom(d.interior)||
+      d.tidal!==undefined&&(!validTidalExploration(d.tidal,width*height)||
+        !!d.tidal.inside&&(!!d.interior||!!d.ship?.underway)))
       return false;
   }
   // Optional because v0.2 JSON saves had no diagnostics. New saves are

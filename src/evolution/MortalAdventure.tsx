@@ -7,7 +7,7 @@ import {AdventureDirections} from './AdventureDirections';
 import {MortalHUD,mortalName} from './MortalHUD';
 import {MortalInterior} from './MortalInterior';
 import {ErrandTracker,TownNoticeBoard} from './TownErrands';
-import {FieldJournal} from './FieldJournal';
+import {CoastalJournal,FieldJournal} from './FieldJournal';
 import {PixelPortrait} from './PixelPortrait';
 import {adventureDistance,adventureMapFor,adventureRegion,LANDSCAPE_NAME,
   useAdventureGate,walkAdventure,type AdventureGate} from './adventureMap';
@@ -34,6 +34,9 @@ import {directionBetween,samePoint as equal,type Facing,type Point} from './moti
 import {launchShip,recoverShip,shipMooring} from './mortalSailing';
 import {MortalSailing} from './MortalSailing';
 import {seaPoint} from './shipSave';
+import {MortalCave} from './MortalCave';
+import {enterTideCave,leaveTideCave,occupiedTidalCave,usableTidalCave,waitForCaveTide} from './mortalTidalCaves';
+import {coastTide,tidalCaves,type TidalCave} from './tidalCaves';
 
 const buildingKey=(site:MortalBuilding)=>site.settlementId+':'+site.building.id;
 const buildingRef=(site:MortalBuilding):RoomReference=>({
@@ -54,11 +57,15 @@ type AdventureProps={
 };
 
 export function MortalAdventure(props:AdventureProps){
-  const {world,onChange}=props,ship=world.descent?.ship;
+  const {world,onChange}=props,ship=world.descent?.ship,visit=occupiedTidalCave(world);
   useEffect(()=>{
+    if(world.descent?.tidal?.inside&&!visit){
+      onChange(leaveTideCave(world).world);return;
+    }
     const recovered=recoverShip(world);
     if(recovered!==world)onChange(recovered);
-  },[world,onChange]);
+  },[world,onChange,!!visit]);
+  if(visit)return <MortalCave key={visit.cave.mouth} {...props} visit={visit}/>;
   return ship?.underway?<MortalSailing {...props} ship={ship}/>:<MortalOnFoot {...props}/>;
 }
 
@@ -76,8 +83,14 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   const [errandMessage,setErrandMessage]=useState('');
   const [landmarkPin,setLandmarkPin]=useState<number|null>(null);
   const [markRiver,setMarkRiver]=useState(false);
+  const [cavePin,setCavePin]=useState<number|null>(null);
   const [markedBerth,setMarkedBerth]=useState(false);
   const map=adventureMapFor(world),region=adventureRegion(world,map,actor);
+  const caves=tidalCaves(world).filter(cave=>region.area.has(cave.mouth)&&usableTidalCave(world,map,cave));
+  const distanceToCave=(cave:TidalCave)=>adventureDistance(actor,seaPoint(world.width,cave.mouth));
+  const cave=caves.find(c=>c.mouth===cavePin)??[...caves].sort((a,b)=>distanceToCave(a)-distanceToCave(b))[0];
+  const cavePoint=cave&&seaPoint(world.width,cave.mouth),caveNear=!!cave&&distanceToCave(cave)<=1;
+  const tide=coastTide(world);
   const scene=adventurePlaceKey(region.place);
   const interiorSite=occupiedMortalRoom(world);
   const interior=interiorSite?world.descent?.interior:undefined;
@@ -280,6 +293,17 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     if(result.moved)commit(result.world);
     else setMessage(result.reason??'The berth is unavailable.');
   };
+  const exploreCave=(target:TidalCave)=>{
+    const before=current.current;
+    const low=coastTide(before).low;
+    const result=low?enterTideCave(before,target.mouth):waitForCaveTide(before,target.mouth);
+    if(result.moved){
+      clear();commit(result.world);
+      if(!low)setMessage('The tide has fallen. The sand below the arch is exposed.');
+    }else setMessage(result.reason??'Approach the ledge.');
+  };
+  const caveAction:Interaction|undefined=caveNear&&cave?
+    {label:tide.low?'Enter sea cave':'Wait for low tide',point:cavePoint,run:()=>exploreCave(cave)}:undefined;
   let actions:Interaction[];
   if(interior&&interiorSite){
     const position=interior.position;
@@ -301,6 +325,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     actions=[
       ...(berthDistance<=1?[{label:boatLabel,point:berthPoint,run:boardShip}]:[]),
       ...(workAction?[workAction]:[]),
+      ...(caveAction?[caveAction]:[]),
       ...(region.place.kind==='wild'?[...surveyActions,...exits]:[...exits,...surveyActions]),
       ...buildings.filter(site=>site.distance===0).map(buildingAction),
       ...(boardNear?[{label:'Read town board',run:openBoard,point:board}]:[]),
@@ -369,6 +394,12 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     if(showBoard)return;
     const index=point.y*world.width+point.x;
     if(berth&&(index===berth.shore||index===berth.water)){boardShip();return;}
+    const mouth=caves.find(c=>c.mouth===index);
+    if(mouth){
+      if(tide.low&&distanceToCave(mouth)<=1)exploreCave(mouth);
+      else{setCavePin(mouth.mouth);if(distanceToCave(mouth)<=1)setMessage('Wait until the tide exposes the sand.');}
+      return;
+    }
     if(workAction?.point&&equal(workAction.point,point)){
       workAction.run();return;
     }
@@ -465,10 +496,11 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
             onExit={exitInterior}>{movementControls}</MortalInterior>:<>
             <div className="adventure-picture" key={scene}>
               <AdventureCanvas world={world} map={map} region={region} actor={actor} facing={facing}
-                board={board} landmarks={landmarks} gather={objective?.action==='gather'?goalPoint:undefined}
+                board={board} landmarks={landmarks} caves={caves} gather={objective?.action==='gather'?goalPoint:undefined}
                 focused={focusedBuilding?.building??markedDoor?.building}
                 marked={focusedBuilding?.entrance??focusedPerson??markedDoor?.entrance??
                   (markedBerth?berthPoint:undefined)??(boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
+                  (cavePin!==null&&cave?.mouth===cavePin?cavePoint:undefined)??
                   goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
                 onSelect={selectTile}/>
               {showBoard?<TownNoticeBoard world={world} journal={journal}
@@ -508,6 +540,21 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
             <h2>Sailboat mooring</h2>
             <p>{adventureDistance(actor,seaPoint(world.width,mooring.shore))} tiles {directionTo(actor,seaPoint(world.width,mooring.shore))}</p>
           </section>}
+          {!interior&&cave&&cavePoint&&<section className="adventure-exits tidal-status" aria-label="Sea cave">
+            <h2>{cave.name}</h2>
+            <p>{tide.low?'Low tide · Sand exposed':'High tide · Low tide in '+tide.untilLow+
+              (tide.untilLow===1?' day':' days')}</p>
+            {(!caveNear||primary!==caveAction||!showAction)&&<button onClick={()=>{
+              if(caveNear)exploreCave(cave);
+              else{clear();setCavePin(value=>value===cave.mouth?null:cave.mouth);}
+            }} aria-pressed={caveNear?undefined:cavePin===cave.mouth}>
+              <span className="adventure-direction" aria-hidden="true">⌂</span>
+              <span><strong>{caveNear?caveAction?.label:'Mark cave entrance'}</strong>
+                {!caveNear&&<small>{distanceToCave(cave)} tiles {directionTo(actor,cavePoint)}</small>}</span>
+              <span aria-hidden="true">›</span>
+            </button>}
+          </section>}
+          {!interior&&<CoastalJournal world={world}/>}
           {(!interior||activeErrand)&&<ErrandTracker world={world} journal={journal}
             objective={objective}
             readyAction={!interior&&!showBoard&&workAction&&(!showAction||primary!==workAction)?

@@ -7,6 +7,7 @@ import type {TreeKind} from './biomeTrees';
 import type {VisualSeason} from './sceneAtmosphere';
 import type {RegionalBuildingStyle} from './riverArchitecture';
 import type {StructureSite} from './structureGround';
+import type {CaveStone} from './tidalCaves';
 
 export const BLOCK_FACES=[
   {dx:0,dy:0,dz:1,quad:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],light:1.18},
@@ -678,5 +679,43 @@ export function blockLandmark(kind:AncientKind,visited=false,site?:StructureSite
       if(archive)grid.box(3,-3,7,2,2,4,cap);
     }
     if(visited)grid.box(-1,2,1,2,1,2,'#b9a875');
+  });
+}
+
+export function blockTidalMouth(stone:CaveStone,face:Facing,seed:number,low:boolean):BlockModel{
+  const variant=seed%12,ledge=face==='west'?-1:face==='east'?1:0;
+  const [base,strata,edge,moss]=stone==='basalt'?['#4f5360','#3b404f','#72717a','#647567']:
+    stone==='reef'?['#8c8e75','#727b6b','#b8b697','#72866a']:
+      ['#91877a','#726b68','#b5a396','#778467'];
+  return model(['tidal-mouth',stone,face,variant,+low].join(':'),g=>{
+    // Face the fixed overhead camera, using the seaward side for the talus.
+    g.box(-4,-3,0,8,6,1,strata);
+    g.box(-5,-3,1,10,1,8,'#1b2832');
+    for(let x=-7;x<=6;x++){
+      const arch=Math.max(0,Math.floor(9.4-((x+.5)/5.6)**2*5));
+      const top=arch+2+(variant+x+37)%3;
+      const rim=Math.abs(x+.5)>4.4;
+      const front=1+(rim?(variant+x+33)%3:0);
+      for(let y=-4;y<=front;y++){
+        const peak=top-Math.floor(Math.abs(y+1)*.8);
+        for(let z=rim?0:arch;z<=peak;z++){
+          if((x+y+variant+21)%7===0&&z===peak&&Math.abs(x)>3)continue;
+          const tone=z===peak&&(x+y+variant+25)%5>1?edge:(z+y+9)%4===0?strata:base;
+          g.box(x,y,z,1,1,1,tone);
+        }
+      }
+    }
+    for(const [x,y,z] of [[-6,2,3],[5,1,5],[2,-1,10],[-4,-3,7]]){
+      if((x+y+variant+20)%3!==0)g.box(x,y,z,2,2,1,moss);
+    }
+    const sill=low?(stone==='basalt'?'#8a806b':'#c0aa83'):'#4f9398';
+    g.box(-4,2,0,8,3,1,sill);
+    g.box(-3+ledge,5,0,6,1,1,low?'#9a8f76':'#377b89');
+    g.box(-7+ledge,2,0,2,3,1,strata);
+    g.box(5+ledge,2,0,2,2,2,base);
+    if(!low){
+      g.box(-4,3,1,8,1,1,'#88b4ae');
+      g.box(-2,5,1,4,1,1,'#599ca3');
+    }
   });
 }

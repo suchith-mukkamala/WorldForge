@@ -4,6 +4,7 @@ import {mortalTileCapacity,walkMortal,type MortalStep} from './mortalGameplay';
 import {directionBetween,type Point} from './motion';
 import {MAX_LANDING_RISE,seaNeighbors,seaPoint,type MortalShip,type Shipyard} from './shipSave';
 import {topographyForWorld} from './topography';
+import {cavesInSight,chartCaves} from './mortalTidalCaves';
 
 const at=(w:World,p:Point)=>p.y*w.width+p.x;
 const player=(w:World)=>w.descent?.mode==='mortal'&&w.agents.find(a=>a.id===w.descent?.agentId);
@@ -21,7 +22,7 @@ export function shipMooring(world:World,map:AdventureMap):{shore:number;water:nu
 
 export function launchShip(world:World,berth:Pick<Shipyard,'shore'|'water'>):MortalStep{
   const actor=player(world),descent=world.descent;
-  if(!actor||!descent||descent.interior||descent.ship?.underway)
+  if(!actor||!descent||descent.interior||descent.tidal?.inside||descent.ship?.underway)
     return fail(world,'Reach the shipyard on foot to board.');
   if(world.shipments?.some(shipment=>shipment.carrierId===actor.id))
     return fail(world,'Deliver your merchant cargo before taking out a sailboat.');
@@ -70,12 +71,15 @@ export function landShip(world:World,shore:number):MortalStep{
   const point=seaPoint(world.width,shore);
   const occupied=world.agents.filter(a=>a.id!==actor.id&&a.x===point.x&&a.y===point.y).length;
   if(occupied>=mortalTileCapacity(world,point.x,point.y))return fail(world,'This landing is crowded. Try another spot.');
+  const caves=cavesInSight(world,map);
   const town=map.towns[map.owners[shore]-1];
-  const place=town?.area.has(shore)?town.place:{kind:'wild' as const,...point,expedition:true as const};
+  const place=!caves.some(cave=>cave.shore===shore)&&town?.area.has(shore)?
+    town.place:{kind:'wild' as const,...point,expedition:true as const};
+  const charted=chartCaves(world,caves);
   const landfalls=ship.landfalls.includes(shore)?ship.landfalls:[...ship.landfalls,shore].slice(-128);
-  return {world:{...world,agents:world.agents.map(a=>a.id===actor.id?{...a,...point,
+  return {world:{...charted,agents:world.agents.map(a=>a.id===actor.id?{...a,...point,
     cognition:a.cognition&&{...a.cognition,route:undefined,trail:[shore]}}:a),
-  descent:{...descent,place,ship:{...ship,shore,underway:false,landfalls}}},moved:true};
+  descent:{...charted.descent!,place,ship:{...ship,shore,underway:false,landfalls}}},moved:true};
 }
 
 /** God-mode terrain edits can dry out a saved passage while the mortal is

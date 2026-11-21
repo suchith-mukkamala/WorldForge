@@ -1,3 +1,4 @@
+import {tidalApproach} from './tidalCaves';
 import {worldTreeBlocksBuilding} from './worldTree';
 /** WorldForge v1.3: knowledge belongs to mortals, not to a global tech tree.
  * Discovery needs experience or an explored site. Teaching needs contact;
@@ -70,7 +71,7 @@ export function knowledgeOf(s:Pick<Settlement,'archives'>):Topic[]{
 
 /** Stable site placement consumes no main-world RNG, so new content won't
  * silently reroll old personalities, genetics, terrain or family history. */
-export function generateAncientSites(w:Pick<World,'settings'|'width'|'height'|'tiles'|'worldTree'>):AncientSite[]{
+export function generateAncientSites(w:Pick<World,'settings'|'width'|'height'|'tiles'|'worldTree'|'tidalSites'>):AncientSite[]{
   let seed=(w.settings.seed^0x516bf21d)>>>0;
   const rand=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;
     return (seed>>>0)/4294967296;};
@@ -86,7 +87,7 @@ export function generateAncientSites(w:Pick<World,'settings'|'width'|'height'|'t
       let best=-Infinity,point:{x:number;y:number}|null=null;
       for(let y=3;y<w.height-3;y++)for(let x=3;x<w.width-3;x++){
         const biome=w.tiles[y*w.width+x].biome,rank=(habitats as readonly string[]).indexOf(biome);
-        if(rank<0||worldTreeBlocksBuilding(w.worldTree,x,y)||sites.some(s=>distance(s,{x,y})<9))continue;
+        if(rank<0||tidalApproach(w,y*w.width+x)||worldTreeBlocksBuilding(w.worldTree,x,y)||sites.some(s=>distance(s,{x,y})<9))continue;
         const score=terrainHash(x,y,w.settings.seed+10837)-rank;
         if(score>best){best=score;point={x,y};}
       }
@@ -99,7 +100,7 @@ export function generateAncientSites(w:Pick<World,'settings'|'width'|'height'|'t
     const x=3+Math.floor(rand()*(w.width-6));
     const y=3+Math.floor(rand()*(w.height-6));
     const biome=w.tiles[y*w.width+x].biome;
-    if(biome==='water'||worldTreeBlocksBuilding(w.worldTree,x,y)||sites.some(p=>distance(p,{x,y})<9))continue;
+    if(biome==='water'||tidalApproach(w,y*w.width+x)||worldTreeBlocksBuilding(w.worldTree,x,y)||sites.some(p=>distance(p,{x,y})<9))continue;
     const kind=LEGACY_ANCIENT_KINDS[Math.floor(rand()*LEGACY_ANCIENT_KINDS.length)];
     const topic=TOPICS[Math.floor(rand()*TOPICS.length)];
     sites.push({id:sites.length+1,kind,x,y,topic,

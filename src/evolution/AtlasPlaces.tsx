@@ -7,10 +7,11 @@ import type {Point} from './motion';
 import {atlasLabelSides} from './atlasMap';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {skylandName} from './skylands';
+import {chartedTidalCaves} from './tidalCaves';
 
-export function AtlasPlacePicker({world,onTown,onSite,onSkyland}:{
+export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave}:{
   world:World;onTown:(id:number)=>void;onSite:(x:number,y:number)=>void;
-  onSkyland?:(id:number)=>void;
+  onSkyland?:(id:number)=>void;onCave:(mouth:number)=>void;
 }){
   const [open,setOpen]=useState(false);
   const [query,setQuery]=useState('');
@@ -43,12 +44,15 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland}:{
   const sites=open?(world.ancientSites??[]).filter(site=>visibleAtlasSite(world,site)&&matches(ancientSiteName(site))): [];
   const skylands=open&&onSkyland?(world.skylands??[]).filter(site=>
     matches(skylandName(site)+' floating islands')):[];
+  const caves=open?chartedTidalCaves(world).filter(({cave})=>matches(cave.name+' sea caves'))
+    .sort((a,b)=>a.cave.name.localeCompare(b.cave.name)):[];
   const tree=open&&matches('World Tree root grove')?world.worldTree:undefined;
   const chooseTree=()=>{if(tree){close();onSite(tree.x,tree.y);}};
   const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
   const chooseTown=(id:number)=>{close();onTown(id);};
   const chooseSite=(site:AncientSite)=>{close();onSite(site.x,site.y);};
   const chooseSkyland=(id:number)=>{close();onSkyland?.(id);};
+  const chooseCave=(mouth:number)=>{close();onCave(mouth);};
   return <div ref={picker} className="atlas-place-picker" onBlur={blur} onKeyDown={keyDown}>
     <button ref={trigger} type="button" className="atlas-places-toggle"
       aria-expanded={open} aria-controls={open?panelId:undefined}
@@ -62,6 +66,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland}:{
           else if(skylands.length)chooseSkyland(skylands[0].id);
           else if(tree)chooseTree();
           else if(sites.length)chooseSite(sites[0]);
+          else if(caves.length)chooseCave(caves[0].cave.mouth);
         }}/>
       <div className="atlas-places-results">
         {towns.length>0&&<><h3>Settlements</h3><ul>
@@ -69,6 +74,14 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland}:{
             <button type="button" onClick={()=>chooseTown(town.id)}>
               <i style={{background:SPECIES_INFO[town.species].color}} aria-hidden="true"/>
               <span>{town.name}<small>{SPECIES_INFO[town.species].name} · {settlementStage(town)}</small></span>
+            </button>
+          </li>)}
+        </ul></>}
+        {caves.length>0&&<><h3>Sea caves</h3><ul>
+          {caves.map(({cave,find})=><li key={cave.mouth}>
+            <button type="button" onClick={()=>chooseCave(cave.mouth)}>
+              <span aria-hidden="true">≈</span><span>{cave.name}
+                <small>{find?'Explored':'Charted'}</small></span>
             </button>
           </li>)}
         </ul></>}
@@ -91,7 +104,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland}:{
             </button>
           </li>)}
         </ul></>}
-        {!towns.length&&!sites.length&&!skylands.length&&!tree&&filter&&<p>No places match your search.</p>}
+        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!tree&&filter&&<p>No places match your search.</p>}
       </div>
     </div>}
   </div>;

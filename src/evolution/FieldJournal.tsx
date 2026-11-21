@@ -1,3 +1,4 @@
+import {CAVE_FINDS,tidalCaveAt} from './tidalCaves';
 import type {World} from './engine';
 import {ancientSiteName,TOPIC_INFO,type AncientSite} from './knowledge';
 
@@ -27,5 +28,19 @@ export function FieldJournal({world,site,directions,near,marked,onExplore}:{
         </li>;
       })}</ul>
     </details>}
+  </section>;
+}
+
+export function CoastalJournal({world}:{world:World}){
+  const entries=world.descent?.tidal?.chart.filter(entry=>entry.find)??[];
+  if(!entries.length)return null;
+  return <section className="adventure-errand-tracker adventure-field-journal" aria-label="Coastal journal">
+    <details className="adventure-errand-history">
+      <summary>Coastal journal · {entries.length}</summary>
+      <ul>{[...entries].reverse().map(entry=><li key={entry.mouth}>
+        <span>{tidalCaveAt(world,entry.mouth)?.name??'Sea cave'}
+          <small>{CAVE_FINDS[entry.find!].name}</small></span>
+      </li>)}</ul>
+    </details>
   </section>;
 }
