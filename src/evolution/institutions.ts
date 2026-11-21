@@ -20,8 +20,8 @@ const MAX_GUILDS=54*6;
 const near=(a:{x:number;y:number},b:{x:number;y:number})=>
   Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
 const round=(n:number)=>Math.round(n*100)/100;
-const skillFor=(job:Job)=>job==='farmer'||job==='woodcutter'?'foraging':
-  job==='trader'?'diplomacy':'craft';
+const skillFor=(job:Job)=>job==='farmer'||job==='woodcutter'||job==='hunter'||
+  job==='fisher'||job==='herder'?'foraging':job==='trader'?'diplomacy':'craft';
 const score=(a:Agent,job:Job)=>
   (a.development?.skills[skillFor(job)]??0)+
   (a.development?.skills.diplomacy??0)*.4+

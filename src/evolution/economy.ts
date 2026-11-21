@@ -13,12 +13,18 @@ import {findSeaRoute,hasHarbor,rescueSailor} from './shipping';
 import {accordBetween} from './institutions';
 import {addResident,removeResident,residentIndex,tileCapacity} from './density';
 import {indexAgentsByTile,nearbyAgents} from './nearbyAgents';
+import {livelihoodOpenings} from './livelihood';
+import {customNear} from './customs';
+import {temperamentOf} from './temperament';
 
-export const JOBS=['farmer','woodcutter','miner','builder','artisan','trader'] as const;
+export const JOBS=['farmer','woodcutter','miner','builder','artisan','trader',
+  'hunter','fisher','herder'] as const;
 export type Job=typeof JOBS[number];
 export const JOB_LABELS:Record<Job,string>={farmer:'Farmer',woodcutter:'Forester',
-  miner:'Miner',builder:'Builder',artisan:'Artisan',trader:'Trader'};
-export const GOODS=['food','wood','stone','clay','coal','copper','iron','gold','tools'] as const;
+  miner:'Miner',builder:'Builder',artisan:'Artisan',trader:'Trader',
+  hunter:'Hunter',fisher:'Fisher',herder:'Herder'};
+export const GOODS=['food','wood','stone','clay','coal','copper','iron','gold','tools',
+  'meat','fish','hides','wool'] as const;
 export type Good=typeof GOODS[number];
 export type WorkAssignment={job:Job;settlementId:number;tradeId?:number};
 export const SPECIALTIES=['agriculture','forestry','mining','industry','commerce'] as const;
@@ -30,6 +36,8 @@ export const SPECIALTY_LABELS:Record<Specialty,string>={
 export type TradeRelation={a:number;b:number;completed:number;failures:number;
   trust:number;lastYear:number;disputeUntil?:number};
 export type SettlementEconomy={food:number;tools:number;coins:number;
+  /** Animal goods. Missing on older saves until migration fills 0. */
+  meat?:number;fish?:number;hides?:number;wool?:number;
   jobs:Record<Job,number>;prices:Record<Good,number>;shortages:Good[];
   produced:number;consumed:number;imports:number;exports:number;
   specialty?:Specialty;seaExports?:number};
@@ -42,12 +50,16 @@ const rounded=(v:number)=>Math.round(v*100)/100;
 const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const distance=(a:{x:number;y:number},b:{x:number;y:number})=>
   Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
+const PROVISIONS=['meat','fish','hides','wool'] as const;
+const isProvision=(good:Good):good is typeof PROVISIONS[number]=>
+  (PROVISIONS as readonly string[]).includes(good);
 const emptyJobs=():Record<Job,number>=>({farmer:0,woodcutter:0,miner:0,
-  builder:0,artisan:0,trader:0});
+  builder:0,artisan:0,trader:0,hunter:0,fisher:0,herder:0});
 const prices=():Record<Good,number>=>({food:1,wood:1,stone:1,clay:1,
-  coal:1,copper:1,iron:1,gold:1,tools:1});
+  coal:1,copper:1,iron:1,gold:1,tools:1,meat:1,fish:1,hides:1,wool:1});
 export function createEconomy():SettlementEconomy{
-  return {food:18,tools:0,coins:70,jobs:emptyJobs(),prices:prices(),
+  return {food:18,tools:0,coins:70,meat:0,fish:0,hides:0,wool:0,
+    jobs:emptyJobs(),prices:prices(),
     shortages:[],produced:0,consumed:0,imports:0,exports:0,seaExports:0};
 }
 export function cloneEconomy(e:SettlementEconomy):SettlementEconomy{
@@ -62,14 +74,14 @@ export function prepareEconomy(w:World):void{
 /** The old materials inventory is the same stock used by builders and traders. */
 export function stockOf(s:Settlement,good:Good):number{
   const i=s.infrastructure;
-  if(good==='food'||good==='tools')return s.economy?.[good]??0;
+  if(good==='food'||good==='tools'||isProvision(good))return s.economy?.[good]??0;
   if(!i)return 0;
   if((MATERIALS as readonly string[]).includes(good))
     return i.stock[good as keyof typeof i.stock];
   return i.oreStock?.[good as keyof NonNullable<typeof i.oreStock>]??0;
 }
 function stockLimit(good:Good):number{
-  return good==='food'?360:good==='tools'?80:
+  return good==='food'?360:good==='tools'?80:isProvision(good)?120:
     (MATERIALS as readonly string[]).includes(good)?500:140;
 }
 function capacity(s:Settlement,good:Good):number{
@@ -78,7 +90,7 @@ function capacity(s:Settlement,good:Good):number{
 }
 function setStock(s:Settlement,good:Good,amount:number):void{
   const value=rounded(clamp(amount,0,capacity(s,good)));
-  if(good==='food'||good==='tools'){
+  if(good==='food'||good==='tools'||isProvision(good)){
     s.economy![good]=value;return;
   }
   const i=s.infrastructure!;
@@ -93,6 +105,12 @@ const targetStock=(s:Settlement,g:Good):number=>{
   if(g==='stone')return 29;
   if(g==='clay')return 24;
   if(g==='iron')return 11;
+  if(g==='meat'||g==='fish'||g==='hides'||g==='wool'){
+    const jobs=s.economy?.jobs;
+    const working=g==='fish'?(jobs?.fisher??0)>0:g==='meat'?(jobs?.hunter??0)>0:
+      ((jobs?.hunter??0)+(jobs?.herder??0))>0;
+    return working||stockOf(s,g)>0?(g==='hides'||g==='wool'?3:4):0;
+  }
   return g==='gold'?4:8;
 };
 function openProjects(s:Settlement):number{
@@ -159,12 +177,21 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
     artisan:buildings(s,'workshop')*2,
     trader:Math.min(4,Math.ceil(adults.length/8),
       2+buildings(s,'market')*2+buildings(s,'dock')),
+    hunter:0,fisher:0,herder:0,
   };
+  const wild=livelihoodOpenings(w,s);
+  caps.hunter=Math.min(adults.length,wild.hunter);
+  caps.fisher=Math.min(adults.length,wild.fisher);
+  caps.herder=Math.min(adults.length,wild.herder);
+  const custom=customNear(w,s.x,s.y)?.custom;
   const priorities:Record<Job,number>={
     farmer:scarce?17:10,builder:projects?16:publicWorks?12:0,
     woodcutter:stockOf(s,'wood')<18?15:8,
     miner:stockOf(s,'stone')<17?14:7,
     artisan:stockOf(s,'tools')<3?13:8,trader:5+buildings(s,'dock')*2,
+    hunter:(scarce?11:7.5)+(custom==='road'?2.5:0),
+    fisher:scarce?10.5:7,
+    herder:6.5+(custom==='hearth'?2.5:0),
   };
   if(e.specialty==='agriculture')priorities.farmer+=1.5;
   if(e.specialty==='forestry')priorities.woodcutter+=1.5;
@@ -184,6 +211,7 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
     if(!caps[job])continue;
     const ranked=adults.map((a,order)=>{
       const d=a.development,skill=d?.skills;
+      const temper=temperamentOf(w.settings.seed,a);
       const bonus={farmer:(skill?.foraging??0)*.07+(d?.career==='forager'?9:0)+
           (knows(a,'agriculture')?8:0),
         woodcutter:(skill?.foraging??0)*.055+(d?.career==='forager'?7:0),
@@ -196,6 +224,12 @@ function allocateJobs(w:World,s:Settlement,residents:Agent[],travelling:Set<numb
           (knows(a,'metallurgy')?8:0),
         trader:(skill?.diplomacy??0)*.09+(d?.career==='trader'?16:0)+
           (knows(a,'navigation')?5:0),
+        hunter:(skill?.foraging??0)*.06+(d?.career==='hunter'?12:d?.career==='scout'?3:0)+
+          temper.openness*.025+(custom==='road'?5:0),
+        fisher:(skill?.foraging??0)*.06+(d?.career==='fisher'?12:0)+
+          temper.openness*.02,
+        herder:(skill?.care??0)*.06+(d?.career==='herder'?12:d?.career==='forager'?2:0)+
+          temper.steadiness*.03+temper.warmth*.012+(custom==='hearth'?5:0),
       }[job];
       const score=bonus+a.energy*.03+(d?.values.community??50)*.008+
         ((a.id*17+w.year*7)%13)*.001;
@@ -443,8 +477,10 @@ function updatePrices(s:Settlement):void{
   e.shortages=[];
   for(const good of GOODS){
     const desired=targetStock(s,good),onHand=stockOf(s,good);
+    // Towns that do not hunt, fish or herd are not short of meat or wool.
+    if(desired<=0&&onHand<=0){e.prices[good]=1;continue;}
     if(onHand<desired*.45)e.shortages.push(good);
-    e.prices[good]=rounded(clamp(.75+desired/(onHand+desired*.35),.5,4));
+    e.prices[good]=rounded(clamp(.75+desired/(onHand+Math.max(desired,1)*.35),.5,4));
   }
 }
 
@@ -461,7 +497,7 @@ export function exchangeSettlementStock(s:Settlement,good:Good,
     treasury<0||treasury>10000||!Number.isFinite(amount)||
     amount<0||amount>capacity(s,good))return null;
   const next={...s,economy:{...cloneEconomy(s.economy),coins:rounded(treasury)}};
-  if(good!=='food'&&good!=='tools'){
+  if(good!=='food'&&good!=='tools'&&!isProvision(good)){
     const infrastructure=s.infrastructure;
     if(!infrastructure)return null;
     next.infrastructure={...infrastructure,stock:{...infrastructure.stock},
@@ -664,6 +700,10 @@ export function validEconomy(w:World):boolean{
     if(!Number.isFinite(e.food)||e.food<0||e.food>760||
       !Number.isFinite(e.tools)||e.tools<0||e.tools>80||
       !Number.isFinite(e.coins)||e.coins<0||e.coins>10000||
+      (['meat','fish','hides','wool'] as const).some(good=>{
+        const amount=e[good];
+        return amount!==undefined&&(!Number.isFinite(amount)||amount<0||amount>120);
+      })||
       !JOBS.every(k=>Number.isInteger(e.jobs[k])&&e.jobs[k]>=0&&
         e.jobs[k]<=w.agents.length)||
       !GOODS.every(k=>Number.isFinite(e.prices[k])&&e.prices[k]>=.5&&

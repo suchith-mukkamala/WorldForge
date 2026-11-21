@@ -31,8 +31,9 @@ function activeCommunity(seed=44){
 }
 
 describe('Evolution Lab v0.7 — living settlements and construction',()=>{
-  it('tracks eleven building types, material costs and four distinct architectures',()=>{
-    expect(BUILDING_TYPES).toHaveLength(11);
+  it('tracks twelve building types, material costs and four distinct architectures',()=>{
+    expect(BUILDING_TYPES).toHaveLength(12);
+    expect(BUILDING_TYPES).toContain('pasture');
     expect(BUILDING_TYPES).toContain('market');
     expect(BUILDING_TYPES).toContain('dock');
     expect(BUILDING_TYPES).toContain('granary');

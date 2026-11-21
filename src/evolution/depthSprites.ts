@@ -30,7 +30,7 @@ export function depthSceneryDensity(zoom:number,size:{width:number;height:number
  * position, save format, or the world's actual construction rules. */
 export const buildingVisualScale=(type:BuildingType):number=>
   type==='house'||type==='shelter' ? .59 :
-  type==='well' ? .68 : type==='farm' ? .72 :
+  type==='well' ? .68 : type==='farm'||type==='pasture' ? .72 :
   type==='communal' ? .82 : .76;
 export type PersonSpriteCache=Map<string,HTMLCanvasElement>;
 // Characters have a fixed footprint in world coordinates. Zoom magnifies the

@@ -167,8 +167,9 @@ export function advanceWeeklyLife(world:World,day:number):World{
     if(activity==='rest')a.energy=round(clamp(a.energy+.25));
     if(activity==='study'||activity==='craft'||activity==='work'){
       const skill=activity==='study'?'knowledge':activity==='craft'?'craft':
-        a.work?.job==='farmer'?'foraging':a.work?.job==='builder'?'craft':
-        a.work?.job==='woodcutter'?'foraging':'diplomacy';
+        a.work?.job==='farmer'||a.work?.job==='hunter'||a.work?.job==='fisher'||
+        a.work?.job==='herder'||a.work?.job==='woodcutter'?'foraging':
+        a.work?.job==='builder'?'craft':'diplomacy';
       if(a.development){a.development=cloneDevelopment(a.development);
         const specialty=skill==='knowledge'?'learning':skill==='craft'?'craft':
           skill==='foraging'?'foraging':'social';

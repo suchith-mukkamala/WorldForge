@@ -290,9 +290,13 @@ export function planMind(w:World,a:Agent,occupied:Map<number,number|number[]>,
       scout:'Surveying routes and landmarks.',artisan:'Practicing a craft.',
       scholar:'Studying and sharing knowledge.',healer:'Learning to help the sick or injured.',
       guardian:'Watching over the local community.',
-      trader:'Seeking exchange and cooperation with neighbors.'
+      trader:'Seeking exchange and cooperation with neighbors.',
+      hunter:'Following herds for meat and hides.',
+      fisher:'Working the nearby water for fish.',
+      herder:'Tending livestock in the pasture.',
     }[a.development.career];
-    if(a.development.career==='forager')target=bestHabitat(w,a,'forage',suitability);
+    if(a.development.career==='forager'||a.development.career==='hunter'||
+      a.development.career==='herder')target=bestHabitat(w,a,'forage',suitability);
     else{
       const place=w.settlements.filter(s=>distance(a,s)<=15)
         .sort((x,y)=>distance(a,x)-distance(a,y))[0];

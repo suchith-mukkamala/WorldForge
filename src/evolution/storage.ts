@@ -164,9 +164,16 @@ export function saveDatabaseWorld(raw:string,savedAt=Date.now(),
   saveQueue=result.catch(()=>{});
   return result;
 }
+/** One character per tile biome. Herds, livestock, fish stocks and animal
+ * goods are not terrain and must stay in the JSON world body. An unknown
+ * biome or a food value that is not an exact hundredth stays out of this
+ * alphabet and is stored as ordinary JSON instead. */
 const ALPHABET='PFMCVWRTBS';
 const TILE_BIOMES:Biome[]=['plains','forest','mountain','cave','volcanic','wasteland','water',
   'taiga','wetland','savanna'];
+if(ALPHABET.length!==TILE_BIOMES.length||new Set(ALPHABET).size!==ALPHABET.length||
+  TILE_BIOMES.length!==BIOMES.length||BIOMES.some(biome=>!TILE_BIOMES.includes(biome)))
+  throw Error('Tile pack alphabet does not cover every biome exactly once');
 /** localStorage ceiling for a full snapshot. Larger worlds stay in IndexedDB. */
 export const LOCAL_SNAPSHOT_LIMIT=2_000_000;
 /** Replaces an oversized local snapshot after IndexedDB has the real world. */
@@ -305,6 +312,33 @@ export function migrateLegacyWorld(input:unknown):World|null{
   };
   return isWorld(world)?world:null;
 }
+const PROVISION_GOODS=['meat','fish','hides','wool'] as const;
+const LIVELIHOOD_JOBS=['hunter','fisher','herder'] as const;
+/** Older snapshots omit hunting goods, livelihood jobs and herd losses.
+ * Defaults are filled before validation so a save still round-trips. */
+function migrateLivelihood(input:unknown):void{
+  if(!isRecord(input))return;
+  if(Array.isArray(input.wildlife)){
+    for(const herd of input.wildlife){
+      if(isRecord(herd)&&herd.harvested===undefined)herd.harvested=0;
+    }
+  }
+  if(!Array.isArray(input.settlements))return;
+  for(const settlement of input.settlements){
+    if(!isRecord(settlement))continue;
+    const economy=settlement.economy;
+    if(!isRecord(economy))continue;
+    const jobs=economy.jobs;
+    if(isRecord(jobs)){
+      for(const job of LIVELIHOOD_JOBS)if(jobs[job]===undefined)jobs[job]=0;
+    }
+    const prices=economy.prices;
+    if(isRecord(prices)){
+      for(const good of PROVISION_GOODS)if(prices[good]===undefined)prices[good]=1;
+    }
+    for(const good of PROVISION_GOODS)if(economy[good]===undefined)economy[good]=0;
+  }
+}
 export function readSavedWorld(raw:string|null):World|null{
   if(!raw||raw.length>MAX_WORLD_FILE_BYTES)return null;
   try{
@@ -328,9 +362,15 @@ export function readSavedWorld(raw:string|null):World|null{
       const tiles=decodeTiles(parsed.terrain,Number(width)*Number(height));
       if(!tiles)return null;
       const candidate={...inner,tiles};
+      migrateLivelihood(candidate);
       return isWorld(candidate)?candidate:null;
     }
-    if(parsed.version===1)return migrateLegacyWorld(parsed);
+    if(parsed.version===1){
+      const legacy=migrateLegacyWorld(parsed);
+      if(legacy)migrateLivelihood(legacy);
+      return legacy;
+    }
+    migrateLivelihood(parsed);
     return isWorld(parsed)?parsed:null;
   }catch{return null;}
 }

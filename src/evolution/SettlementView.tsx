@@ -4,6 +4,8 @@ import {ARCHITECTURE,BUILDING_LABELS,BUILDING_TYPES,COSTS,ORES,
   buildingAppearance,settlementStage,type Building,type RuinSite} from './construction';
 import {RESOURCE_COLORS,RESOURCE_LABELS} from './resources';
 import {GOODS,JOBS,JOB_LABELS,SPECIALTY_LABELS,activePartnership,stockOf} from './economy';
+import {fishStockNear,herdsNear} from './livelihood';
+import {WILDLIFE_LABELS} from './wildlife';
 import {TOPIC_INFO} from './knowledge';
 import {bridgeTiles,roadTiles} from './transport';
 import {accordBetween} from './institutions';
@@ -366,6 +368,8 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
     ...(world.ruins??[]).map(s=>({id:s.id,name:s.name,active:false}))];
   const place=world.settlements.find(s=>s.id===focusedId)??
     (focusedId===null?world.settlements[0]:undefined);
+  const nearbyHerds=place?herdsNear(world,place):[];
+  const fishery=place?fishStockNear(world,place):undefined;
   const ruin=place?undefined:(world.ruins??[]).find(s=>s.id===focusedId)??
     world.ruins?.[0];
   const selected=place??ruin;
@@ -503,6 +507,17 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
             <div className="evo-economy-workers"><strong>WORKFORCE</strong>
               {JOBS.map(job=><span key={job}>{JOB_LABELS[job]} <b>
                 {place.economy!.jobs[job]}</b></span>)}
+            </div>
+            <div className="evo-economy-workers"><strong>HERDS & LIVESTOCK</strong>
+              {nearbyHerds.length?nearbyHerds.map(herd=>
+                <span key={herd.index}>{WILDLIFE_LABELS[herd.kind]} <b>{herd.size}</b>
+                  {herd.harvested?' · took '+herd.harvested:''}</span>):
+                <span>No herd within reach</span>}
+              {(place.livestock??[]).map(holding=>
+                <span key={holding.kind}>{WILDLIFE_LABELS[holding.kind]} kept <b>
+                  {holding.size}</b></span>)}
+              {fishery&&<span>Fish stock <b>{fishery.stock}</b>
+                {fishery.harvested?' · took '+fishery.harvested:''}</span>}
             </div>
             <div className="evo-economy-scarcity"><strong>MARKET & SHORTAGES</strong>
               {place.economy.shortages.length?<p>Scarce:
