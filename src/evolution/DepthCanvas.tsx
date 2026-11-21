@@ -23,6 +23,7 @@ import {paintTradeRoutes} from './tradeRoutes';
 import {coastalDepth} from './oceanDepth';
 import {paintDepthRoads,paintDepthSurfaceDetail,depthRoadSignature,
   pixelTerrainHash} from './depthWorldArt';
+import {paintFootShadow} from './depthForm';
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
 import {buildingVisualScale,depthArtDetail,depthRenderDensity,depthSceneryDensity,
@@ -203,7 +204,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
           const sprite=blockSceneryArt(blockProp(prop,detail.variant,season),p,blockView,
             tree?(showBuildings?1.05:.73):.74);
           if(sprite&&showBuildings)actors.push({order:projector.depth(x,y,ground),sprite,canopy:tree});
-          else if(sprite)paintAtlasBuilding(ctx,sprite);
+          else if(sprite){paintFootShadow(ctx,sprite);paintAtlasBuilding(ctx,sprite);}
         }else{
           paintDepthSurfaceDetail(ctx,biome,p,x,y,seed);
         }
@@ -308,6 +309,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   for(const actor of structures){
     for(;i<people.length&&people[i].order<actor.order;i++)people[i].paint();
     ctx.globalAlpha=faded.has(actor)?.28:1;
+    paintFootShadow(ctx,actor.sprite);
     paintAtlasBuilding(ctx,actor.sprite);
     ctx.globalAlpha=1;
   }
@@ -317,10 +319,12 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     if(index>=0&&index<heights.length){
       const p=projector.project(selected.x,selected.y,heights[index]);
       const corners=projector.tileCorners(selected.x,selected.y,heights[index]);
-      ctx.lineWidth=2;ctx.strokeStyle='#fff0ac';ctx.beginPath();
+      ctx.lineJoin='round';ctx.beginPath();
       ctx.moveTo(corners[0].x,corners[0].y);
       for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);
-      ctx.closePath();ctx.stroke();
+      ctx.closePath();
+      ctx.lineWidth=3.25;ctx.strokeStyle='#24180acc';ctx.stroke();
+      ctx.lineWidth=1.5;ctx.strokeStyle='#fff0ac';ctx.stroke();
       ctx.fillStyle='#fff2af';ctx.fillRect(p.x-1,p.y-16,3,5);
     }
   }

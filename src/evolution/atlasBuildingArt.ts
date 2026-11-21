@@ -14,7 +14,10 @@ export function paintAtlasBuilding(ctx:CanvasRenderingContext2D,{art,x,y,scale}:
   offsetX=0,offsetY=0){
   const {left,top,right,bottom}=art.bounds;
   const width=right-left,height=bottom-top;
-  ctx.drawImage(art.image,left,top,width,height,x+left*scale-offsetX,y+top*scale-offsetY,width*scale,height*scale);
+  // Land the scaled sprite on whole pixels so nearest-neighbor stays sharp.
+  ctx.drawImage(art.image,left,top,width,height,
+    Math.round(x+left*scale-offsetX),Math.round(y+top*scale-offsetY),
+    width*scale,height*scale);
 }
 
 export function opaqueArtAt({art,x:left,y:top,scale}:PlacedArt,x:number,y:number){
