@@ -33,6 +33,7 @@ import type {Point} from './motion';
 import {ATLAS_PLACE_ZOOM,ATLAS_STREET_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {AtlasPlacePicker,AtlasSettlementMarkers} from './AtlasPlaces';
 import {AtlasTownCard} from './AtlasTownCard';
+import {enableSkylands,skylandMesh,skylandName,type Skyland} from './skylands';
 import {PixelPortrait} from './PixelPortrait';
 import {RankProfile} from './RankProfile';
 import {WorldCreator} from './WorldCreator';
@@ -79,12 +80,13 @@ function initialWorld():World{
   // First-time visitors get their own world; existing local saves always win.
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
     livingBiomes:true,regionalGeography:true,regionalBiomes:true,riverlands:true,
-    landforms:DEFAULT_LANDFORMS,terrainCells:true,
+    landforms:DEFAULT_LANDFORMS,terrainCells:true,floatingIslands:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture'|'descent';
+type AtlasPoint=Point&{elevation?:number};
 const format=(n:number)=>n.toLocaleString('en-US');
 const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
   ['low','LOW'],['classic','CLASSIC'],['high','HIGH'],
@@ -224,6 +226,9 @@ export function WorldforgeApp(){
     catch{/* Privacy settings can block browser storage. */}
   },[mapView]);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
+  const [skySelection,setSkySelection]=useState<Skyland|null>(null);
+  const [showSkylands,setShowSkylands]=useState(true);
+  const visibleSkylands=overlay==='terrain'&&showSkylands&&brush.kind==='inspect';
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
   const isMortal=world.descent?.mode==='mortal';
@@ -237,10 +242,10 @@ export function WorldforgeApp(){
   const activeCameraPitch=CAMERA_PITCHES[cameraPitch];
   const [startingDescent,setStartingDescent]=useState(false);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
-  const [mapFocus,setMapFocus]=useState<number|Point|null>(null);
+  const [mapFocus,setMapFocus]=useState<number|AtlasPoint|null>(null);
   const mapScrollRef=useRef<HTMLDivElement>(null);
   const mapSheetRef=useRef<HTMLDivElement>(null);
-  const orbitFocusRef=useRef<{x:number;y:number}|null>(null);
+  const orbitFocusRef=useRef<AtlasPoint|null>(null);
   const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
   const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
@@ -249,17 +254,18 @@ export function WorldforgeApp(){
   currentWorld.current=world;
   const tabRef=useRef(tab);
   tabRef.current=tab;
-  const projection=useMemo(()=>createDepthProjector({width:world.width,height:world.height},
+  const projection=useMemo(()=>createDepthProjector({
+    width:world.width,height:world.height,skylands:world.skylands},
     RELIEF_LEVELS[reliefLevel],{yaw:orbitYaw,pitch:activeCameraPitch}),
-  [world.width,world.height,reliefLevel,orbitYaw,activeCameraPitch]);
-  const cameraPosition=useCallback((x:number,y:number)=>{
+  [world.width,world.height,world.skylands,reliefLevel,orbitYaw,activeCameraPitch]);
+  const cameraPosition=useCallback((x:number,y:number,at?:number)=>{
     const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
     if(!viewport||!sheet)return null;
     const current=currentWorld.current;
     const w=current.width,h=current.height;
     let fx=(x+.5)/w,fy=(y+.5)/h;
     if(mapView==='depth'){
-      const elevation=interpolatedGroundHeight(topographyForWorld(current).heights,w,h,x,y);
+      const elevation=at??interpolatedGroundHeight(topographyForWorld(current).heights,w,h,x,y);
       const point=projection.projectSmooth(x,y,elevation);
       fx=point.x/projection.size.width;fy=point.y/projection.size.height;
     }
@@ -268,8 +274,8 @@ export function WorldforgeApp(){
       top:Math.max(0,Math.min(sheet.offsetTop+fy*sheet.offsetHeight-
         viewport.clientHeight/2,viewport.scrollHeight-viewport.clientHeight))};
   },[mapView,projection]);
-  const centerCamera=useCallback((x:number,y:number)=>{
-    const viewport=mapScrollRef.current,target=cameraPosition(x,y);
+  const centerCamera=useCallback((x:number,y:number,elevation?:number)=>{
+    const viewport=mapScrollRef.current,target=cameraPosition(x,y,elevation);
     if(!viewport||!target)return;
     viewport.scrollLeft=target.left;
     viewport.scrollTop=target.top;
@@ -443,12 +449,17 @@ export function WorldforgeApp(){
       const cy=(geometry.scrollTop+viewport.clientHeight/2)*
         projector.size.height/Math.max(1,geometry.scrollHeight);
       const heights=topographyForWorld(w).heights;
-      let nearest={x:Math.floor(w.width/2),y:Math.floor(w.height/2)};
+      let nearest:AtlasPoint={x:Math.floor(w.width/2),y:Math.floor(w.height/2)};
       let best=Infinity;
       for(let y=0;y<w.height;y++)for(let x=0;x<w.width;x++){
         const p=projector.project(x,y,heights[y*w.width+x]);
         const d=(p.x-cx)**2+(p.y-cy)**2;
         if(d<best){best=d;nearest={x,y};}
+      }
+      if(visibleSkylands)for(const group of w.skylands??[])for(const island of group.islands){
+        const p=projector.projectSmooth(island.x,island.y,island.height);
+        const d=(p.x-cx)**2+(p.y-cy)**2;
+        if(d<best){best=d;nearest={x:island.x,y:island.y,elevation:island.height};}
       }
       orbitFocusRef.current=nearest;
       drag={pointerId:event.pointerId,startX:event.clientX,
@@ -481,7 +492,7 @@ export function WorldforgeApp(){
       viewport.removeEventListener('pointercancel',finish);
       viewport.removeEventListener('contextmenu',contextMenu);
     };
-  },[tab,mapView,reliefLevel,activeCameraPitch,storageReady,isMortal]);
+  },[tab,mapView,reliefLevel,activeCameraPitch,storageReady,isMortal,visibleSkylands]);
   // After the canvas changes size, restore the exact world point below the
   // fingers instead of jumping to the top-left of the projected panorama.
   useLayoutEffect(()=>{
@@ -717,6 +728,12 @@ export function WorldforgeApp(){
   const resource=displayed?world.deposits?.find(d=>d.index===
     displayed.y*world.width+displayed.x):undefined;
   const detail=atlasLevel(zoom),closeup=detail!=='world';
+  const selectedSkyland=visibleSkylands&&skySelection&&world.skylands?.includes(skySelection)?
+    skySelection:null;
+  const waterfallBasin=displayed&&!selectedSkyland&&world.skylands?.find(site=>{
+    const p=skylandMesh(site).fall.land;
+    return p.x===displayed.x&&p.y===displayed.y;
+  });
   const settlement=displayed?world.settlements.find(s=>(s.x===displayed.x&&
     s.y===displayed.y)||closeup&&s.infrastructure?.buildings.some(b=>b.x===displayed.x&&
     b.y===displayed.y))??null:null;
@@ -745,8 +762,9 @@ export function WorldforgeApp(){
   const favoriteSettlement=(id:number)=>setWorld(w=>toggleSettlementFavorite(w,id));
   const giveName=(id:number,name:string)=>setWorld(w=>renamePerson(w,id,name));
   const renamePlace=(id:number,name:string)=>setWorld(w=>renameSettlement(w,id,name));
-  const locateAtlasPoint=(point:Point,minimumZoom:number)=>{
+  const locateAtlasPoint=(point:AtlasPoint,minimumZoom:number)=>{
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    setSkySelection(null);
     setFollowId(null);setSelectedAgentId(null);setSelected(point);
     setBrush({kind:'inspect'});setZoom(value=>Math.max(minimumZoom,value));
     setTab('world');setMapFocus(point);
@@ -766,6 +784,7 @@ export function WorldforgeApp(){
     const target=world.agents.find(a=>a.id===id);
     if(!target)return;
     pendingZoomAnchor.current=null;
+    setSkySelection(null);
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
     setZoom(v=>Math.max(2,v));setFollowId(id);
     setTab('world');setMapFocus(id);
@@ -775,21 +794,41 @@ export function WorldforgeApp(){
     locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
     focusMap();
   };
+  const findSkyland=(id:number,zoomTo:boolean)=>{
+    const site=world.skylands?.find(candidate=>candidate.id===id);
+    if(!site)return;
+    setOverlay('terrain');setShowSkylands(true);
+    const {x,y,height}=site.islands[0];
+    if(zoomTo)locateAtlasPoint({x,y,elevation:height},ATLAS_TOWN_ZOOM);
+    else{
+      setSelected({x,y});setSelectedAgentId(null);setFollowId(null);
+    }
+    setSkySelection(site);
+  };
+  const findWaterfallBasin=(site:Skyland)=>{
+    setShowSkylands(false);
+    locateAtlasPoint(skylandMesh(site).fall.land,ATLAS_STREET_ZOOM);
+  };
   const fitAtlas=()=>{
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
     setFollowId(null);setSelectedAgentId(null);setZoom(1);
+    setSkySelection(null);
     setMapFocus({x:world.width/2-.5,y:world.height/2-.5});
   };
   const changePerspective=(next:'overhead'|'depth')=>{
     if(mapView===next)return;
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
     setFollowId(null);setMapView(next);
-    setMapFocus(displayed??{x:world.width/2-.5,y:world.height/2-.5});
+    const island=selectedSkyland?.islands[0];
+    setMapFocus(island?{x:island.x,y:island.y,elevation:island.height}:
+      displayed??{x:world.width/2-.5,y:world.height/2-.5});
   };
   useLayoutEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
-    const target=typeof mapFocus==='number'?world.agents.find(a=>a.id===mapFocus):mapFocus;
-    if(target)centerCamera(target.x,target.y);
+    if(typeof mapFocus==='number'){
+      const target=world.agents.find(a=>a.id===mapFocus);
+      if(target)centerCamera(target.x,target.y);
+    }else centerCamera(mapFocus.x,mapFocus.y,mapFocus.elevation);
     setMapFocus(null);
   },[tab,mapFocus,zoom,centerCamera]);
   // The raised camera's full projected canvas may be much wider than the
@@ -798,9 +837,11 @@ export function WorldforgeApp(){
   useEffect(()=>{
     if(!storageReady||tab!=='world'||mapView!=='depth'||mapFocus!==null)return;
     const frame=window.requestAnimationFrame(()=>{
-      const point=orbitFocusRef.current??selected??{x:Math.floor(world.width/2),
-        y:Math.floor(world.height/2)};
-      centerCamera(point.x,point.y);
+      const island=selectedSkyland?.islands[0];
+      const point:AtlasPoint=orbitFocusRef.current??(island?
+        {x:island.x,y:island.y,elevation:island.height}:selected??{x:Math.floor(world.width/2),
+          y:Math.floor(world.height/2)});
+      centerCamera(point.x,point.y,point.elevation);
     });
     return ()=>window.cancelAnimationFrame(frame);
   },[storageReady,tab,mapView,world.width,world.height,world.settings.seed,
@@ -811,6 +852,7 @@ export function WorldforgeApp(){
   },[followId,tab,zoom,world.settings.seed,centerCamera,isMortal]);
   const chooseTile=(x:number,y:number)=>{
     orbitFocusRef.current=null;
+    setSkySelection(null);
     setSelected({x,y});
     const onBuilding=closeup&&world.settlements.some(town=>
       town.infrastructure?.buildings.some(b=>b.x===x&&b.y===y));
@@ -1078,16 +1120,18 @@ export function WorldforgeApp(){
         <section className="evo-map-card" aria-label="World map" data-map-detail={detail}>
           <div className="evo-card-heading evo-map-heading">
             <div className="atlas-map-title" aria-live="polite">
-              <strong>{closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
-                (detail==='street'?'Street map':'Local map')):'World map'}</strong>
-              <small>{building?BUILDING_LABELS[building.type]:
+              <strong>{selectedSkyland?skylandName(selectedSkyland):
+                closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
+                (waterfallBasin?'Waterfall basin':detail==='street'?'Street map':'Local map')):'World map'}</strong>
+              <small>{selectedSkyland?'Floating islands':building?BUILDING_LABELS[building.type]:
                 detail==='street'?'Buildings & people':detail==='town'?'Buildings':
                   isMultiIslandLayout(world.settings.layout)?
                     WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]:
                     'Settlement overview'}</small>
             </div>
             <div className="evo-map-actions">
-              <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}/>
+              <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}
+                onSkyland={id=>findSkyland(id,true)}/>
               <button type="button" aria-expanded={showRivers} onClick={()=>{
                 setShowRivers(value=>!value);setOverlay('terrain');setBrush({kind:'inspect'});
               }}>Rivers</button>
@@ -1232,6 +1276,18 @@ export function WorldforgeApp(){
               <small>Seasonal light · layered scenery · pixel atmosphere</small></span>
             <span className="evo-season-dot" aria-hidden="true"/>
           </div>}
+          <div className="evo-terrain-upgrade">
+            <div><strong>Floating islands</strong>
+              <span>Suspended land and waterfalls above the surface.</span></div>
+            {world.skylands?.length?<button aria-pressed={showSkylands}
+              onClick={()=>setShowSkylands(shown=>!shown)}>
+              {showSkylands?'Hide islands':'Show islands'}
+            </button>:<button onClick={()=>{
+              setWorld(enableSkylands);setShowSkylands(true);setOverlay('terrain');
+              setBrush({kind:'inspect'});
+              setNotice('Floating islands are ready to explore in Places.');
+            }}>Add floating islands</button>}
+          </div>
           {!world.settings.livingBiomes&&<div className="evo-terrain-upgrade">
             <div><strong>Living biome borders</strong>
               <span>Grassland and woodland can blend and shift over the years.</span></div>
@@ -1271,10 +1327,12 @@ export function WorldforgeApp(){
               {mapView==='overhead'?<WorldCanvas world={world} brush={brush}
                 overlay={overlay} zoom={zoom} speed={speed} fillWidth river={showRivers?chartedRiver:undefined}
                 followId={followId} personId={selectedAgentId} onFollowPosition={centerCamera}
-                selected={displayed} onSelect={chooseTile} onEdit={brushAt}
+                selected={selectedSkyland?null:displayed} onSelect={chooseTile} onEdit={brushAt}
+                showSkylands={visibleSkylands} onSkyland={id=>findSkyland(id,false)}
                 onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
                 <DepthCanvas world={world} brush={brush} overlay={overlay} river={showRivers?chartedRiver:undefined}
-                  zoom={zoom} speed={speed} fillWidth selected={displayed} onSelect={chooseTile}
+                  zoom={zoom} speed={speed} fillWidth selected={selectedSkyland?null:displayed} onSelect={chooseTile}
+                  showSkylands={visibleSkylands} onSkyland={id=>findSkyland(id,false)}
                   onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
                   camera={{yaw:orbitYaw,pitch:activeCameraPitch}} orbiting={orbiting}
                   followId={followId} personId={selectedAgentId}
@@ -1344,12 +1402,22 @@ export function WorldforgeApp(){
               <strong>{displayed?'Place details':'✧ START HERE'}</strong>
               <span>{displayed?'X '+displayed.x+' · Y '+displayed.y:''}</span>
             </div>
-            {!displayed||!tile?<div className="evo-welcome-guide">
+            {selectedSkyland?<div className="evo-selected-settlement" aria-label="Floating island details">
+              <strong>{skylandName(selectedSkyland)}</strong>
+              <span>{selectedSkyland.islands.length} islands · Main shelf {selectedSkyland.islands[0].height} elevation</span>
+              <p>A stream crosses the main island and spills into a basin on the surface.</p>
+              <button onClick={()=>findWaterfallBasin(selectedSkyland)}>Show waterfall basin</button>
+            </div>:!displayed||!tile?<div className="evo-welcome-guide">
               <p><b>Press Play.</b> People make their own decisions as time passes.
                 Select a person or place on the map to learn more.</p>
               <button className="evo-guide-descend" onClick={()=>navigate('descent')}>
                 {world.descent?'Resume adventure':'Start an adventure'} ↗</button>
             </div>:<>
+              {waterfallBasin&&<div className="evo-selected-settlement" aria-label="Waterfall basin details">
+                <strong>{skylandName(waterfallBasin)} waterfall basin</strong>
+                <span>Water from the floating islands lands here.</span>
+                <button onClick={()=>findSkyland(waterfallBasin.id,true)}>Return to floating islands</button>
+              </div>}
               {settlement&&<AtlasTownCard town={settlement} building={building}
                 landform={settlementGeography(world,settlement.y*world.width+settlement.x).landform}
                 onOpen={()=>openSettlement(settlement.id)}

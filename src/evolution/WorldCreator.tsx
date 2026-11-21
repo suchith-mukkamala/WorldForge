@@ -9,6 +9,7 @@ import {DEFAULT_LANDFORMS,LANDFORM_NAMES,
   type LandformProfile} from './regionalGeography';
 import {generateWorldLandscape} from './worldLandscape';
 import {initialWoodland} from './woodland';
+import {generateSkylands} from './skylands';
 
 const PRESETS=[
   {id:'balanced',name:'FOUR KINGDOMS',description:'Every people starts with a foothold',
@@ -38,20 +39,23 @@ export function WorldCreator({
     riverlands:current.riverlands??true,
     landforms:current.landforms??DEFAULT_LANDFORMS,
     terrainCells:current.terrainCells??true,
+    floatingIslands:current.floatingIslands??true,
   }));
   const update=<K extends keyof WorldSettings>(key:K,value:WorldSettings[K])=>
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
-  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands}=draft;
+  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands}=draft;
   const map=useMemo(()=>{
-    const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes,riverlands};
+    const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes,
+      riverlands,floatingIslands};
     const terrain=generateWorldLandscape(width,height,settings);
     const tiles=terrain.biomes.map(biome=>({biome,food:0}));
     const landscape={width,height,tiles,settings,topography:terrain.topography};
-    const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined};
+    const preview={...landscape,woodland:livingBiomes?initialWoodland(landscape):undefined,
+      skylands:floatingIslands?generateSkylands(landscape):undefined};
     return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
-  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes,riverlands]);
+  },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -65,7 +69,8 @@ export function WorldCreator({
       <figure>
         <TerrainPreview world={map.preview} label={WORLD_LAYOUT_NAMES[map.layout]+' terrain preview'}/>
         <figcaption><strong>{WORLD_LAYOUT_NAMES[map.layout]}</strong>
-          <span>{landmasses} · Seed {draft.seed}</span></figcaption>
+          <span>{landmasses}{map.preview.skylands?.length?' · '+map.preview.skylands.length+' floating groups':''}
+            {' · Seed '+draft.seed}</span></figcaption>
       </figure>
       <div className="world-preview-controls">
         <label htmlFor="world-geography">Geography</label>
@@ -74,6 +79,11 @@ export function WorldCreator({
           {WORLD_LAYOUTS.map(layout=><option key={layout} value={layout}>
             {WORLD_LAYOUT_NAMES[layout]}</option>)}
         </select>
+        <label className="world-floating-option">
+          <input type="checkbox" checked={!!floatingIslands}
+            onChange={event=>update('floatingIslands',event.target.checked)}/>
+          Floating islands
+        </label>
         <label htmlFor="evo-landforms">Relief</label>
         <select id="evo-landforms" value={landforms??''}
           onChange={e=>update('landforms',(e.target.value||undefined) as LandformProfile|undefined)}>
@@ -148,7 +158,8 @@ export function WorldCreator({
                 </button>
                 <button type="button" onClick={()=>setDraft(settings=>({...settings,
                   seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms,
-                  regionalBiomes:current.regionalBiomes??false,riverlands:current.riverlands??false}))}
+                  regionalBiomes:current.regionalBiomes??false,riverlands:current.riverlands??false,
+                  floatingIslands:current.floatingIslands??false}))}
                   title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>
               <small className="evo-seed-hint">A fresh seed is chosen for each new world.

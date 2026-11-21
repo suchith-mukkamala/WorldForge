@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.23.0 — Floating Islands** adds seeded islands with stepped rock undersides, smaller fragments, and waterfalls that feed pools on the ground. Find them in **Places** and use **Show waterfall basin** to see where the water lands. New worlds include floating islands by default. In an older world, choose **Map options → Add floating islands**.
+
 - **v2.22.0 — Seafaring** adds shipyards to coastal towns and lets you steer a sailboat in Descend. Choose a shipyard as your starting location or visit one on foot. Use the sea chart to find shores, go ashore to explore, and return to your moored boat. The game saves your ship and charted landfalls. The atlas reuses terrain during playback and renders full terrain detail in the background on large worlds. Descend now runs its clock on the simulation worker too.
 
 - **v2.21.0 — Building Plots** gives structures cleared yards edged by low brush. New buildings use dry sites, with docks extending into the water and mills set on stream banks. Follow the paving from doors to nearby streets, with stone steps on slopes and plank walks over wet ground. Select a building to see its plot and look through overlapping foliage in the raised atlas or in Descend. Saved towns pick up the new scenery when opened.

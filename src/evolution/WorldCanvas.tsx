@@ -45,6 +45,7 @@ import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {atlasBuildingAt,paintAtlasBuilding,type AtlasBuilding} from './atlasBuildingArt';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
+import {overheadSkylandHit,paintOverheadSkylands} from './skylandArt';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -58,6 +59,7 @@ export const sceneryZoomTier=(zoom:number)=>zoom>=ATLAS_TOWN_ZOOM?2:zoom>=2?1:0;
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,river,
   followId=null,personId=null,fillWidth=false,onFollowPosition,onDiagnostics,
+  showSkylands=true,onSkyland,
 }:{
   world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;
@@ -65,10 +67,12 @@ export function WorldCanvas({
   zoom?:number;speed?:number;followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
   onDiagnostics?:(stats:{drawn:number;frameMs:number})=>void;
+  showSkylands?:boolean;onSkyland?:(id:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const mapWidth=world.width*CELL,mapHeight=world.height*CELL;
   const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
+  const skylands=overlay==='terrain'&&showSkylands?world.skylands:undefined;
   // Integer multiples of the eight-square lattice make every top-down square
   // the same size on the backing surface as well as in world coordinates.
   const cellPixels=VISUAL_TERRAIN_SIDE*Math.max(1,Math.min(zoom>=5?6:zoom>=2?4:2,
@@ -88,7 +92,7 @@ export function WorldCanvas({
     ancientSites:World['ancientSites'];
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     street:boolean;regional:boolean;
-    terrainCells:World['terrainCells'];
+    terrainCells:World['terrainCells'];skylands:World['skylands'];
     width:number;height:number;season:string;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
@@ -131,7 +135,7 @@ export function WorldCanvas({
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
-      stamp.terrainCells!==terrainCells||stamp.season!==season||
+      stamp.terrainCells!==terrainCells||stamp.skylands!==world.skylands||stamp.season!==season||
       stamp.woodland!==woodland||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
@@ -325,7 +329,7 @@ export function WorldCanvas({
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
-      terrainCells,
+      terrainCells,skylands:world.skylands,
       width:canvas.width,height:canvas.height,season};
     }
     else if(stamp)stamp.tiles=world.tiles;
@@ -535,6 +539,7 @@ export function WorldCanvas({
           visible.fillRect(px+5,py+5,2,2);
         }
       }
+      if(skylands)paintOverheadSkylands(visible,skylands,CELL);
       if(selected&&world.descent?.mode!=='mortal'){
         const plot=plotGroundRef.current?.buildings.get(selected.y*W+selected.x);
         if(plot?.outline.length)paintPlotOutline(visible,plot,(x,y)=>({x:(x+.5)*CELL,y:(y+.5)*CELL}),.42);
@@ -580,11 +585,15 @@ export function WorldCanvas({
     world.settings.regionalGeography,
     terrainCells,season,density,mapWidth,mapHeight,river,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
-    world.topography,world.dayOfYear,world.ancientSites,world.trails]);
+    world.topography,world.dayOfYear,world.ancientSites,world.trails,world.skylands,skylands]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const px=(event.clientX-rect.left)/rect.width*world.width*CELL;
     const py=(event.clientY-rect.top)/rect.height*world.height*CELL;
+    if(skylands&&onSkyland&&brush.kind==='inspect'){
+      const island=overheadSkylandHit(skylands,px/CELL,py/CELL);
+      if(island!==undefined){onSkyland(island);return;}
+    }
     if(brush.kind==='inspect'&&atlasLevel(zoom)!=='world'){
       const building=atlasBuildingAt(buildingPlotsRef.current,px,py);
       if(building){onSelect(building.x,building.y);return;}
@@ -619,6 +628,7 @@ export function WorldCanvas({
     onClick={select} onKeyDown={keyboard}/>
     {fillWidth&&overlay==='terrain'&&atlasLevel(zoom)!=='world'&&
       <AtlasFish world={world} width={mapWidth} height={mapHeight} square={1.1} project={p=>{
+        if(skylands&&overheadSkylandHit(skylands,p.x,p.y)!==undefined)return;
         if(!isMultiIslandLayout(world.settings.layout)&&!visibleCoastTile(Math.floor(p.x),
           Math.floor(p.y),world.width,world.height,'water',world.settings.seed))return;
         return {x:p.x*CELL,y:p.y*CELL};

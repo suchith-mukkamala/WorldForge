@@ -42,16 +42,21 @@ export function terrainSwatches(color:string,water:boolean):Uint32Array{
 }
 
 const shoreColors=['','#b39771','#c9b087','#448398','#407d93',
-  '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4','#667d99','#aa7894','#c6999b'];
+  '#a89c81','#778468','#a9c8ce','#53868a','#9bc7c4','#667d99','#aa7894','#c6999b',
+  '#427f8d','#a9ded6'];
 export const shoreColor=(type:number)=>shoreColors[type];
 const shoreline=shoreColors.map(color=>color?terrainPixel(color):0);
 export function cellPixel(grid:SurfaceGrid,index:number,palette:Uint32Array,grain:number):number{
   const edge=grid.shore[index];
-  if(edge!==Shore.ground)return shoreline[edge];
-  const water=grid.water[index];
-  if(water)return palette[water>=12?14:water>=4?13:12];
-  const hash=Math.imul(index^grain,0x45d9f3b);
-  return palette[grid.material[index]*4+((hash^(hash>>>15)^(hash>>>27))&3)];
+  let color:number;
+  if(edge!==Shore.ground)color=shoreline[edge];
+  else{
+    const water=grid.water[index],hash=Math.imul(index^grain,0x45d9f3b);
+    color=water?palette[water>=12?14:water>=4?13:12]:
+      palette[grid.material[index]*4+((hash^(hash>>>15)^(hash>>>27))&3)];
+  }
+  const shadow=grid.shadow?.[index];
+  return shadow?shadeTerrainPixel(color,shadow===1?.81:.68):color;
 }
 
 export const firstTerrainSquare=(width:number,columns:number,index:number)=>

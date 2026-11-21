@@ -45,6 +45,7 @@ import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,t
 import {blockBuildingArt,blockSceneryArt,depthBlockView,placeBlockArt,type BlockStamp} from './blockScenery';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
+import {paintSkylandArt,prepareSkylandArt,skylandHit} from './skylandArt';
 
 const BASINS=['#385e60','#4a6758','#536072','#637056',
   '#42637c','#6c695e','#456f68','#606d77'];
@@ -327,18 +328,21 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,orbiting=false,
-  followId=null,personId=null,fillWidth=false,onFollowPosition}:{
+  followId=null,personId=null,fillWidth=false,onFollowPosition,showSkylands=true,onSkyland}:{
   world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
   relief?:number;camera?:DepthCamera;orbiting?:boolean;
   followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
+  showSkylands?:boolean;onSkyland?:(id:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const rasterWorker=useRef<Worker|null>(null);
   const rasterJob=useRef<{id:number;geometry:unknown[];result?:DepthRasterResult}|null>(null);
   const displayedRaster=useRef<{view:string;result:DepthRasterResult}|null>(null);
+  const skyArtRef=useRef<{view:string;sites:NonNullable<World['skylands']>;grid:SurfaceGrid;
+    art:ReturnType<typeof prepareSkylandArt>}|null>(null);
   const rasterBusy=useRef(false),rasterId=useRef(0);
   const [rasterVersion,refreshRaster]=useState(0);
   const [rasterFailed,setRasterFailed]=useState(false);
@@ -358,7 +362,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     yaw:number;pitch:number;detail:DepthArtDetail;
     structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
-    woodland:World['woodland'];
+    woodland:World['woodland'];skylands:World['skylands'];
     terrainCells:World['terrainCells'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
@@ -434,7 +438,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     plotCacheRef.current=ground&&plots?{ground,key:plotKey,plots}:null;
     const worker=tiled?rasterWorker.current:null;
     const geometry=[world.settings,world.width,world.height,topographyForWorld(world),terrainCells,
-      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity];
+      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands];
     let job=rasterJob.current;
     if(!worker||landChanged||!job||geometry.some((part,i)=>part!==job?.geometry[i])){
       if(job?.result!==displayedRaster.current?.result)job?.result?.bitmap.close();
@@ -443,14 +447,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     }
     if(worker&&job&&!job.result&&!orbiting&&!rasterBusy.current){
       rasterBusy.current=true;
-      const {width,height,settings,tiles,topography,terrainCells,dayOfYear,woodland}=world;
+      const {width,height,settings,tiles,topography,terrainCells,dayOfYear,woodland,skylands}=world;
       const message:DepthRasterRequest={id:job.id,world:{width,height,settings,tiles,topography,
-        terrainCells,dayOfYear,woodland},relief,camera,density:sceneryDensity,
+        terrainCells,dayOfYear,woodland,skylands},relief,camera,density:sceneryDensity,
         plots:plots&&{squares:plots.squares,decoratedTiles:plots.decoratedTiles}};
       try{worker.postMessage(message);}catch{setRasterFailed(true);}
     }
     const viewKey=[world.settings.seed,world.width,world.height,camera.yaw,camera.pitch,
-      relief,sceneryDensity].join(':');
+      relief,sceneryDensity,size.height].join(':');
     if(job?.result&&job.result!==displayedRaster.current?.result){
       displayedRaster.current?.result.bitmap.close();
       displayedRaster.current={view:viewKey,result:job.result};
@@ -481,7 +485,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       ids:new Uint32Array(pickWidth*pickHeight)});
     pickingRef.current=picking;
     if(!stamp||!reusePicking||landChanged||stamp.topography!==world.topography||
-      stamp.woodland!==woodland||
+      stamp.woodland!==woodland||stamp.skylands!==world.skylands||
       stamp.terrainCells!==terrainCells||stamp.season!==season||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
@@ -496,7 +500,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       sceneryActors.current=renderTerrain(world,overlay,backdrop,picking,projector,blockView,
         sceneScale,showBuildings,showResidents,plots,exact,preview);
     }
-    stampRef.current={tiles:world.tiles,topography:world.topography,woodland,
+    stampRef.current={tiles:world.tiles,topography:world.topography,woodland,skylands:world.skylands,
       terrainCells,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
       yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,
@@ -571,6 +575,16 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       if(actor.canopy&&actor.order>=focus.order&&overlappingArt(actor.sprite,focus.sprite))faded.add(actor);
     }
     inspectActors.current={actors,faded};
+    const sites=overlay==='terrain'&&showSkylands?world.skylands:undefined;
+    if(sites?.length){
+      const previous=skyArtRef.current,grid=ground??surfaceGrid(world);
+      const skyView=viewKey+':'+(preview||orbiting)+':'+displayScale;
+      if(previous?.view!==skyView||previous.sites!==sites||previous.grid!==grid){
+        skyArtRef.current={view:skyView,sites,grid,art:prepareSkylandArt(sites,projector,
+          blockView,grid,Math.max(1,displayScale),preview||orbiting)};
+      }
+    }else skyArtRef.current=null;
+    const skyArt=skyArtRef.current?.art;
     let frameHandle=0,lastFollow:Point|null=null,lastDraw=-Infinity;
     const draw=(time:number)=>{
       // Maintain identical world-space positions and hit-testing at every
@@ -610,6 +624,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       paintInhabitants(ctx,world,selected,zoom,interpolated,walking,
         projector,actors,faded,!!selectedPlot?.outline.length,visibleAgents,personSpritesRef.current,
         facingRef.current,strides);
+      if(skyArt)paintSkylandArt(ctx,skyArt);
       const tracked=followId!==null?interpolated.get(followId):undefined;
       if(tracked&&onFollowPosition&&(!lastFollow||
         Math.abs(tracked.x-lastFollow.x)>.12||
@@ -625,7 +640,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     return ()=>cancelAnimationFrame(frameHandle);
   },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
     terrainCells,season,river,camera.yaw,camera.pitch,followId,personId,
-    showBuildings,showResidents,onFollowPosition,orbiting,large,displayScale,rasterVersion,rasterFailed]);
+    showBuildings,showResidents,onFollowPosition,orbiting,large,displayScale,rasterVersion,rasterFailed,
+    showSkylands]);
   const apply=(x:number,y:number)=>{
     if(brush.kind==='inspect')onSelect(x,y);else onEdit(x,y);
   };
@@ -635,6 +651,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     const py=(event.clientY-rect.top)/rect.height*size.height;
     const x=Math.floor(px),y=Math.floor(py);
     if(x<0||y<0||x>=size.width||y>=size.height)return;
+    const sky=skyArtRef.current;
+    if(sky&&onSkyland&&brush.kind==='inspect'){
+      const island=skylandHit(sky.art,px,py);
+      if(island!==undefined){onSkyland(island);return;}
+    }
     if(brush.kind==='inspect'&&showBuildings){
       const scene=inspectActors.current;
       if(scene)for(let i=scene.actors.length-1;i>=0;i--){
@@ -679,6 +700,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
         const index=Math.floor(p.y)*world.width+Math.floor(p.x);
         const elevation=topographyForWorld(world).heights[index];
         const point=projector.projectSmooth(p.x-.5,p.y-.5,elevation);
+        if(skyArtRef.current&&skylandHit(skyArtRef.current.art,point.x,point.y)!==undefined)return;
         const hit=pickingRef.current;
         if(!hit)return;
         const x=Math.floor(point.x/size.width*hit.width),y=Math.floor(point.y/size.height*hit.height);
