@@ -12,6 +12,9 @@ import {riverCourses} from './riverCourses';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
+import {enableClimateEcology} from './climateEcology';
+import {climateField,describeWeather} from './climate';
+import {herdAt,WILDLIFE_LABELS} from './wildlife';
 import {enableTerrainCells,terrainCellsIn} from './terrainCells';
 import {TerrainCellPanel} from './TerrainCellPanel';
 import {DEFAULT_LANDFORMS,settlementGeography} from './regionalGeography';
@@ -85,6 +88,7 @@ function initialWorld():World{
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
     livingBiomes:true,regionalGeography:true,regionalBiomes:true,riverlands:true,
     landforms:DEFAULT_LANDFORMS,terrainCells:true,floatingIslands:true,
+    climateEcology:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
@@ -740,6 +744,10 @@ export function WorldforgeApp(){
   const selectedTerrain=displayed?terrainCellsIn(world,drainageIndex):undefined;
   const treeCover=tile&&woodlandHabitat(tile.biome)?
     woodlandCover(world.woodland,drainageIndex):undefined;
+  const climateNote=world.settings.climateEcology&&drainageIndex>=0?
+    describeWeather(climateField(world),drainageIndex,world.dayOfYear??0,
+      world.settings.seed,world.year,world.width):undefined;
+  const herd=climateNote?herdAt(world.wildlife,drainageIndex):undefined;
   const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
   const receiving=drainageIndex>=0?drainage?.basin[drainageIndex]??-1:-1;
   const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
@@ -1313,6 +1321,14 @@ export function WorldforgeApp(){
               setNotice('Floating islands are ready to explore in Places.');
             }}>Add floating islands</button>}
           </div>
+          {!world.settings.climateEcology&&<div className="evo-terrain-upgrade">
+            <div><strong>Climate and wildlife</strong>
+              <span>Seasons, rainfall and herds start affecting this world. The saved terrain stays as it is.</span></div>
+            <button onClick={()=>{
+              setWorld(enableClimateEcology);
+              setNotice('Climate and wildlife are active. Advance a year to see habitats and herds respond.');
+            }}>Enable climate</button>
+          </div>}
           {!world.settings.livingBiomes&&<div className="evo-terrain-upgrade">
             <div><strong>Living biome borders</strong>
               <span>Grassland and woodland can blend and shift over the years.</span></div>
@@ -1534,6 +1550,14 @@ export function WorldforgeApp(){
                     {treeCover!==undefined&&<small>Tree cover {Math.round(treeCover*100)}%</small>}
                   </div>
                 </div>
+                {climateNote&&<div className="evo-biome-info">
+                  <span className="evo-biome-swatch" style={{background:'#7f9bb5'}}/>
+                  <div><strong>{climateNote.title}</strong>
+                    <small>{climateNote.detail}</small>
+                    <small>{herd?WILDLIFE_LABELS[herd.kind]+' · '+herd.size:
+                      'No herd or school on this tile'}</small>
+                  </div>
+                </div>}
                 {selectedTerrain&&displayed&&<TerrainCellPanel key={drainageIndex} cells={selectedTerrain}
                   onZoom={detail==='street'?undefined:()=>locateAtlasPoint(displayed,ATLAS_STREET_ZOOM)}/>}
                 {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">

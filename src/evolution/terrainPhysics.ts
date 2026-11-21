@@ -6,6 +6,7 @@ import type {World} from './engine';
 import {hydrologyForWorld,riverBanks} from './hydrology';
 import {topographyForWorld} from './topography';
 import {terrainCellSummary} from './terrainCells';
+import {travelStrainAt} from './climate';
 
 export type TerrainPhysics={version:1};
 export const TERRAIN_PHYSICS_VERSION=1;
@@ -32,7 +33,8 @@ export function terrainStepEffort(w:World,from:number,to:number):number{
   const difference=heights[to]-heights[from];
   const steep=Math.abs(difference);
   const soft=w.tiles[to].biome==='wetland'?1.18:1;
-  return (1+steep/180+Math.max(0,difference)/60)*(terrainCellSummary(w,to)?.footing??1)*soft;
+  const effort=(1+steep/180+Math.max(0,difference)/60)*(terrainCellSummary(w,to)?.footing??1)*soft;
+  return w.settings.climateEcology?effort*travelStrainAt(w,to):effort;
 }
 
 /** Highest surrounding drop/rise: a proxy for construction difficulty. */

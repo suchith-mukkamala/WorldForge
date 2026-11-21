@@ -1,5 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {createWorld,isWorld,type World} from './engine';
+import {tileCapacity} from './density';
 import {advanceWorldDays} from './calendar';
 import {createMortal} from './divineDescent';
 import {adventureDistance,adventureMapFor,adventureRegion,
@@ -16,6 +17,25 @@ const mortal=(world:World)=>world.agents.find(person=>person.id===world.descent?
 const regionAt=(world:World)=>adventureRegion(world,adventureMapFor(world),mortal(world));
 const at=(world:World,point:Point):World=>({...world,agents:world.agents.map(person=>
   person.id===world.descent?.agentId?{...person,x:point.x,y:point.y}:person)});
+/** Stand on the landmark or the nearest open ground beside it. A ruin tile
+ * can already hold its visitors, so the surveyor uses a free neighboring cell. */
+const approach=(world:World,site:Point):World=>{
+  const actorId=world.descent!.agentId;
+  const caps=tileCapacity(world);
+  const others=world.agents.filter(person=>person.id!==actorId);
+  const candidates:Point[]=[{...site}];
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)
+    if(dx||dy)candidates.push({x:site.x+dx,y:site.y+dy});
+  for(const candidate of candidates){
+    const {x,y}=candidate;
+    if(x<0||y<0||x>=world.width||y>=world.height)continue;
+    const index=y*world.width+x;
+    if(world.tiles[index].biome==='water')continue;
+    if(others.filter(person=>person.x===x&&person.y===y).length<caps[index])
+      return at(world,{x,y});
+  }
+  return at(world,site);
+};
 
 describe('mortal surveys',()=>{
   it('learns real knowledge once and retains the survey after a save round-trip',()=>{
@@ -24,7 +44,7 @@ describe('mortal surveys',()=>{
     expect(site).toBeDefined();
     expect(adventureDistance(mortal(initial),site)).toBeGreaterThan(1);
     expect(surveyLandmark(initial,site.id).world).toBe(initial);
-    const beside=at(initial,site);
+    const beside=approach(initial,site);
     const unchanged=JSON.stringify(beside);
     const {world}=surveyLandmark(beside,site.id);
     expect(JSON.stringify(beside)).toBe(unchanged);
