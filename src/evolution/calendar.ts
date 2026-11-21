@@ -9,6 +9,7 @@ import {knows} from './knowledge';
 import {addResident,removeResident,residentIndex,tileCapacity} from './density';
 import {advanceWeeklyLife} from './dailyLife';
 import {advanceMindDay,cloneCognition,createDayContext} from './mindII';
+import {controlsMortal} from './shipSave';
 
 export const DAYS_PER_YEAR=365;
 export const MONTH_LENGTHS=[31,28,31,30,31,30,31,31,30,31,30,31] as const;
@@ -57,7 +58,7 @@ function advanceMonthlyTravel(w:World,month:number):World{
   let moved=false;
   for(let i=0;i<agents.length;i++){
     const a=agents[i];
-    if(w.descent?.mode==='mortal'&&w.descent.agentId===a.id)continue;
+    if(controlsMortal(w.descent,a.id))continue;
     const speed=traitProfile(a.ancestry).speed*
       (knows(a,'navigation')?1.2:1);
     if(a.work?.tradeId||a.cognition?.agenda.some(p=>p.status==='active'&&

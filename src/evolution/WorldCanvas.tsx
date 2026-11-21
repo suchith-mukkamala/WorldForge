@@ -33,7 +33,7 @@ import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
-import {blockLandmark,blockProp,blockSettlement,terrainBlockProp} from './blockModels';
+import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp} from './blockModels';
 import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,placeBlockArt,paintBlockContact,
   paintBlockScenery,type BlockStamp} from './blockScenery';
 import {structureForBuilding,structureSite} from './structureGround';
@@ -43,6 +43,8 @@ import {isMultiIslandLayout} from './worldGeography';
 import {wornPathTiles} from './trailNetwork';
 import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {atlasBuildingAt,paintAtlasBuilding,type AtlasBuilding} from './atlasBuildingArt';
+import {activeVessels} from './vessels';
+import {seaPoint} from './shipSave';
 
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
@@ -133,7 +135,7 @@ export function WorldCanvas({
       stamp.woodland!==woodland||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
-      stamp.deposits!==world.deposits||stamp.transport!==world.transport||
+      overlay==='deposits'&&stamp.deposits!==world.deposits||stamp.transport!==world.transport||
       stamp.sceneryTier!==sceneryTier||stamp.overlay!==overlay||
       stamp.street!==showResidents||stamp.regional!==regional||
       stamp.seed!==world.settings.seed||stamp.width!==canvas.width||
@@ -388,6 +390,9 @@ export function WorldCanvas({
         maxY:Math.min(H-1,Math.ceil(y+h)+3)};
     };
     const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
+    const boats=overlay==='terrain'||overlay==='trade'?activeVessels(world):[];
+    const crew=new Set(boats.flatMap(ship=>ship.crew===undefined?[]:[ship.crew]));
+    const pedestrians=crew.size?world.agents.filter(a=>!crew.has(a.id)):world.agents;
     let handle=0,lastFrame=-Infinity,previouslyWalking=false;
     let cachedVisible:ReturnType<typeof renderedPopulation>|null=null;
     let lastFollowX=NaN,lastFollowY=NaN;
@@ -414,11 +419,16 @@ export function WorldCanvas({
           x:(index%W+.5)*CELL,y:(Math.floor(index/W)+.5)*CELL,
         }),mapWidth/(canvas.clientWidth||mapWidth));
       }
+      for(const ship of boats){
+        const {x,y}=seaPoint(W,ship.at);
+        paintBlockScenery(visible,blockSailboat(ship.heading,ship.merchant),
+          {x:(x+.5)*CELL,y:(y+.5)*CELL},OVERHEAD_BLOCK_VIEW,.59);
+      }
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
       // Cull sprites outside the camera; preserve tracked character and tile.
       const ordered=cachedVisible??(cachedVisible=renderedPopulation(
-        world.agents,scene,{bounds:bounds(),zoom,focusId:followId??personId,
+        pedestrians,scene,{bounds:bounds(),zoom,focusId:followId??personId,
           focusOnly:!showResidents||overlay==='trade'}));
       const tracked=ordered.find(a=>a.id===(followId??personId));
       if(showResidents&&tracked?.cognition?.trail.length){

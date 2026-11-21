@@ -49,6 +49,7 @@ import {activeTraitBonus} from './traitEffects';
 import {advancePublicHealth,isDiseaseRecord,isPublicHealthState,
   type DiseaseRecord,type PublicHealthState} from './publicHealth';
 import {validAdventurePlace,type AdventurePlace} from './adventurePlaces';
+import {controlsMortal,validMortalShip,type MortalShip} from './shipSave';
 import {validMortalJournal,type MortalJournal} from './errandRecords';
 import {validSiteSurveys,type SiteSurvey} from './surveyRecords';
 import {validMortalRoom,type MortalRoom} from './roomSave';
@@ -79,7 +80,7 @@ export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
 export type MortalAppearance={skin:number;hair:number;hairStyle:number;
   outfit:MortalOutfit};
 export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number;
-  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom};
+  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom;ship?:MortalShip};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   appearance?:MortalAppearance;
@@ -509,7 +510,7 @@ export function stepWorld(previous:World):World{
     // the same world tick. A courier cannot wander off with communal cargo.
     // An actively descended mortal controls their own physical movement.
     // They still age, eat, learn and face the same risks as all other people.
-    if(!(world.descent?.mode==='mortal'&&world.descent.agentId===a.id)&&
+    if(!controlsMortal(world.descent,a.id)&&
       !a.work?.tradeId&&
       (random(state)<travel||motivated||a.energy<48||tile.food<.75)){
       const choices:{x:number;y:number;score:number}[]=[];
@@ -1071,6 +1072,7 @@ export function isWorld(value:unknown):value is World{
       d.place!==undefined&&!validAdventurePlace(d.place,width,height)||
       d.journal!==undefined&&!validMortalJournal(d.journal,year*365+(w.dayOfYear??0))||
       d.surveys!==undefined&&!validSiteSurveys(d.surveys,year)||
+      d.ship!==undefined&&(!validMortalShip(d.ship,width,height)||d.ship.underway&&!!d.interior)||
       d.interior!==undefined&&!validMortalRoom(d.interior))
       return false;
   }

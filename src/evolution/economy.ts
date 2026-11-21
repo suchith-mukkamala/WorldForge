@@ -480,7 +480,8 @@ function dispatchTrade(w:World):void{
   let departures=0;
   for(const origin of [...w.settlements].sort((a,b)=>a.id-b.id)){
     if(departures>=3||w.shipments!.length>=16)break;
-    const candidates=w.agents.filter(a=>a.work?.job==='trader'&&
+    const sailing=w.descent?.ship?.underway?w.descent.agentId:undefined;
+    const candidates=w.agents.filter(a=>a.id!==sailing&&a.work?.job==='trader'&&
       a.work.settlementId===origin.id&&!busy.has(a.id)&&
       distance(a,origin)<=3&&a.energy>=65&&a.health>=60);
     if(!candidates.length)continue;

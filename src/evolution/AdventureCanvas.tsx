@@ -12,7 +12,7 @@ import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
-import {blockLandmark,blockSettlement} from './blockModels';
+import {blockLandmark,blockSailboat,blockSettlement,blockShipyard} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -22,6 +22,9 @@ import {isTreeKind} from './biomeTrees';
 import {mortalWorldPoint} from './spatialDetails';
 import {coastalLife,fishPose,paintFish,type Fish} from './coastalLife';
 import type {AncientSite} from './knowledge';
+import {shipMooring} from './mortalSailing';
+import {seaPoint} from './shipSave';
+import {directionBetween} from './motion';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;facing:Facing;
   marked:Point|null;focused?:Point;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
@@ -29,12 +32,16 @@ type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;faci
 
 type Scenery={x:number;y:number;depth:number;opacity:number;
   draw?:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void;
-  art?:PlacedArt;canopy?:boolean;building?:Building};
+  art?:PlacedArt;canopy?:boolean;building?:Building;target?:Point};
 
 function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
   const signs=new Map<number,AdventureGate>();
   const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
+  const yards=new Map([...map.shipyards.values()].map(site=>[site.shore,site]));
+  const boats=new Map([...yards.values()].map(site=>[site.water,site.shore]));
+  const mooring=shipMooring(world,map);
+  if(mooring)boats.set(mooring.water,mooring.shore);
   for(const gate of region.gates)signs.set(gate.point.y*world.width+gate.point.x,gate);
   for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+rows);y++){
     for(let x=Math.max(0,origin.x);x<Math.min(world.width,origin.x+cols);x++){
@@ -47,7 +54,14 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
       const variant=pixelTerrainHash(x,y,world.settings.seed);
       const depth=y*TILE+12;
       const plot=plots.buildings.get(index);
-      if(plot){
+      const yard=yards.get(index),berth=boats.get(index);
+      if(yard){
+        const water=seaPoint(world.width,yard.water),side={x:water.x-x,y:water.y-y};
+        const model=blockShipyard(side,structureSite(world,{x,y}));
+        const p={x:(x+.5+side.x*.14)*TILE,y:(y+.5+side.y*.14)*TILE};
+        const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,1.46);
+        scenery.push({x,y,depth,opacity,art,target:{x,y}});
+      }else if(plot){
         const {model,door,building,placement:{at,scale}}=plot;
         const unit=streetStructureUnit(building.type)*scale;
         const p={x:(at.x+.5)*TILE,y:(at.y+.5)*TILE};
@@ -61,6 +75,12 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
               paintDoorstep(ctx,px,py,door)});
         }
       }
+      if(berth!==undefined){
+        const shore=seaPoint(world.width,berth),water={x,y};
+        const art=blockSceneryArt(blockSailboat(directionBetween(shore,water)),
+          {x:(x+.5)*TILE,y:(y+.5)*TILE},DESCENT_BLOCK_VIEW,1.18);
+        scenery.push({x,y,depth,opacity:.95,art,target:shore});
+      }
       if(sign)scenery.push({x,y,depth:depth-7,opacity:1,draw:(ctx,px,py)=>
         paintAdventureSign(ctx,px+6,py-4,sign.direction,region.landscape,!!sign.ferry)});
       if(ruin){
@@ -71,7 +91,7 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
         const model=blockSettlement(settlementStage(hub),hub.species,structureSite(world,hub));
         scenery.push({x,y,depth,opacity,draw:(ctx,px,py)=>paintAdventureStructure(ctx,model,px,py,1.35)});
       }
-      const natural=!ruin&&!hub&&!plots.clear.has(index)?adventureProp(world,map,region,x,y):undefined;
+      const natural=!ruin&&!hub&&!yard&&!plots.clear.has(index)?adventureProp(world,map,region,x,y):undefined;
       const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
       if(prop){
         const art=adventurePropArt(prop,x*TILE,y*TILE,variant,waterSeason(world));
@@ -240,7 +260,8 @@ export function AdventureCanvas(props:Props){
       if(scene)for(let i=scene.sprites.length-1;i>=0;i--){
         const sprite=scene.sprites[i];
         if(!sprite.art||scene.faded.has(sprite)||!opaqueArtAt(sprite.art,x,y))continue;
-        if(sprite.building){props.onSelect(sprite.building);return;}
+        const target=sprite.target??sprite.building;
+        if(target){props.onSelect(target);return;}
         break;
       }
       props.onSelect({x:Math.floor(x/TILE),y:Math.floor(y/TILE)});

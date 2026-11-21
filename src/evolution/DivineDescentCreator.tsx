@@ -7,6 +7,7 @@ import {mortalColorOptions,type PixelPerson} from './pixelArt';
 import {DESCENT_BACKGROUNDS,type DescentBackground,
   type MortalCreation} from './divineDescent';
 import {personName} from './identity';
+import {adventureMapFor} from './adventureMap';
 
 const HAIR_STYLES=['Classic','Cropped','Long'] as const;
 const OUTFITS:readonly {id:MortalOutfit;label:string}[]=[
@@ -18,7 +19,7 @@ const OUTFITS:readonly {id:MortalOutfit;label:string}[]=[
 const DEFAULT_LOOK:MortalAppearance={skin:0,hair:0,hairStyle:0,outfit:'wanderer'};
 
 export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,starting=false,arrivalName}:{
-  world:World;onCreate:(options:MortalCreation,settledStart:boolean)=>void;
+  world:World;onCreate:(options:MortalCreation,settledStart:boolean,shipyard?:number)=>void;
   onResume:()=>void;onReturn:()=>void;error?:string;starting?:boolean;arrivalName?:string;
 }){
   const [name,setName]=useState('');
@@ -26,10 +27,13 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,sta
   const [background,setBackground]=useState<DescentBackground>('scout');
   const [look,setLook]=useState<MortalAppearance>(DEFAULT_LOOK);
   const [settledStart,setSettledStart]=useState(world.year===0);
+  const [shipyard,setShipyard]=useState<number|undefined>();
   const canGrow=!arrivalName&&!world.settlements.length&&world.agents.length>0&&world.year<9999;
   const mortalId=world.descent?.agentId;
   const current=mortalId===undefined?undefined:
     world.agents.find(a=>a.id===mortalId);
+  const yards=!arrivalName&&!current&&world.settlements.length?adventureMapFor(world).shipyards:undefined;
+  const ports=yards?world.settlements.filter(town=>yards.has(town.id)):[];
   const lineage=current?world.lineage.find(r=>r.id===current.id):undefined;
   const displayName=current?(lineage?personName(world,lineage):'Your mortal'):name||'Unnamed';
   const preview:PixelPerson=current??{
@@ -44,14 +48,15 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,sta
     setLook(old=>({...old,[key]:value}));
   const submit=(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!starting)onCreate({name,species,background,appearance:look},canGrow&&settledStart);
+    if(!starting)onCreate({name,species,background,appearance:look},canGrow&&settledStart,
+      yards?.has(shipyard??-1)?shipyard:undefined);
   };
 
   return <main className="evo-descent-page">
     <header className="evo-descent-heading">
       <h1>{current?'Your adventure':'Begin an adventure'}</h1>
       <p>{arrivalName?'Start on the banks of the '+arrivalName+'.':
-        'Explore settlements, follow trails, and meet the people who live there.'}</p>
+        'Explore settlements, follow trails, and sail from coastal shipyards.'}</p>
     </header>
     <div className="evo-descent-layout">
       <section className="evo-descent-portrait" aria-label="Mortal appearance preview">
@@ -80,6 +85,15 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,sta
             <b style={{color:SPECIES_INFO[s].color}}>◆</b> {SPECIES_INFO[s].name}
           </button>)}
         </div>
+
+        {ports.length>0&&<>
+          <label className="evo-descent-label" htmlFor="mortal-arrival">Starting location</label>
+          <select id="mortal-arrival" value={shipyard??''}
+            onChange={event=>setShipyard(event.target.value?Number(event.target.value):undefined)}>
+            <option value="">Suggested settlement</option>
+            {ports.map(town=><option key={town.id} value={town.id}>{town.name} shipyard</option>)}
+          </select>
+        </>}
 
         <details className="evo-descent-customize">
           <summary>Customize appearance and background</summary>

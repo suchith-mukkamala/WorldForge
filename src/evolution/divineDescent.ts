@@ -6,9 +6,10 @@ import {tileCapacity} from './density';
 import {biomeHome} from './biomeGeneration';
 import {cleanIdentityName,renamePerson} from './identity';
 import type {Career} from './development';
-import {adventureArrival,riverTrailArrival} from './adventureMap';
+import {adventureArrival,adventureMapFor,riverTrailArrival} from './adventureMap';
 import type {RiverTrail,TownStop} from './adventurePlaces';
 import {isMultiIslandLayout} from './worldGeography';
+import {seaNeighbors,seaPoint} from './shipSave';
 
 export const DESCENT_BACKGROUNDS=[
   {id:'scout',name:'Wayfinder',description:'A curious traveler seeking unknown lands.'},
@@ -23,7 +24,7 @@ export type MortalCreation={name:string;species:Species;
 /** Choose a safe, available plot near a living settlement of this species.
  * On worlds without settlements, favor the species' native biome. This is a
  * one-time O(map area + population) query, never part of the frame loop. */
-function arrival(world:World,species:Species,mouth?:number):{
+function arrival(world:World,species:Species,mouth?:number,shipyard?:number):{
   point:{x:number;y:number};place?:TownStop|RiverTrail}|null{
   const settlement=world.settlements.find(s=>s.species===species);
   const home=biomeHome(world.settings.seed,species);
@@ -40,6 +41,14 @@ function arrival(world:World,species:Species,mouth?:number):{
   const available=(i:number)=>world.tiles[i].biome!=='water'&&
     (occupancy.get(i)??0)<capacity[i];
   if(mouth!==undefined)return riverTrailArrival(world,mouth,available)??null;
+  if(shipyard!==undefined){
+    const map=adventureMapFor(world),yard=map.shipyards.get(shipyard);
+    const town=map.towns.find(t=>t.place.id===shipyard);
+    if(!yard||!town)return null;
+    const candidates=[yard.shore,...seaNeighbors(yard.shore,world.width,world.tiles.length)];
+    const index=candidates.find(i=>town.area.has(i)&&available(i));
+    return index===undefined?null:{point:seaPoint(world.width,index),place:town.place};
+  }
   const gate=adventureArrival(world,species,available);
   if(gate)return gate;
   let best:null|{x:number;y:number}=null,score=Infinity;
@@ -59,7 +68,7 @@ export function mortalArrivalSite(world:World,species:Species):{x:number;y:numbe
   return arrival(world,species)?.point??null;
 }
 
-export function createMortal(world:World,options:MortalCreation,mouth?:number):{
+export function createMortal(world:World,options:MortalCreation,mouth?:number,shipyard?:number):{
   world:World;agent:Agent}{
   const name=cleanIdentityName(options.name);
   if(!name)throw Error('Please choose a name of 2–64 letters or characters.');
@@ -73,9 +82,10 @@ export function createMortal(world:World,options:MortalCreation,mouth?:number):{
     throw Error('Choose a valid appearance.');
   if(world.descent&&world.agents.some(a=>a.id===world.descent!.agentId))
     throw Error('You already have a living mortal. Resume their story first.');
-  const start=arrival(world,options.species,mouth);
-  if(!start)throw Error(mouth===undefined?'This world has no safe space for a new mortal.':
-    'This river trailhead has no open ground for a new mortal.');
+  const start=arrival(world,options.species,mouth,shipyard);
+  if(!start)throw Error(shipyard!==undefined?'This shipyard has no open ground for a new mortal.':
+    mouth!==undefined?'This river trailhead has no open ground for a new mortal.':
+      'This world has no safe space for a new mortal.');
   const location=start.point;
   const spawned=editWorld(world,location.x,location.y,
     {kind:'spawn',species:options.species});

@@ -117,6 +117,7 @@ export function walkMortal(w:World,dx:number,dy:number,
   const id=w.descent?.mode==='mortal'?w.descent.agentId:null;
   const actor=id===null?undefined:w.agents.find(a=>a.id===id);
   if(!actor)return {world:w,moved:false,reason:'Descend into a living mortal first.'};
+  if(w.descent?.ship?.underway)return {world:w,moved:false,reason:'Land the ship before walking.'};
   if(w.descent?.interior)return {world:w,moved:false,reason:'Leave the room before walking outside.'};
   if(!Number.isInteger(dx)||!Number.isInteger(dy)||
     Math.abs(dx)>1||Math.abs(dy)>1||!dx&&!dy)

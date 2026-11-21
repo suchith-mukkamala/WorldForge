@@ -1,6 +1,6 @@
 import {lazy,Suspense,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent,SetStateAction} from 'react';
-import {shouldAcceptSimulation,type PendingSimulation,
+import {receiveSimulationWorld,shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
 import {WorldCanvas,type MapOverlay} from './WorldCanvas';
 import {DepthCanvas} from './DepthCanvas';
@@ -146,7 +146,7 @@ async function growSettlements(world:World):Promise<World>{
       session.onmessage=(event:MessageEvent<SimulationReply>)=>{
         const reply=event.data;
         if(reply.id!==1)return;
-        if(reply.kind==='advanced')resolve(reply.world);
+        if(reply.kind==='advanced')resolve(receiveSimulationWorld(world,reply));
         else reject(Error(reply.message));
       };
       session.onerror=reject;
@@ -186,6 +186,8 @@ export function WorldforgeApp(){
   const [storageReady,setStorageReady]=useState(typeof window==='undefined');
   const [tab,setTab]=useState<Tab>('world');
   const [playing,reactSetPlaying]=useState(false);
+  const [mortalRunning,setMortalRunning]=useState(true);
+  const simulationActive=useRef(false);
   const playingRef=useRef(false);
   const setPlaying=useCallback((change:SetStateAction<boolean>)=>{
     const next=typeof change==='function'?change(playingRef.current):change;
@@ -195,7 +197,6 @@ export function WorldforgeApp(){
   const [timeRate,setTimeRate]=useState<TimeRate>('month');
   const playback=TIME_RATES.find(rate=>rate.id===timeRate)??TIME_RATES[2];
   const playbackDaysRef=useRef<number>(playback.days);
-  playbackDaysRef.current=playback.days;
   const speed=timeRate==='sixteen'?16:timeRate==='four'?4:1;
   const [brush,setBrush]=useState<Brush>({kind:'inspect'});
   const [overlay,setOverlay]=useState<MapOverlay>('terrain');
@@ -226,6 +227,13 @@ export function WorldforgeApp(){
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
   const isMortal=world.descent?.mode==='mortal';
+  const [orbiting,setOrbiting]=useState(false);
+  const simulationDays=isMortal?1:playback.days;
+  const simulationInterval=isMortal?2000:playback.interval;
+  const simulationEnabled=storageReady&&(isMortal?mortalRunning&&
+    world.agents.some(a=>a.id===world.descent?.agentId):playing&&(tab==='world'||tab==='settlements'));
+  simulationActive.current=simulationEnabled;
+  playbackDaysRef.current=simulationDays;
   const activeCameraPitch=CAMERA_PITCHES[cameraPitch];
   const [startingDescent,setStartingDescent]=useState(false);
   const [selectedSettlementId,setSelectedSettlementId]=useState<number|null>(null);
@@ -414,6 +422,7 @@ export function WorldforgeApp(){
       if(!drag||event.pointerId!==drag.pointerId)return;
       drag=null;
       if(frame){window.cancelAnimationFrame(frame);commit();}
+      setOrbiting(false);
       viewport.classList.remove('is-orbit-dragging');
       if(viewport.hasPointerCapture(event.pointerId))
         viewport.releasePointerCapture(event.pointerId);
@@ -444,6 +453,7 @@ export function WorldforgeApp(){
       orbitFocusRef.current=nearest;
       drag={pointerId:event.pointerId,startX:event.clientX,
         startYaw:orbitYawRef.current};
+      setOrbiting(true);
       viewport.classList.add('is-orbit-dragging');
       viewport.setPointerCapture(event.pointerId);
       setFollowId(null);
@@ -463,6 +473,7 @@ export function WorldforgeApp(){
     viewport.addEventListener('contextmenu',contextMenu);
     return ()=>{
       if(frame)window.cancelAnimationFrame(frame);
+      if(drag)setOrbiting(false);
       viewport.classList.remove('is-orbit-dragging');
       viewport.removeEventListener('pointerdown',down);
       viewport.removeEventListener('pointermove',move);
@@ -523,7 +534,7 @@ export function WorldforgeApp(){
   const requestSimulation=useCallback(()=>{
     const worker=simulationWorker.current,current=currentWorld.current;
     if(!worker||simulationPending.current||preparedSimulation.current||
-      !playingRef.current||!current.agents.length||current.year>=9999)return;
+      !simulationActive.current||!current.agents.length||current.year>=9999)return;
     const request:SimulationRequest={kind:'advance',
       id:++simulationRequestId.current,days:playbackDaysRef.current,
       ...(workerSyncedRevision.current===worldRevision.current?
@@ -548,14 +559,15 @@ export function WorldforgeApp(){
     preparedSimulation.current=null;
     const {pending,reply}=prepared;
     if(!shouldAcceptSimulation(pending,reply,worldRevision.current,
-      playingRef.current&&['world','settlements'].includes(tabRef.current),
+      simulationActive.current,
       currentWorld.current)){
       workerSyncedRevision.current=-1;
       return false;
     }
     lastSimulationMs.current=reply.elapsedMs;
-    currentWorld.current=reply.world;
-    setWorld(reply.world);
+    const next=receiveSimulationWorld(pending.world,reply);
+    currentWorld.current=next;
+    setWorld(next);
     workerSyncedRevision.current=worldRevision.current;
     return true;
   },[setWorld]);
@@ -592,10 +604,10 @@ export function WorldforgeApp(){
         return;
       }
       if(!shouldAcceptSimulation(pending,reply,worldRevision.current,
-        playingRef.current&&['world','settlements'].includes(tabRef.current),
+        simulationActive.current,
         currentWorld.current)){
         workerSyncedRevision.current=-1;
-        if(playingRef.current)requestSimulation();
+        if(simulationActive.current)requestSimulation();
         return;
       }
       // Prepare the next world while the current one is being displayed.
@@ -619,7 +631,7 @@ export function WorldforgeApp(){
     };
   },[requestSimulation,publishPrepared]);
   useEffect(()=>{
-    if(!playing||(tab!=='world'&&tab!=='settlements'))return;
+    if(!simulationEnabled)return;
     playbackDeadlineReached.current=false;
     preparedSimulation.current=null;
     // Start the expensive calculation at the beginning of the display period,
@@ -641,11 +653,11 @@ export function WorldforgeApp(){
       const start=performance.now();
       setWorld(w=>{
         if(!w.agents.length||w.year>=9999)return w;
-        const next=advanceWorldDays(w,playback.days);
+        const next=advanceWorldDays(w,simulationDays);
         lastSimulationMs.current=Math.max(0,performance.now()-start);
         return next;
       });
-    },playback.interval);
+    },simulationInterval);
     return ()=>{
       window.clearInterval(timer);
       playbackDeadlineReached.current=false;
@@ -655,8 +667,9 @@ export function WorldforgeApp(){
       // snapshot after a pause or rate change, never its speculative state.
       workerSyncedRevision.current=-1;
     };
-  },[playing,playback.days,playback.interval,tab,setWorld,
+  },[simulationEnabled,simulationDays,simulationInterval,isMortal,setWorld,
     requestSimulation,publishPrepared]);
+  useEffect(()=>{if(!isMortal)setMortalRunning(true);},[isMortal]);
   useEffect(()=>{
     if(playing&&(!world.agents.length||world.year>=9999))setPlaying(false);
     if(playing&&world.descent?.mode==='mortal')setPlaying(false);
@@ -667,6 +680,15 @@ export function WorldforgeApp(){
     currentWorld.current=next;
     setWorld(next);
   },[setWorld]);
+  const atSea=!!world.descent?.ship?.underway;
+  useEffect(()=>{
+    if(!storageReady||!world.descent?.ship)return;
+    const timer=window.setTimeout(()=>{
+      void saveSnapshot(currentWorld.current).catch(()=>setNotice(
+        'Autosave failed. Export World JSON to keep your voyage.'));
+    },300);
+    return ()=>window.clearTimeout(timer);
+  },[storageReady,atSea]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -879,13 +901,13 @@ export function WorldforgeApp(){
     setPlaying(false);setTab('world');setNotice('');
     changeMortalWorld(setDescentMode(before,'mortal'));
   };
-  const createDescent=async(options:MortalCreation,settledStart:boolean)=>{
+  const createDescent=async(options:MortalCreation,settledStart:boolean,shipyard?:number)=>{
     const before=currentWorld.current;
     try{
       setStartingDescent(true);
       const startingWorld=settledStart?await growSettlements(before):before;
       if(currentWorld.current!==before||tabRef.current!=='descent')return;
-      const result=createMortal(startingWorld,options,descentRiver??undefined);
+      const result=createMortal(startingWorld,options,descentRiver??undefined,shipyard);
       setPlaying(false);setTab('world');setNotice('');
       changeMortalWorld(result.world);
     }catch(error){setNotice(error instanceof Error?error.message:
@@ -911,6 +933,7 @@ export function WorldforgeApp(){
     role="status">Opening your adventure…</div>}>
     <MortalAdventure key={world.settings.seed+':'+mortal.id}
       world={world} actor={mortal} notice={notice}
+      running={mortalRunning} onToggleTime={()=>setMortalRunning(value=>!value)}
       onChange={changeMortalWorld} onAscend={leaveMortalView}/>
   </Suspense>;
   return <div className="evo-app">
@@ -1253,7 +1276,7 @@ export function WorldforgeApp(){
                 <DepthCanvas world={world} brush={brush} overlay={overlay} river={showRivers?chartedRiver:undefined}
                   zoom={zoom} speed={speed} fillWidth selected={displayed} onSelect={chooseTile}
                   onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
-                  camera={{yaw:orbitYaw,pitch:activeCameraPitch}}
+                  camera={{yaw:orbitYaw,pitch:activeCameraPitch}} orbiting={orbiting}
                   followId={followId} personId={selectedAgentId}
                   onFollowPosition={centerCamera}/>}
               {!closeup&&world.settlements.length>0&&
