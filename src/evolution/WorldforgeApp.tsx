@@ -19,7 +19,8 @@ import {enableTerrainCells,terrainCellsIn} from './terrainCells';
 import {TerrainCellPanel} from './TerrainCellPanel';
 import {DEFAULT_LANDFORMS,settlementGeography} from './regionalGeography';
 import {sceneAtmosphere} from './sceneAtmosphere';
-import {createDepthProjector,interpolatedGroundHeight} from './depthProjection';
+import {WORLD_TREE_BLOCK} from './worldTree';
+import {createDepthProjector,DEPTH_RISE,DEPTH_TILE_WIDTH,interpolatedGroundHeight} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {godModeShortcut} from './appShortcuts';
@@ -258,9 +259,9 @@ export function WorldforgeApp(){
   const tabRef=useRef(tab);
   tabRef.current=tab;
   const projection=useMemo(()=>createDepthProjector({
-    width:world.width,height:world.height,skylands:world.skylands},
+    width:world.width,height:world.height,skylands:world.skylands,worldTree:world.worldTree},
     RELIEF_LEVELS[reliefLevel],{yaw:orbitYaw,pitch:activeCameraPitch}),
-  [world.width,world.height,world.skylands,reliefLevel,orbitYaw,activeCameraPitch]);
+  [world.width,world.height,world.skylands,world.worldTree,reliefLevel,orbitYaw,activeCameraPitch]);
   const cameraPosition=useCallback((x:number,y:number,at?:number)=>{
     const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
     if(!viewport||!sheet)return null;
@@ -821,10 +822,14 @@ export function WorldforgeApp(){
     setZoom(v=>Math.max(2,v));setFollowId(id);
     setTab('world');setMapFocus(id);
   };
+  const treeFocus=(x:number,y:number):AtlasPoint=>({x,y,
+    elevation:topographyForWorld(world).heights[y*world.width+x]+
+      DEPTH_RISE*DEPTH_TILE_WIDTH/2*WORLD_TREE_BLOCK*20*Math.sqrt(1.5)/RELIEF_LEVELS[reliefLevel]});
   const findAncientSite=(x:number,y:number)=>{
-    if(tree?.x===x&&tree.y===y)setOverlay('terrain');
     if(tab!=='world')setPlaying(false);
-    locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
+    if(tree?.x===x&&tree.y===y){
+      setOverlay('terrain');locateAtlasPoint(treeFocus(x,y),1);setZoom(1);
+    }else locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
     focusMap();
   };
   const findSkyland=(id:number,zoomTo:boolean)=>{
@@ -854,7 +859,7 @@ export function WorldforgeApp(){
     setFollowId(null);setMapView(next);
     const island=selectedSkyland?.islands[0];
     setMapFocus(island?{x:island.x,y:island.y,elevation:island.height}:
-      displayed??{x:world.width/2-.5,y:world.height/2-.5});
+      treeSelected&&tree?treeFocus(tree.x,tree.y):displayed??{x:world.width/2-.5,y:world.height/2-.5});
   };
   useLayoutEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
@@ -1463,12 +1468,14 @@ export function WorldforgeApp(){
             </div>:<>
               {treeSelected&&<div className="evo-selected-settlement" aria-label="World Tree details">
                 <strong>World Tree</strong>
-                <p>Follow the root trail from the coast to the ancient grove.</p>
+                <p>{tree.approach!==undefined?'The tree rises out of the sea. Visit its roots from the coastal trail or by boat.':'Follow the root trail from the coast to the ancient grove.'}</p>
+                <button onClick={()=>locateAtlasPoint({x:tree.x,y:tree.y},ATLAS_PLACE_ZOOM)}>
+                  Inspect the roots</button>
                 {treeShore!==undefined&&<button onClick={()=>locateAtlasPoint({
                   x:treeShore%world.width,y:Math.floor(treeShore/world.width)},ATLAS_PLACE_ZOOM)}>
                   Show coastal landing</button>}
                 {!world.descent&&<button onClick={()=>{navigate('descent');setDescentTree(true);}}>
-                  Descend at the World Tree</button>}
+                  {tree.approach!==undefined?'Descend at the coastal grove':'Descend at the World Tree'}</button>}
               </div>}
               {treeShoreSelected&&tree&&<div className="evo-selected-settlement">
                 <strong>World Tree landing</strong>

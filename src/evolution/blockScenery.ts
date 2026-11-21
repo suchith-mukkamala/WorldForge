@@ -78,14 +78,16 @@ export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
 }
 
 const STAMP_DENSITY=4;
-export type BlockStamp=BuildingArt&{anchor:Point};
+export type BlockStamp=BuildingArt&{anchor:Point;density:number};
 const propCache=new Map<string,BlockStamp>();
+const largePropCache=new Map<string,BlockStamp>();
 
 export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
   view:BlockView,unit:number):BlockStamp|undefined{
   const key=[model.key,view.key,unit].join('|'),cached=cache.get(key);
   if(cached)return cached;
-  const block=projectBlock(model,view,unit*STAMP_DENSITY);
+  const density=unit>=10?1:STAMP_DENSITY;
+  const block=projectBlock(model,view,unit*density);
   // Size the sprite to the real projected geometry, including extended
   // footings and shore decks beyond their original fixed-size canvas.
   const anchor={x:1-Math.floor(block.left),y:1-Math.floor(block.top)};
@@ -96,8 +98,8 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
   if(!painter)return;
   const pixels=paintBlockRaster(painter,block,anchor);
   const bounds={left:0,top:0,right:image.width,bottom:image.height};
-  const art={image,anchor,pixels,bounds};
-  if(cache.size>=200)cache.clear();
+  const art={image,anchor,pixels,bounds,density};
+  if(cache.size>=(density===1?4:200))cache.clear();
   cache.set(key,art);
   return art;
 }
@@ -106,18 +108,17 @@ export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
   p:Point,view:BlockView,unit:number):void{
   const sprite=blockSceneryArt(model,p,view,unit);
   if(!sprite)return;
-  const {art:{image},x,y}=sprite;
-  ctx.drawImage(image,x,y,
-    image.width/STAMP_DENSITY,image.height/STAMP_DENSITY);
+  const {art:{image},x,y,scale}=sprite;
+  ctx.drawImage(image,x,y,image.width*scale,image.height*scale);
 }
 
 export function blockSceneryArt(model:BlockModel,p:Point,view:BlockView,unit:number){
-  const art=blockBuildingArt(propCache,model,view,unit);
+  const art=blockBuildingArt(unit>=10?largePropCache:propCache,model,view,unit);
   return art&&placeBlockArt(art,p,1);
 }
 
 export function placeBlockArt(art:BlockStamp,p:Point,unit:number){
-  const scale=blockStampScale(unit);
+  const scale=unit/art.density;
   return {art,x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale,scale};
 }
 

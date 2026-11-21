@@ -2,11 +2,12 @@ import {terrainHash} from './biomeGeneration';
 import {blockWorldTree,type BlockModel,type TreeFoliage,type WorldTreeRoot} from './blockModels';
 import type {Biome,World} from './engine';
 import {TERRAIN_ELEVATION_UNITS} from './terrainCells';
+import {WORLD_TREE_BLOCK,worldTreeClearings} from './worldTree';
 import {Shore,surfaceGrid,surfaceHasWater,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 
-type TreeWorld=Pick<World,'worldTree'|'width'|'height'|'tiles'|'settings'|'topography'|
+type TreeWorld=Partial<Pick<World,'settlements'|'ancientSites'|'ruins'>>&Pick<World,'worldTree'|'width'|'height'|'tiles'|'settings'|'topography'|
   'terrainCells'|'dayOfYear'|'skylands'>;
-export const WORLD_TREE_BLOCK=.25;
+export {WORLD_TREE_BLOCK};
 const foliageType=(biome:Biome):TreeFoliage=>
   biome==='taiga'||biome==='mountain'?'conifer':biome==='wetland'?'wetland':
     biome==='savanna'||biome==='wasteland'||biome==='volcanic'?'dry':'woodland';
@@ -19,11 +20,12 @@ export function worldTreeModel(world:TreeWorld,grid=surfaceGrid(world),verticalS
     const x=Math.round(tree.x+dx),y=Math.round(tree.y+dy);
     return x>=0&&x<world.width&&y>=0&&y<world.height?world.tiles[y*world.width+x].biome: center;
   };
-  const foliage=[foliageType(center)];
+  const habitat=center==='water'?(world.tiles[tree.approach??-1]?.biome??'wetland'):center;
+  const foliage=[foliageType(habitat)];
   for(let b=0;b<9;b++){
     const angle=b*2.39996+(seed%629)/100;
-    const biome=biomeAt(3*Math.cos(angle),3*Math.sin(angle));
-    foliage.push(foliageType(biome==='water'?center:biome));
+    const biome=biomeAt(24*Math.cos(angle),24*Math.sin(angle));
+    foliage.push(foliageType(biome==='water'?habitat:biome));
   }
   const sample=(x:number,y:number)=>{
     const col=Math.floor((tree.x+.5+(x+.5)*WORLD_TREE_BLOCK)*VISUAL_TERRAIN_SIDE);
@@ -32,21 +34,22 @@ export function worldTreeModel(world:TreeWorld,grid=surfaceGrid(world),verticalS
   };
   const ground=grid.ground[sample(-.5,-.5)]/TERRAIN_ELEVATION_UNITS;
   const roots:WorldTreeRoot[]=[];
-  for(let y=-14;y<=14;y++)for(let x=-14;x<=14;x++){
+  const cleared=new Set(worldTreeClearings(world)),clearBase=new Set<number>();
+  if(cleared.size)for(let y=-6;y<=6;y++)for(let x=-6;x<=6;x++){
+    const left=Math.floor(tree.x+.5+x*WORLD_TREE_BLOCK),top=Math.floor(tree.y+.5+y*WORLD_TREE_BLOCK);
+    const right=Math.ceil(tree.x+.5+(x+1)*WORLD_TREE_BLOCK)-1;
+    const bottom=Math.ceil(tree.y+.5+(y+1)*WORLD_TREE_BLOCK)-1;
+    for(let v=Math.max(0,top);v<=Math.min(world.height-1,bottom);v++){
+      for(let u=Math.max(0,left);u<=Math.min(world.width-1,right);u++){
+        if(cleared.has(v*world.width+u))clearBase.add((y+6)*13+x+6);
+      }
+    }
+  }
+  for(let y=-4;y<=4;y++)for(let x=-4;x<=4;x++){
     const radius=Math.hypot(x+.5,y+.5);
     const noise=terrainHash(x,y,seed+117);
-    const angle=Math.atan2(y+.5,x+.5);
-    let height=radius<4.4?4-radius*.55:0;
-    for(let root=0;root<5;root++){
-      const direction=root*Math.PI*2/5+(seed%628)/100;
-      const bend=(terrainHash(root,2,seed)-.5)*radius*.13;
-      const extent=8+terrainHash(root,3,seed)*6;
-      const delta=angle-direction-bend;
-      const cross=radius*Math.abs(Math.sin(delta));
-      if(Math.cos(delta)>0&&radius<extent&&cross<2.1-radius*.10+noise*.35)
-        height=Math.max(height,3.9*(1-radius/extent)+.6);
-    }
-    if(height<=0)continue;
+    const height=radius<4.4?4-radius*.55:0;
+    if(height<=0||clearBase.has((y+6)*13+x+6))continue;
     const i=sample(x,y);
     if(i<0||radius>3.8&&(surfaceHasWater(grid,i)||grid.shore[i]===Shore.rootTrail))continue;
     const elevation=grid.ground[i]/TERRAIN_ELEVATION_UNITS;
@@ -55,7 +58,7 @@ export function worldTreeModel(world:TreeWorld,grid=surfaceGrid(world),verticalS
     const moss=(biome==='wetland'||biome==='forest'||biome==='taiga')&&radius>3&&noise>.32;
     roots.push({x,y,ground:offset-1,height:Math.ceil(height)+1,moss});
   }
-  return {model:blockWorldTree(seed,foliage,roots),ground};
+  return {model:blockWorldTree(seed,foliage,roots,clearBase),ground};
 }
 
 const overhead=new WeakMap<BlockModel,HTMLCanvasElement>();

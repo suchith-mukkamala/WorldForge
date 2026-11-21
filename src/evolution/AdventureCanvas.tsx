@@ -1,3 +1,4 @@
+import {WORLD_TREE_CROWN_RADIUS,WORLD_TREE_DESCENT_UNIT} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
 import type {Agent,World} from './engine';
@@ -33,7 +34,7 @@ type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;faci
 
 type Scenery={x:number;y:number;depth:number;opacity:number;
   draw?:(ctx:CanvasRenderingContext2D,x:number,y:number)=>void;
-  art?:PlacedArt;canopy?:boolean;building?:Building;target?:Point};
+  art?:PlacedArt;canopy?:boolean;worldTree?:boolean;building?:Building;target?:Point};
 
 function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
@@ -103,12 +104,12 @@ function sceneScenery({world,map,region,landmarks}:Props,origin:Point,cols:numbe
       }
     }
   }
-  if(tree&&tree.x>=origin.x-3&&tree.x<origin.x+cols+3&&
-    tree.y>=origin.y-3&&tree.y<origin.y+rows+5){
+  if(tree&&tree.x>=origin.x-WORLD_TREE_CROWN_RADIUS&&tree.x<origin.x+cols+WORLD_TREE_CROWN_RADIUS&&
+    tree.y>=origin.y-WORLD_TREE_CROWN_RADIUS&&tree.y<origin.y+rows+WORLD_TREE_CROWN_RADIUS*2){
     const p={x:(tree.x+.5)*TILE,y:(tree.y+.5)*TILE};
     const {model}=worldTreeModel(world);
-    const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,3.1);
-    scenery.push({x:tree.x,y:tree.y,depth:p.y,opacity:1,art,canopy:true});
+    const art=blockSceneryArt(model,p,DESCENT_BLOCK_VIEW,WORLD_TREE_DESCENT_UNIT);
+    scenery.push({x:tree.x,y:tree.y,depth:p.y,opacity:1,art,canopy:true,worldTree:true});
   }
   return scenery;
 }
@@ -250,7 +251,11 @@ export function AdventureCanvas(props:Props){
       }
       sprites.sort((a,b)=>a.depth-b.depth||a.x-b.x);
       for(const sprite of sprites){
-        ctx.globalAlpha=sprite.opacity*(faded.has(sprite)?.26:1);
+        const playerX=(player.x+.5)*TILE,playerY=(player.y+.55)*TILE;
+        const treeCoversPlayer=sprite.worldTree&&sprite.art&&
+          (Math.hypot(sprite.x-player.x,sprite.y-player.y)<12||
+            sprite.depth>=playerY&&opaqueArtAt(sprite.art,playerX,playerY));
+        ctx.globalAlpha=sprite.opacity*(treeCoversPlayer?.19:faded.has(sprite)?.26:1);
         sprite.draw?.(ctx,Math.round(sprite.x*TILE)-x,Math.round(sprite.y*TILE)-y);
         if(sprite.art)paintAtlasBuilding(ctx,sprite.art,x,y);
       }

@@ -42,7 +42,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   const pixels=new Uint32Array(image.data.buffer);
   pixels.fill(terrainPixel(sea));
   paintDepthSky(pixels,width,height,w.settings.seed,projector.skyBand*density);
-  const grid=surfaceGrid(w),{columns,rows,ground,water,shore}=grid;
+  const grid=surfaceGrid(w),{columns,rows,ground,water,shore,rootRise}=grid;
   const decks=plots&&new Uint8Array(ground.length);
   if(decks)for(const [i,plot] of plots.squares){
     if(plot.kind==='boardwalk')decks[i]=2*TERRAIN_ELEVATION_UNITS;
@@ -55,7 +55,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   const ux=(stepX.x-origin.x)*density,uy=(stepX.y-origin.y)*density;
   const vx=(stepY.x-origin.x)*density,vy=(stepY.y-origin.y)*density;
   const rise=projector.riseScale/DEPTH_RISE/TERRAIN_ELEVATION_UNITS*density;
-  const level=(i:number)=>ground[i]+water[i]+(decks?.[i]??0);
+  const level=(i:number)=>ground[i]+water[i]+(decks?.[i]??0)+(rootRise?.[i]??0);
   const seaHeight=(SEA_LEVEL-9)*TERRAIN_ELEVATION_UNITS;
   const count=SIDE/sample,offset=Math.floor(sample/2);
   const order=Array.from({length:count*count},(_,i)=>(i%count+Math.floor(i/count)*SIDE)*sample).sort((a,b)=>

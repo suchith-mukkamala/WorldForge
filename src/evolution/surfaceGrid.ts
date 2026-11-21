@@ -5,18 +5,20 @@ import {floodplains,riverLinks,waterSeason} from './riverSeasons';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {coastalLife,coralTone} from './coastalLife';
 import {terrainHash,terrainNoise} from './biomeGeneration';
+import {WORLD_TREE_ROOT_REACH,worldTreeClearings,worldTreeRootHeight,worldTreeRoots} from './worldTree';
 import {skylandMesh,skylandShadows} from './skylands';
 
 export {VISUAL_TERRAIN_SIDE};
 export const Shore={ground:0,wetSand:1,drySand:2,shallows:3,channel:4,
-  gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12,pool:13,spray:14,rootTrail:15} as const;
-export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array;shadow?:Uint8Array};
-export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldTree'>;
+  gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12,pool:13,spray:14,rootTrail:15,rootBark:16,rootMoss:17,rootWet:18} as const;
+export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array;shadow?:Uint8Array;rootRise?:Uint8Array};
+export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldTree'>&
+  Partial<Pick<World,'settlements'|'ancientSites'|'ruins'>>&{rootClearings?:readonly number[]};
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
 const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
 const cache=new WeakMap<TerrainGrid,{season:string;riverlands:boolean;
-  skylands:World['skylands'];worldTree:World['worldTree'];grid:SurfaceGrid}>();
+  skylands:World['skylands'];worldTree:World['worldTree'];clearings:string;grid:SurfaceGrid}>();
 
 export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:number)=>{
   const shore=grid.shore[index];
@@ -29,9 +31,10 @@ export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:n
 export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const base=terrainRenderGrid(world),season=waterSeason(world),riverlands=!!world.settings.riverlands;
   const {skylands,worldTree}=world;
+  const cleared=world.rootClearings??worldTreeClearings(world),clearings=cleared.join(',');
   const previous=cache.get(base);
   if(previous?.season===season&&previous.riverlands===riverlands&&previous.skylands===skylands&&
-    previous.worldTree===worldTree)
+    previous.worldTree===worldTree&&previous.clearings===clearings)
     return previous.grid;
   const {width,height,tiles}=world,heights=topographyForWorld(world).heights;
   const columns=width*SIDE,rows=height*SIDE,count=columns*rows;
@@ -166,7 +169,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
     }
   }
   if(worldTree){
-    const trail=[worldTree.y*width+worldTree.x,...worldTree.trail];
+    const trail=[worldTree.approach??worldTree.y*width+worldTree.x,...worldTree.trail];
     for(let step=1;step<trail.length;step++){
       const from=trail[step-1],to=trail[step];
       const cx=from%width*SIDE+SIDE/2,cy=Math.floor(from/width)*SIDE+SIDE/2;
@@ -177,12 +180,38 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       }
     }
   }
+  let rootRise:Uint8Array|undefined;
+  if(worldTree){
+    rootRise=new Uint8Array(count);
+    const tree=worldTree,roots=worldTreeRoots(tree),blocked=new Set(cleared);
+    const reach=WORLD_TREE_ROOT_REACH;
+    for(let y=Math.max(0,tree.y-reach);y<=Math.min(height-1,tree.y+reach);y++){
+      for(let x=Math.max(0,tree.x-reach);x<=Math.min(width-1,tree.x+reach);x++){
+        const id=y*width+x;
+        if(blocked.has(id)||!worldTreeRootHeight(roots,x-tree.x,y-tree.y,1))continue;
+        const biome=tiles[id].biome;
+        for(let v=0;v<SIDE;v++)for(let u=0;u<SIDE;u++){
+          const col=x*SIDE+u,row=y*SIDE+v,index=row*columns+col;
+          if(shore[index]===Shore.rootTrail||shore[index]===Shore.pool||shore[index]===Shore.spray)continue;
+          const peak=worldTreeRootHeight(roots,x-tree.x+offset[u],y-tree.y+offset[v]);
+          const heightAboveSurface=peak-(openWater[index]?6:0);
+          const amount=Math.round(heightAboveSurface*UNITS);
+          if(amount<2)continue;
+          rootRise[index]=amount;
+          const grain=terrainNoise(col,row,6,seed+113);
+          shore[index]=openWater[index]?Shore.rootWet:
+            (biome==='forest'||biome==='taiga'||biome==='wetland')&&grain>-.13?
+              Shore.rootMoss:Shore.rootBark;
+        }
+      }
+    }
+  }
   const skyShadow=skylands?.length?skylandShadows(skylands,columns,rows):undefined;
   const shadow=worldTree?(skyShadow?.slice()??new Uint8Array(count)):skyShadow;
   if(worldTree&&shadow){
     const seed=world.settings.seed+worldTree.variant;
     const cx=(worldTree.x+.5)*SIDE+2,cy=(worldTree.y+.5)*SIDE+3;
-    const radius=SIDE*3;
+    const radius=SIDE*22;
     for(let y=Math.max(0,cy-radius);y<=Math.min(rows-1,cy+radius);y++){
       for(let x=Math.max(0,cx-radius);x<=Math.min(columns-1,cx+radius);x++){
         const i=y*columns+x;
@@ -194,7 +223,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       }
     }
   }
-  const grid={columns,rows,ground,water,material,shore,openWater,shadow};
-  cache.set(base,{season,riverlands,skylands,worldTree,grid});
+  const grid={columns,rows,ground,water,material,shore,openWater,shadow,rootRise};
+  cache.set(base,{season,riverlands,skylands,worldTree,clearings,grid});
   return grid;
 }
