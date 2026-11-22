@@ -1,17 +1,9 @@
-import {paintRealmRelief,realmRasterSize,type RealmRasterRequest,type RealmRasterResult} from './realmRelief';
-import {stackedProjection} from './stackedProjection';
-import {VISUAL_TERRAIN_SIDE} from './terrainCells';
+import {prepareRealmRelief,rasterizeRealm,type RealmRasterRequest} from './realmRelief';
 
+let terrain:ReturnType<typeof prepareRealmRelief>|undefined;
 self.onmessage=({data}:MessageEvent<RealmRasterRequest>)=>{
-  const {world,map,camera,maxRealmHeight,id}=data;
-  const {size,lowerHeight}=stackedProjection(world,map,camera,maxRealmHeight);
-  const {width,height}=realmRasterSize(size.width,lowerHeight);
-  const canvas=new OffscreenCanvas(width,height);
-  const texture=new OffscreenCanvas(map.width*VISUAL_TERRAIN_SIDE,map.height*VISUAL_TERRAIN_SIDE);
-  const ctx=canvas.getContext('2d'),ink=texture.getContext('2d');
-  if(!ctx||!ink)throw Error('Cannot draw the Underworld relief.');
-  const hit=paintRealmRelief(ctx,ink,data);
-  const bitmap=canvas.transferToImageBitmap();
-  const result:RealmRasterResult={id,bitmap,hit};
-  self.postMessage(result,{transfer:[bitmap,hit.ids.buffer]});
+  if(data.map)terrain=prepareRealmRelief(data.map);
+  if(!terrain)throw Error('The Underworld relief needs a map.');
+  const result=rasterizeRealm(data,terrain);
+  self.postMessage(result,{transfer:[result.pixels.buffer,result.hit.ids.buffer as ArrayBuffer]});
 };

@@ -840,6 +840,15 @@
   cursor: grab;
 }
 .realm-atlas-viewport:active { cursor: grabbing; }
+.world-atlas .realm-relief-viewport {
+  background: radial-gradient(ellipse at 50% 42%, #403044, #292538 63%, #1f2532);
+}
+.realm-view-controls { display: flex; gap: 3px; align-items: center; }
+.realm-view-controls button[aria-pressed="true"] {
+  border-color: #c2a683;
+  background: #684e64;
+  color: #fff0cd;
+}
 .realm-atlas-sheet canvas {
   position: absolute;
   inset: 0;
@@ -972,7 +981,8 @@
   --atlas-height: min(78vh, max(420px, calc(100dvh - 282px)), 920px);
   position: relative;
   cursor: grab;
-  background: linear-gradient(#203b46, #27313d 46%, #252636 65%, #1d2633);
+  background: radial-gradient(ellipse at 50% 80%, #52334981, transparent 59%),
+    linear-gradient(#203b46, #27313d 46%, #252636 65%, #1d2633);
 }
 .strata-viewport:active { cursor: grabbing; }
 .strata-level, .strata-rock { position: absolute; left: 0; width: 100%; }
@@ -987,6 +997,15 @@
   background: transparent;
   image-rendering: pixelated;
 }
+.strata-fords {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+.strata-fords[hidden] { display: none; }
 .strata-label {
   position: absolute;
   left: 3%;
@@ -1022,7 +1041,17 @@
 .strata-selection, .strata-mortal { pointer-events: none; outline: 2px solid #ffdea7; }
 .strata-selection { width: 11px; height: 11px; }
 .strata-mortal { width: 7px; height: 7px; background: #afe2a5; outline-color: #24313e; }
-.strata-drawing { position: absolute; top: 30%; left: 38%; color: #e9d8e8; }
+.strata-drawing {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  max-width: 90%;
+  text-align: center;
+  color: #e9d8e8;
+  pointer-events: none;
+}
 .strata-footer {
   display: flex;
   justify-content: space-between;

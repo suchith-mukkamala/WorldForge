@@ -14,56 +14,83 @@ const {basalt,ember,lava,steam,glowroot,crystal,chalk,sea}=RealmBiome;
 export const UNDERWORLD_BIOMES=[
   {name:'Basalt galleries',color:'#797583',floor:['#646171','#716d7d','#7b7686','#86808c']},
   {name:'Ember Rivers',color:'#9a6c60',floor:['#744d4a','#875951','#98655a','#a67666']},
-  {name:'Molten channels',color:'#ff9754',floor:['#bf5142','#df693f','#f78948','#ffae5f']},
+  {name:'Molten channels',color:'#ff9754',floor:['#a64038','#d45436','#f87a35','#ffca6a']},
   {name:'Steam banks',color:'#b9ac91',floor:['#93847c','#a39685','#b7a98f','#c3b69e']},
   {name:'Glowroot Forests',color:'#578d72',floor:['#426e65','#4f7c6e','#5b8c75','#69987e']},
   {name:'Crystal halls',color:'#967cb1',floor:['#6b5f81','#796a92','#8a76a2','#a48bb8']},
   {name:'Pale shores',color:'#d9c393',floor:['#b2a080','#c0ad88','#d0bb90','#decb9e']},
-  {name:'Buried Sea',color:'#367d99',floor:['#255873','#2c6b85','#327b96','#4a91a4']},
+  {name:'Buried Sea',color:'#367d99',floor:['#214b69','#275b7b','#2f6c88','#42849d']},
 ] as const;
 const palette=UNDERWORLD_BIOMES.map(biome=>biome.floor.map(terrainPixel));
+const shallows=['#377887','#428891','#5c9c9d','#94bfb3'].map(terrainPixel);
 const paving=['#877b76','#978782','#ad9d8e','#b9a89a'].map(terrainPixel);
 const piers=['#796b68','#938278','#a48f7e','#b7a38a'].map(terrainPixel);
+const emberLight=terrainPixel('#ffb06a');
+const abyss=terrainPixel('#171825');
 const rect=(ctx:CanvasRenderingContext2D,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(x,y,w,h);
 };
 
-export function paintRealmFloor(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,map:RealmMap,day:number,
-  origin:Point,width:number,height:number){
-  const iw=width*SIDE,ih=height*SIDE,image=ctx.createImageData(iw,ih);
-  const pixels=new Uint32Array(image.data.buffer);
-  pixels.fill(terrainPixel('#171825'));
+function warmStone(ink:number,strength:number){
+  const mix=(shift:number)=>Math.round((ink>>>shift&255)*(1-strength)+(emberLight>>>shift&255)*strength);
+  return (255<<24|mix(16)<<16|mix(8)<<8|mix(0))>>>0;
+}
+
+export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,width:number,height:number){
+  const iw=width*SIDE;
+  const pixels=new Uint32Array(iw*height*SIDE);
+  pixels.fill(abyss);
   for(let row=0;row<height;row++)for(let col=0;col<width;col++){
     const x=origin.x+col,y=origin.y+row,i=y*map.width+x;
     if(x<0||y<0||x>=map.width||y>=map.height)continue;
-    const natural=map.biomes[i],span=map.bridges.has(i)||realmFordOpen(map,i,day);
+    const natural=map.biomes[i],span=map.bridges.has(i)||day!==undefined&&realmFordOpen(map,i,day);
     const kind=span?ember:natural,road=map.roads.has(i);
     const north=map.biomes[i-map.width],south=map.biomes[i+map.width];
     const west=x>0?map.biomes[i-1]:undefined,east=x<map.width-1?map.biomes[i+1]:undefined;
-    const warm=kind===ember||kind===lava;
+    const shore=(neighbor:number|undefined)=>neighbor!==undefined&&neighbor!==sea&&neighbor!==lava;
+    const shoreNorth=shore(north),shoreSouth=shore(south),shoreWest=shore(west),shoreEast=shore(east);
     for(let dy=0;dy<SIDE;dy++)for(let dx=0;dx<SIDE;dx++){
       const px=x*SIDE+dx,py=y*SIDE+dy;
       const grain=Math.imul(px+map.seed,1597334677)^Math.imul(py,122949829);
       const hash=Math.imul(grain^grain>>>14,0x45d9f3b);
       const variation=terrainNoise(px,py,9,map.seed)*(kind===sea?.9:1.35);
       const level=Math.max(0,Math.min(3,Math.floor(1.65+variation+(hash>>>28)*.08)));
-      const edge=dy===0?north:dy===7?south:dx===0?west:dx===7?east:undefined;
+      const edge=dy===0?north:dy===SIDE-1?south:dx===0?west:dx===SIDE-1?east:undefined;
       const blend=edge!==undefined&&edge!==lava&&edge!==sea&&kind!==lava&&kind!==sea&&
         edge!==kind&&(hash&3)>1;
-      const step=kind!==sea&&kind!==lava&&dy>=6&&map.heights[i]>(map.heights[i+map.width]??0)+3;
-      const ripple=kind===sea&&((py+(hash>>>27&1))%11===0)&&
-        terrainNoise(px,py*.55,4,map.seed+664)>.14;
+      const step=kind!==sea&&kind!==lava&&dy>=SIDE-2&&map.heights[i]>(map.heights[i+map.width]??0)+3;
       const causeway=road&&(dx>=3&&dx<=4||dy>=3&&dy<=4)&&
         (dx>=2&&dx<=5&&dy>=2&&dy<=5||
           dy<=2&&map.roads.has(i-map.width)||dy>=5&&map.roads.has(i+map.width)||
           dx<=2&&map.roads.has(i-1)||dx>=5&&map.roads.has(i+1));
-      const color=span?piers[(dx+Math.floor(dy/3))&3]:causeway?paving[level]:
-        step?palette[kind][dy===7?0:1]:
-        palette[blend?edge:kind][ripple||warm&&natural===lava&&(hash&7)===0?3:level];
+      let color=span?piers[(dx+Math.floor(dy/3))&3]:causeway?paving[level]:
+        step?palette[kind][dy===SIDE-1?0:1]:palette[blend?edge:kind][level];
+      if(!span&&kind===lava){
+        const pulse=terrainNoise(px,py*.62,4,map.seed+664);
+        const rim=edge!==undefined&&edge!==lava;
+        color=palette[lava][rim?Math.min(level,1):pulse>.24?3:pulse>.01?2:1];
+      }else if(!span&&kind===sea){
+        const width=2+(hash&1);
+        const shallow=shoreNorth&&dy<width||shoreSouth&&dy>=SIDE-width||
+          shoreWest&&dx<width||shoreEast&&dx>=SIDE-width;
+        const ripple=(py+(hash>>>27&1))%11===0&&variation>.08;
+        color=(shallow?shallows:palette[sea])[ripple?3:level];
+      }else if(!span){
+        const glow=Math.min(north===lava?dy:SIDE,south===lava?SIDE-1-dy:SIDE,
+          west===lava?dx:SIDE,east===lava?SIDE-1-dx:SIDE);
+        if(glow<3)color=warmStone(color,(3-glow)*.087);
+      }
       pixels[(row*SIDE+dy)*iw+col*SIDE+dx]=color;
     }
   }
-  ctx.putImageData(image,0,0);
+  return pixels;
+}
+
+export function paintRealmFloor(ctx:CanvasRenderingContext2D,map:RealmMap,day:number|undefined,
+  origin:Point,width:number,height:number,offset?:Point){
+  const pixels=realmFloorPixels(map,day,origin,width,height);
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer),width*SIDE,height*SIDE),
+    offset?.x??0,offset?.y??0);
 }
 
 function fungi(ctx:CanvasRenderingContext2D,x:number,y:number,grain:number){

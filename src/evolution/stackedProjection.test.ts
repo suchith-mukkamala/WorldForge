@@ -35,4 +35,14 @@ describe('Stacked world projection',()=>{
       }
     }
   });
+
+  it('keeps the lower render coordinates when the Surface gains skyland headroom',()=>{
+    const world={width:96,height:64},realm={width:60,height:40};
+    const camera={yaw:45,pitch:42};
+    const before=stackedProjection(world,realm,camera,20);
+    const skylands=[{id:0,spill:0,islands:[{x:12,y:12,rx:4,ry:3,height:484,depth:40,seed:1,terrain:'grove' as const}]}];
+    const after=stackedProjection({...world,skylands},realm,camera,20);
+    expect(after.lowerTop).toBeGreaterThan(before.lowerTop);
+    expect(after.lower).toEqual(before.lower);
+  });
 });

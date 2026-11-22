@@ -30,6 +30,19 @@ export function packSimulationWorld(before:World,next:World){
 export function receiveSimulationWorld(before:World,reply:Extract<SimulationReply,{kind:'advanced'}>):World{
   const world={...reply.world};
   for(const key of reply.retained??[])Object.assign(world,{[key]:before[key]});
+  // Population can change on a new year while the same passages and
+  // causeways still describe the same underground geography.
+  const oldRealm=before.underworld,realm=world.underworld;
+  if(oldRealm&&realm&&realm!==oldRealm){
+    const links=oldRealm.links.length===realm.links.length&&oldRealm.links.every((link,i)=>{
+      const next=realm.links[i];
+      return link.surface===next.surface&&link.cell===next.cell&&link.kind===next.kind;
+    })?oldRealm.links:realm.links;
+    const oldTerraces=oldRealm.terraces,terraces=realm.terraces;
+    const sameTerraces=oldTerraces?.length===terraces?.length&&
+      (!oldTerraces||oldTerraces.every((cell,i)=>cell===terraces?.[i]));
+    world.underworld={...realm,links,terraces:sameTerraces?oldTerraces:terraces};
+  }
   return world as World;
 }
 export function shouldAcceptSimulation(
