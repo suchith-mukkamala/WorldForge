@@ -25,31 +25,28 @@ const tileOf=(index:number,width:number)=>Math.floor(index/(width*SIDE*SIDE))*wi
   Math.floor(index%(width*SIDE)/SIDE);
 const cellHeight=(cell:LavaCell)=>cell[1]+cell[2]+cell[3];
 
-type LavaField={byTile:Map<number,LavaCell[]>;hot:Set<number>;molten:LavaCell[]};
+type LavaField={byTile:Map<number,LavaCell[]>;hot:Set<number>};
 const fields=new WeakMap<LavaCell[],LavaField>();
-const emptyField:LavaField={byTile:new Map(),hot:new Set(),molten:[]};
+const emptyField:LavaField={byTile:new Map(),hot:new Set()};
 export function lavaField(world:Pick<VolcanoWorld,'width'|'volcanism'>):LavaField{
   const cells=world.volcanism?.cells;
   if(!cells?.length)return emptyField;
   const saved=fields.get(cells);
   if(saved)return saved;
-  const field:LavaField={byTile:new Map(),hot:new Set(),molten:[]};
+  const field:LavaField={byTile:new Map(),hot:new Set()};
   for(const cell of cells){
     const tile=tileOf(cell[0],world.width);
     const patches=field.byTile.get(tile);
     if(patches)patches.push(cell);
     else field.byTile.set(tile,[cell]);
-    if(cell[2]>=3){
-      field.hot.add(tile);
-      field.molten.push(cell);
-    }
+    if(cell[2]>=3)field.hot.add(tile);
   }
   fields.set(cells,field);
   return field;
 }
 
 export function volcanoPhase(world:World,vent:Volcano):VolcanoPhase{
-  if(erupting(vent,volcanicDay(world))&&ventHasGround(world,vent))return 'Erupting';
+  if(world.year<9999&&erupting(vent,volcanicDay(world))&&ventHasGround(world,vent))return 'Erupting';
   const {hot}=lavaField(world);
   return hot.has(vent.index)||seaNeighbors(vent.index,world.width,world.tiles.length).some(i=>hot.has(i))?
     'Cooling':'Dormant';
@@ -142,9 +139,11 @@ function eruption(world:World,vents:readonly Volcano[],cells:readonly LavaCell[]
         .map(next=>({next,drop:level-(magma.has(next)?cellHeight(magma.get(next)!):floor(next))}))
         .filter(option=>option.drop>2)
         .sort((a,b)=>b.drop-a.drop||a.next-b.next);
-      let available=source[2];
+      // Viscous lava leaves a film in the sending cell. Draining every
+      // square in a single step makes adjoining pools oscillate.
+      let available=Math.max(1,Math.floor(source[2]*.68));
       for(const {next,drop} of slopes.slice(0,2)){
-        const amount=Math.min(available,Math.floor(drop*.31),29);
+        const amount=Math.min(available,Math.floor(drop*.27),29);
         if(amount<1)break;
         available-=amount;
         add(delta,index,-amount);add(delta,next,amount);
@@ -194,9 +193,11 @@ export function advanceVolcanism(world:World,day:number):World{
   const layout=world.volcanicLayout;
   if(!layout?.vents.length)return world;
   const previous=world.volcanism,old=previous?.cells??[];
-  const vents=layout.vents.filter(vent=>erupting(vent,day)&&ventHasGround(world,vent));
+  const closedCalendar=day>=9999*365;
+  const vents=closedCalendar?[]:layout.vents.filter(vent=>erupting(vent,day)&&ventHasGround(world,vent));
   const moves=vents.length>0||old.some(cell=>cell[2]>0);
-  const cells=moves?eruption(world,vents,old):old;
+  const cells=moves?(closedCalendar?old.map(([index,bed,molten,basalt]):LavaCell=>
+    [index,bed,0,Math.min(MAX_FLOOR-bed,molten+basalt)]):eruption(world,vents,old)):old;
   const emerging=moves||world.descent?.ship?exposedLand(world,cells):[];
   const shelves=previous?.shelves??[],seed=world.settings.seed;
   const growth=day%30===0?shelves.flatMap(([index,formed])=>{

@@ -143,6 +143,7 @@ describe('The Underworld',()=>{
     const world=make(),vent=world.volcanicLayout!.vents[0];
     const {world:surface,agent}=createMortal(world,wayfinder,undefined,undefined,false,vent.index);
     expect(volcanoPhase(surface,vent)).toBe('Dormant');
+    expect(volcanoPhase({...surface,year:9999},vent)).toBe('Dormant');
     const eruptionDay=vent.period-vent.offset;
     expect(enterUnderworld({...surface,dayOfYear:eruptionDay},vent.index).moved).toBe(false);
     const arrived=enterUnderworld(surface,vent.index);
