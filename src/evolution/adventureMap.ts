@@ -1,3 +1,4 @@
+import {lavaField} from './volcanism';
 import type {Agent,Biome,Settlement,World} from './engine';
 import {adventurePlaceKey,type AdventurePlace,type AdventureRoute,type TownStop,
   type RiverTrail,type WildStop} from './adventurePlaces';
@@ -199,6 +200,7 @@ function buildAdventureMap(world:World):AdventureMap{
     }
   }
   if(world.worldTree)open[tile(width,world.worldTree)]=0;
+  if(world.underworld?.outpost!==undefined)open[world.underworld.outpost]=0;
   const owners=new Int32Array(open.length),parents=new Int32Array(open.length).fill(-1);
   const map:AdventureMap={width,height,open,owners,parents,roads,bridges,buildings,
     towns:[],routes:new Map(),landmarkTrails:new Map(),ferries:new Map(),shipyards:new Map(),regions:new Map()};
@@ -299,19 +301,19 @@ function buildAdventureMap(world:World):AdventureMap{
 // or transport changes, never for each sprite frame or player step.
 const maps=new WeakMap<World['tiles'],{
   settlements:World['settlements'];transport:World['transport'];topography:World['topography'];
-  sites:World['ancientSites'];worldTree:World['worldTree'];
+  sites:World['ancientSites'];worldTree:World['worldTree'];outpost?:number;
   layout:World['settings']['layout'];riverlands:World['settings']['riverlands'];map:AdventureMap}>();
 export function adventureMapFor(world:World):AdventureMap{
   const cached=maps.get(world.tiles);
   if(cached?.settlements===world.settlements&&cached?.transport===world.transport&&
     cached?.layout===world.settings.layout&&cached.riverlands===world.settings.riverlands&&
     cached.sites===world.ancientSites&&cached.topography===world.topography&&
-    cached.worldTree===world.worldTree)
+    cached.worldTree===world.worldTree&&cached.outpost===world.underworld?.outpost)
     return cached.map;
   const map=buildAdventureMap(world);
   maps.set(world.tiles,{settlements:world.settlements,transport:world.transport,
     layout:world.settings.layout,riverlands:world.settings.riverlands,
-    sites:world.ancientSites,topography:world.topography,worldTree:world.worldTree,map});
+    sites:world.ancientSites,topography:world.topography,worldTree:world.worldTree,outpost:world.underworld?.outpost,map});
   return map;
 }
 
@@ -601,6 +603,7 @@ export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
   const before=world;
   if(world.descent?.mode!=='mortal'||world.descent.agentId!==actor.id)
     return {world,moved:false,reason:'Resume your mortal to travel.'};
+  if(world.descent.realm?.visit)return {world,moved:false,reason:'Return to the surface first.'};
   if(world.descent.tidal?.inside)return {world,moved:false,reason:'Leave the cave before traveling.'};
   if(world.descent.interior)return {world,moved:false,reason:'Leave the room before traveling.'};
   if(world.descent.ship?.underway)return {world,moved:false,reason:'Land the ship before traveling on foot.'};
@@ -619,6 +622,7 @@ export function useAdventureGate(world:World,region:AdventureRegion,actor:Agent,
     const spots=[landing,...directions.map(d=>({x:landing.x+d.x,y:landing.y+d.y}))];
     const dock=arrival&&spots.find(p=>inBounds(p,worldBounds(world.width,world.height))&&
       arrival.area.has(tile(world.width,p))&&world.tiles[tile(world.width,p)].biome!=='water'&&
+      !lavaField(world).hot.has(tile(world.width,p))&&
       world.agents.filter(a=>a.x===p.x&&a.y===p.y).length<mortalTileCapacity(world,p.x,p.y));
     if(!dock)return {world:before,moved:false,reason:'The landing is crowded. Try again shortly.'};
     world={...world,agents:world.agents.map(a=>a.id===actor.id?

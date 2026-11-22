@@ -1,3 +1,4 @@
+import {volcanoApproach} from './volcanicGeography';
 import {terrainHash,terrainTemperature} from './biomeGeneration';
 import type {World} from './engine';
 import {hydrologyForWorld} from './hydrology';
@@ -15,7 +16,7 @@ export type TidalChartEntry={mouth:number;find?:CaveFind};
 export type TidalExploration={chart:TidalChartEntry[];inside?:{mouth:number;cell:number}};
 export const CAVE_WIDTH=19,CAVE_HEIGHT=15,CHART_LIMIT=96;
 
-type Coast=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'worldTree'|'tidalSites'>;
+type Coast=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'worldTree'|'tidalSites'|'volcanicLayout'>;
 const caveNames:Record<CaveStone,{starts:readonly string[];ends:readonly string[];find:CaveFind}>={
   basalt:{starts:['Cinder','Ember','Blackglass','Sable','Coal','Obsidian'],
     ends:['Arch','Vault','Cove'],find:'mooring'},
@@ -33,14 +34,14 @@ export const CAVE_FINDS:Record<CaveFind,{name:string;action:string;description:s
     description:'A shaft of daylight reaches a pale beach and a pool protected by the reef.'},
 };
 
-const coastCache=new WeakMap<Topography,{seed:number;tree:World['worldTree'];caves:TidalCave[]}>();
+const coastCache=new WeakMap<Topography,{seed:number;tree:World['worldTree'];volcanicLayout:World['volcanicLayout'];caves:TidalCave[]}>();
 
 /** Select actual ocean-facing shores. The simulation terrain stays intact.
  * Layout and discoveries reconstruct on older saves from the same coast. */
 function coastCaves(world:Coast){
   const {width:w,height:h,tiles}=world,seed=world.settings.seed;
   const topo=topographyForWorld(world),cached=coastCache.get(topo);
-  if(cached?.seed===seed&&cached.tree===world.worldTree)return cached;
+  if(cached?.seed===seed&&cached.tree===world.worldTree&&cached.volcanicLayout===world.volcanicLayout)return cached;
   const {heights}=topo,size=tiles.length;
   const drainage=hydrologyForWorld(world),ocean=oceanBasins(world,drainage);
   const sea=(i:number)=>tiles[i]?.biome==='water'&&ocean.has(drainage.basin[i]);
@@ -67,7 +68,7 @@ function coastCaves(world:Coast){
       // The nearby beach must be a real legal landfall with a dry step to
       // the entrance. Prefer beaches beside the arch over the tidal apron.
       const shore=neighbors(mouth).find(i=>dry(i)&&berths[i]>=0)??mouth;
-      if(berths[shore]<0||worldTreeBlocksBuilding(world.worldTree,x,y)||
+      if(berths[shore]<0||volcanoApproach(world,mouth)||volcanoApproach(world,shore)||worldTreeBlocksBuilding(world.worldTree,x,y)||
         worldTreeBlocksBuilding(world.worldTree,shore%w,Math.floor(shore/w)))continue;
       const near=[mouth,back,...neighbors(back).filter(dry)];
       const relief=Math.max(...near.map(i=>heights[i]))-heights[mouth];
@@ -103,7 +104,7 @@ function coastCaves(world:Coast){
       for(let dy=-8;dy<=8;dy++)for(let dx=-8;dx<=8;dx++){
         const distance=Math.abs(dx)+Math.abs(dy),next=position(x+dx,y+dy);
         if(next<0||distance<4||distance>=nearest||berths[next]<0||
-          entrances.has(next)||farBanks.has(next)||worldTreeBlocksBuilding(world.worldTree,x+dx,y+dy)||
+          entrances.has(next)||farBanks.has(next)||volcanoApproach(world,next)||worldTreeBlocksBuilding(world.worldTree,x+dx,y+dy)||
           dx*(edge.x-x)+dy*(edge.y-y)>0)continue;
         const otherSea=seaPoint(w,berths[next]);
         if((otherSea.x-x-dx)*(edge.x-x)+(otherSea.y-y-dy)*(edge.y-y)>0)continue;
@@ -121,7 +122,7 @@ function coastCaves(world:Coast){
     if(farShore!==undefined){farBanks.add(farShore);entrances.add(farShore);}
     caves.push({mouth,shore,water,face,stone,seed:salt,name,find,farShore});
   }
-  const result={seed,tree:world.worldTree,caves};
+  const result={seed,tree:world.worldTree,volcanicLayout:world.volcanicLayout,caves};
   coastCache.set(topo,result);
   return result;
 }

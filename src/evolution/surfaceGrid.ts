@@ -58,7 +58,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       if(land[n]!==land[tile])coastal=true;
       const distance=dx*dx+dy*dy;
       if(!land[n]&&distance<closest){
-        waterline=heights[n]*UNITS;closest=distance;
+        waterline=heights[n]>SEA_LEVEL?heights[n]*UNITS:SEA;closest=distance;
       }
     }
     const valley=biome==='wetland',cliff=heights[tile]*UNITS-waterline>26*UNITS;

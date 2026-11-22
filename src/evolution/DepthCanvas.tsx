@@ -1,3 +1,4 @@
+import {paintRaisedVolcanism} from './volcanicArt';
 import {WORLD_TREE_BLOCK,worldTreeClearings} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
 import {clipBehindTree,treeCovers} from './worldTreeOcclusion';
@@ -639,7 +640,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       ctx.clearRect(0,0,size.width,size.height);
       ctx.imageSmoothingEnabled=false;
       ctx.drawImage(scenery,0,0,size.width,size.height);
-      if(overlay==='terrain')ctx.drawImage(atmosphere,0,0,size.width,size.height);
+      if(overlay==='terrain'){
+        ctx.drawImage(atmosphere,0,0,size.width,size.height);
+        paintRaisedVolcanism(ctx,world,projector,picking,pickScale,ground);
+      }
       if(overlay==='trade'){
         ctx.fillStyle='rgba(12,29,33,.26)';
         ctx.fillRect(0,0,size.width,size.height);

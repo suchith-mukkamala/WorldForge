@@ -1,3 +1,4 @@
+import {advanceVolcanism} from './volcanism';
 /** A finer world clock without accelerating births, aging, or the economy.
  * All playback rates cross the same month/year boundaries in the same order.
  * The annual simulation remains authoritative; monthly steps allow people to
@@ -125,6 +126,11 @@ export function advanceWorldDays(start:World,days:number):World{
   while(remaining>0&&w.year<9999){
     const nextDay=(w.dayOfYear??0)+1;
     remaining--;
+    if(w.volcanicLayout){
+      const next=advanceVolcanism(w,w.year*DAYS_PER_YEAR+nextDay);
+      if(next.tiles!==w.tiles)dayContext=createDayContext(next);
+      w=next;
+    }
     if(nextDay===DAYS_PER_YEAR){
       w=stepWorld({...w,dayOfYear:0});
       dayContext=createDayContext(w);

@@ -1,3 +1,4 @@
+import {lavaField} from './volcanism';
 /** v2.5.3 — mortal exploration. Everything here edits the authoritative
  * world without consuming simulation RNG or generating unbounded histories. */
 import type {Agent,World} from './engine';
@@ -118,6 +119,7 @@ export function walkMortal(w:World,dx:number,dy:number,
   const actor=id===null?undefined:w.agents.find(a=>a.id===id);
   if(!actor)return {world:w,moved:false,reason:'Descend into a living mortal first.'};
   if(w.descent?.ship?.underway)return {world:w,moved:false,reason:'Land the ship before walking.'};
+  if(w.descent?.realm?.visit)return {world:w,moved:false,reason:'Return to the surface first.'};
   if(w.descent?.tidal?.inside)return {world:w,moved:false,reason:'Leave the cave before walking outside.'};
   if(w.descent?.interior)return {world:w,moved:false,reason:'Leave the room before walking outside.'};
   if(!Number.isInteger(dx)||!Number.isInteger(dy)||
@@ -129,10 +131,11 @@ export function walkMortal(w:World,dx:number,dy:number,
   if(withinScene&&!withinScene(x,y))
     return {world:w,moved:false,reason:'Follow a marked exit to leave this area.'};
   const to=y*w.width+x,from=actor.y*w.width+actor.x;
+  if(lavaField(w).hot.has(to))return {world:w,moved:false,reason:'Flowing lava blocks the path. Look for cooler ground.'};
   const bridged=w.transport?.bridges.some(b=>b.index===to&&b.condition>25);
   if(w.tiles[to].biome==='water'&&!bridged)
     return {world:w,moved:false,reason:'Deep water blocks your path.'};
-  if(solidBuildingAt(w,x,y))return {world:w,moved:false,
+  if(to===w.underworld?.outpost||solidBuildingAt(w,x,y))return {world:w,moved:false,
     reason:'The building blocks your path. Walk to the marked doorway.'};
   // Two solid plots cannot be traversed through their shared diagonal
   // corner, even when the destination itself is clear.

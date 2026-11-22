@@ -59,7 +59,7 @@ export function occupiedTidalCave(world:World){
 export function enterTideCave(world:World,mouth:number):MortalStep{
   const actor=player(world);
   if(!actor||!world.descent||world.descent.ship?.underway||world.descent.interior||
-    world.descent.tidal?.inside)return fail(world,'Reach the cave on foot to explore.');
+    (world.descent.realm?.visit||world.descent.tidal?.inside))return fail(world,'Reach the cave on foot to explore.');
   const cave=tidalCaveAt(world,mouth),map=adventureMapFor(world);
   if(!cave||!usableTidalCave(world,map,cave))return fail(world,'This cave mouth is blocked.');
   const point=seaPoint(world.width,cave.mouth),distance=adventureDistance(actor,point);
@@ -77,7 +77,7 @@ export function enterTideCave(world:World,mouth:number):MortalStep{
 
 export function waitForCaveTide(world:World,mouth:number):MortalStep{
   const actor=player(world),descent=world.descent,cave=tidalCaveAt(world,mouth),tide=coastTide(world);
-  if(!actor||!cave||descent?.ship?.underway||descent?.tidal?.inside||descent?.interior||
+  if(!actor||!cave||descent?.ship?.underway||descent?.realm?.visit||descent?.tidal?.inside||descent?.interior||
     adventureDistance(actor,seaPoint(world.width,cave.mouth))>1)
     return fail(world,'Wait on the shore beside the cave.');
   const map=adventureMapFor(world);

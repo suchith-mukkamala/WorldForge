@@ -1,3 +1,6 @@
+import {enableVolcanicWorld,ventHasGround,volcanicIslandName,volcanoName} from './volcanicGeography';
+import {initializeUnderworld} from './underworld';
+import {volcanoPhase} from './volcanism';
 import {lazy,Suspense,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {ChangeEvent,SetStateAction} from 'react';
 import {receiveSimulationWorld,shouldAcceptSimulation,type PendingSimulation,
@@ -65,6 +68,7 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
+const UnderworldAtlas=lazy(()=>import('./UnderworldChart').then(m=>({default:m.UnderworldAtlas})));
 const MortalAdventure=lazy(()=>import('./MortalAdventure').then(m=>({default:m.MortalAdventure})));
 import {readSavedWorld,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
   saveDatabaseWorld,persistBrowserWorld,readBrowserSaveKeys,resolveStartupSave,
@@ -90,12 +94,12 @@ function initialWorld():World{
   return createWorld({...DEFAULT_SETTINGS,layout:DEFAULT_WORLD_LAYOUT,
     livingBiomes:true,regionalGeography:true,regionalBiomes:true,riverlands:true,
     landforms:DEFAULT_LANDFORMS,terrainCells:true,floatingIslands:true,worldTree:true,
-    climateEcology:true,
+    climateEcology:true,volcanicWorld:true,
     seed:typeof window==='undefined'?DEFAULT_SETTINGS.seed:freshWorldSeed(DEFAULT_SETTINGS.seed),
   });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
-  'settlements'|'culture'|'descent';
+  'settlements'|'culture'|'descent'|'underworld';
 type AtlasPoint=Point&{elevation?:number};
 const format=(n:number)=>n.toLocaleString('en-US');
 const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
@@ -197,6 +201,8 @@ export function WorldforgeApp(){
   const [showRivers,setShowRivers]=useState(false);
   const [riverMouth,setRiverMouth]=useState<number|null>(null);
   const [descentTree,setDescentTree]=useState(false);
+  const [descentCrater,setDescentCrater]=useState<number|null>(null);
+  const craterArrival=world.volcanicLayout?.vents.find(vent=>vent.index===descentCrater);
   const [descentRiver,setDescentRiver]=useState<number|null>(null);
   const rivers=showRivers||descentRiver!==null?riverCourses(world):[];
   const chartedRiver=rivers.find(r=>r.mouth===riverMouth)??rivers[0];
@@ -721,11 +727,13 @@ export function WorldforgeApp(){
   },[setWorld]);
   const hasShip=!!world.descent?.ship,atSea=!!world.descent?.ship?.underway;
   const caveMouth=world.descent?.tidal?.inside?.mouth,caveChart=world.descent?.tidal?.chart;
+  const realm=world.descent?.realm,realmOrigin=realm?.visit?.origin,realmChart=realm?.chart;
+  const realmAfloat=!!realm?.visit?.ship?.underway;
   useEffect(()=>{
-    if(!storageReady||!hasShip&&!caveChart?.length)return;
+    if(!storageReady||!hasShip&&!caveChart?.length&&!realmChart?.length)return;
     const timer=window.setTimeout(()=>checkpoint(currentWorld.current),300);
     return ()=>window.clearTimeout(timer);
-  },[storageReady,hasShip,atSea,caveMouth,caveChart,checkpoint]);
+  },[storageReady,hasShip,atSea,caveMouth,caveChart,realmOrigin,realmChart,realmAfloat,checkpoint]);
   const agent=selectedAgentId===null?null:
     world.agents.find(a=>a.id===selectedAgentId)??null;
   useEffect(()=>{
@@ -753,6 +761,11 @@ export function WorldforgeApp(){
   const selectedCave=displayed?chartedTidalCaves(world).find(({cave})=>
     cave.mouth===drainageIndex||cave.shore===drainageIndex):undefined;
   const onCaveBeach=selectedCave&&selectedCave.cave.mouth!==drainageIndex;
+  const selectedVent=displayed?world.volcanicLayout?.vents.find(vent=>
+    (vent.index===drainageIndex||vent.rim===drainageIndex)&&ventHasGround(world,vent)):undefined;
+  const selectedIsland=world.volcanicLayout?.islands.find(island=>island.index===drainageIndex);
+  const selectedOutpost=drainageIndex===world.underworld?.outpost;
+
   const selectedTerrain=displayed?terrainCellsIn(world,drainageIndex):undefined;
   const treeCover=tile&&woodlandHabitat(tile.biome)?
     woodlandCover(world.woodland,drainageIndex):undefined;
@@ -983,7 +996,7 @@ export function WorldforgeApp(){
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
-    setDescentRiver(null);setDescentTree(false);setTab(next);setNotice('');
+    setDescentRiver(null);setDescentTree(false);setDescentCrater(null);setTab(next);setNotice('');
   };
   const enterMortalView=()=>{
     const before=currentWorld.current;
@@ -999,7 +1012,7 @@ export function WorldforgeApp(){
       setStartingDescent(true);
       const startingWorld=settledStart?await growSettlements(before):before;
       if(currentWorld.current!==before||tabRef.current!=='descent')return;
-      const result=createMortal(startingWorld,options,descentRiver??undefined,shipyard,descentTree);
+      const result=createMortal(startingWorld,options,descentRiver??undefined,shipyard,descentTree,descentCrater??undefined);
       setPlaying(false);setTab('world');setNotice('');
       changeMortalWorld(result.world);
     }catch(error){setNotice(error instanceof Error?error.message:
@@ -1069,9 +1082,11 @@ export function WorldforgeApp(){
           {' '}{savedDate.day}</small>}
         {saveWarning&&<small role="status"> · {saveWarning}</small>}</div>
     </header>
-    {tab==='descent'?<DivineDescentCreator world={world} error={notice}
+    {tab==='underworld'?<Suspense fallback={<main className="evo-history-page" role="status">
+      Opening the Underworld map…</main>}><UnderworldAtlas world={world} onReturn={()=>navigate('world')}/></Suspense>:
+    tab==='descent'?<DivineDescentCreator world={world} error={notice}
       onCreate={createDescent} starting={startingDescent} arrivalName={riverArrival?.name} atWorldTree={descentTree}
-      onResume={enterMortalView}
+      craterName={craterArrival&&volcanoName(craterArrival,world)} onResume={enterMortalView}
       onReturn={leaveMortalView}/>:
     tab==='creator'?<WorldCreator key={world.settings.seed+'-'+world.year}
       current={world.settings} onCreate={startWorld} onReturn={()=>navigate('world')}/>:
@@ -1175,11 +1190,12 @@ export function WorldforgeApp(){
           <div className="evo-card-heading evo-map-heading">
             <div className="atlas-map-title" aria-live="polite">
               <strong>{selectedSkyland?skylandName(selectedSkyland):treeSelected?'World Tree':
-                selectedCave?selectedCave.cave.name:
+                selectedVent?volcanoName(selectedVent,world):
+                selectedIsland?volcanicIslandName(selectedIsland):selectedCave?selectedCave.cave.name:
                 closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
                 (waterfallBasin?'Waterfall basin':detail==='street'?'Street map':'Local map')):'World map'}</strong>
               <small>{selectedSkyland?'Floating islands':building?BUILDING_LABELS[building.type]:
-                selectedCave?(onCaveBeach?'Cave landing':'Sea cave'):
+                selectedVent?volcanoPhase(world,selectedVent):selectedCave?(onCaveBeach?'Cave landing':'Sea cave'):
                 detail==='street'?'Buildings & people':detail==='town'?'Buildings':
                   isMultiIslandLayout(world.settings.layout)?
                     WORLD_LAYOUT_NAMES[geographyForSeed(world.settings.seed,world.settings.layout)]:
@@ -1187,7 +1203,8 @@ export function WorldforgeApp(){
             </div>
             <div className="evo-map-actions">
               <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}
-                onSkyland={id=>findSkyland(id,true)} onCave={findCoast}/>
+                onSkyland={id=>findSkyland(id,true)} onCave={findCoast} onVent={findCoast}
+                onUnderworld={()=>navigate('underworld')}/>
               <button type="button" aria-expanded={showRivers} onClick={()=>{
                 setShowRivers(value=>!value);setOverlay('terrain');setBrush({kind:'inspect'});
               }}>Rivers</button>
@@ -1344,6 +1361,16 @@ export function WorldforgeApp(){
               setNotice('Floating islands are ready to explore in Places.');
             }}>Add floating islands</button>}
           </div>
+          {!world.volcanicLayout?.vents.length&&<div className="evo-terrain-upgrade">
+            <div><strong>Volcanoes &amp; Underworld</strong>
+              <span>Open volcanic shafts in this world's existing highlands.</span></div>
+            <button onClick={()=>{
+              const before=currentWorld.current,next=initializeUnderworld(enableVolcanicWorld(before));
+              if(next===before){setNotice('No suitable volcanic site was found in this world.');return;}
+              setWorld(next);setOverlay('terrain');setBrush({kind:'inspect'});
+              setNotice('Volcanoes are ready to find under Places.');
+            }}>Add volcanoes</button>
+          </div>}
           {!world.settings.climateEcology&&<div className="evo-terrain-upgrade">
             <div><strong>Climate and wildlife</strong>
               <span>Seasons, rainfall and herds start affecting this world. The saved terrain stays as it is.</span></div>
@@ -1496,6 +1523,28 @@ export function WorldforgeApp(){
                 <strong>{skylandName(waterfallBasin)} waterfall basin</strong>
                 <span>Water from the floating islands lands here.</span>
                 <button onClick={()=>findSkyland(waterfallBasin.id,true)}>Return to floating islands</button>
+              </div>}
+              {selectedVent&&<div className="evo-selected-settlement" aria-label="Volcano details">
+                <strong>{volcanoName(selectedVent,world)}</strong>
+                <span>{volcanoPhase(world,selectedVent)} · Volcanic shaft</span>
+                <p>Follow the dry rim to the shaft when the magma recedes.</p>
+                <button onClick={()=>findCoast(drainageIndex===selectedVent.rim?selectedVent.index:selectedVent.rim)}>
+                  {drainageIndex===selectedVent.rim?'Show crater':'Show crater rim'}</button>
+                {!world.agents.some(agent=>agent.id===world.descent?.agentId)&&
+                  <button onClick={()=>{navigate('descent');setDescentCrater(selectedVent.index);}}>
+                    Descend at the crater rim</button>}
+              </div>}
+              {selectedIsland?.age==='weathered'&&<div className="evo-selected-settlement">
+                <strong>Weathered volcanic island</strong>
+                <p>Rain feeds the forested slopes, with dry scrub on the sheltered side.</p>
+                {world.underworld?.outpost!==undefined&&
+                  <button onClick={()=>findCoast(world.underworld!.outpost!)}>Show Ash Borne anchorage</button>}
+              </div>}
+              {selectedIsland?.age==='atoll'&&<div className="evo-selected-settlement">
+                <strong>Coral atoll</strong><p>Look for the channel through the reef into the lagoon.</p>
+              </div>}
+              {selectedOutpost&&<div className="evo-selected-settlement">
+                <strong>Basalt Anchorage</strong><p>An Ash Borne outpost on the surface.</p>
               </div>}
               {selectedCave&&<div className="evo-selected-settlement" aria-label="Sea cave details">
                 <strong>{selectedCave.cave.name}</strong>

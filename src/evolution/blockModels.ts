@@ -719,3 +719,37 @@ export function blockTidalMouth(stone:CaveStone,face:Facing,seed:number,low:bool
     }
   });
 }
+
+export function blockCrater(variant:number,hot:boolean):BlockModel{
+  return model('volcanic-shaft:'+variant+':'+Number(hot),g=>{
+    for(let y=-5;y<=5;y++)for(let x=-7;x<=7;x++){
+      const r=Math.hypot(x/7,y/5),grain=(Math.imul(x+13,131)^Math.imul(y+17,99)^variant)>>>0;
+      if(r>1+(grain%4)*.03)continue;
+      const rim=r>=.53,depth=rim?2+(grain%4)+Number(y<0):1;
+      const cap=rim?['#665257','#78605d','#594951','#806661'][grain&3]:
+        hot?['#a24038','#d1593a','#fc8d4b','#b0443b'][grain&3]:
+          ['#252832','#22242d','#292735','#2d2931'][grain&3];
+      if(depth>1)g.box(x,y,0,1,1,depth-1,'#433641');
+      g.box(x,y,depth-1,1,1,1,cap);
+    }
+    g.box(-3,4,0,6,2,1,'#564651');
+    g.box(-2,6,0,4,1,1,'#6c5559');
+  });
+}
+
+export function blockRealmHouse(ash:boolean,variant:number):BlockModel{
+  return model('realm-house:'+Number(ash)+':'+variant,g=>{
+    const dark=ash?'#524047':'#37394e',wall=ash?'#77605c':'#5a566a',roof=ash?'#96685b':'#69637b';
+    const hot=ash?'#eaa06b':'#ccbea7',tall=variant%3===0?2:0;
+    g.box(-5,-4,0,10,9,2,dark);
+    g.box(-4,-3,2,8,7,5+tall,wall);
+    g.box(-5,-4,7+tall,10,9,1,roof);
+    g.box(-4,-4,8+tall,8,8,1,dark);
+    g.box(-3,-4,9+tall,6,7,2,roof);
+    g.box(-2,-3,11+tall,4,5,1,wall);
+    g.box(-1,4,2,2,1,4,dark);
+    for(const x of [-3,2])g.box(x,4,4,1,1,2,hot);
+    if(variant%2===0)g.box(2,-2,10+tall,2,2,4,dark);
+    g.box(-2,5,0,4,1,1,wall);
+  });
+}

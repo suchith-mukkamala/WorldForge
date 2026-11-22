@@ -4,12 +4,13 @@ import {generateHydrology,riverBanks} from './hydrology';
 import {generateRegionalTopography} from './regionalGeography';
 import {generateTopography} from './topography';
 import {generateSeedTerrain} from './worldGeography';
-import {plantWorldTree} from './worldTree';
+import {plantWorldTree,worldTreeBlocksBuilding} from './worldTree';
 import {sculptLandforms} from './riverLandforms';
 import {applyClimateBiomes} from './climate';
+import {sculptVolcanicIslands,volcanicLayout} from './volcanicGeography';
 
 type LandscapeSettings=Pick<WorldSettings,'seed'|'layout'|'regionalGeography'|
-  'landforms'|'regionalBiomes'|'riverlands'|'climateEcology'|'worldTree'>;
+  'landforms'|'regionalBiomes'|'riverlands'|'climateEcology'|'worldTree'|'volcanicWorld'>;
 
 function regionalBiomes(width:number,height:number,biomes:readonly Biome[],
   elevations:readonly number[],seed:number):Biome[]{
@@ -48,11 +49,16 @@ export function generateWorldLandscape(width:number,height:number,settings:Lands
     generateTopography(width,height,tiles,seed);
   const features=settings.riverlands?sculptLandforms(width,height,seed,
     terrain.biomes,topography.heights,terrain.homes):[];
+  const volcanoIslands=settings.volcanicWorld?sculptVolcanicIslands(width,height,seed,
+    terrain.biomes,topography.heights):[];
   const biomes=settings.regionalBiomes?
     regionalBiomes(width,height,terrain.biomes,topography.heights,seed):terrain.biomes;
   const climateBiomes=settings.climateEcology?
     applyClimateBiomes(width,height,biomes,topography.heights,seed,!!regionalGeography):biomes;
   const worldTree=settings.worldTree?plantWorldTree(width,height,seed,climateBiomes,
     topography.heights,Object.values(terrain.homes)):undefined;
-  return {...terrain,topography,features,biomes:climateBiomes,worldTree};
+  const volcanoes=settings.volcanicWorld?volcanicLayout(width,height,seed,climateBiomes,
+    topography.heights,volcanoIslands,index=>
+      worldTreeBlocksBuilding(worldTree,index%width,Math.floor(index/width))):undefined;
+  return {...terrain,topography,features,biomes:climateBiomes,worldTree,volcanoes};
 }

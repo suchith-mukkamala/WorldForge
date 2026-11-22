@@ -40,6 +40,7 @@ export function WorldCreator({
     landforms:current.landforms??DEFAULT_LANDFORMS,
     terrainCells:current.terrainCells??true,
     worldTree:true,
+    volcanicWorld:current.volcanicWorld??true,
     floatingIslands:current.floatingIslands??true,
     climateEcology:current.climateEcology??true,
   }));
@@ -47,10 +48,10 @@ export function WorldCreator({
     setDraft(state=>({...state,[key]:value}));
   const total=SPECIES.reduce((sum,s)=>sum+draft.starting[s],0);
   const [width,height]=WORLD_SIZES[draft.size];
-  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,climateEcology,worldTree}=draft;
+  const {seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,climateEcology,worldTree,volcanicWorld}=draft;
   const map=useMemo(()=>{
     const settings={...DEFAULT_SETTINGS,seed,layout,landforms,regionalGeography:true,regionalBiomes,
-      riverlands,floatingIslands,climateEcology,worldTree};
+      riverlands,floatingIslands,climateEcology,worldTree,volcanicWorld};
     const terrain=generateWorldLandscape(width,height,settings);
     const tiles=terrain.biomes.map(biome=>({biome,food:0}));
     const landscape={width,height,tiles,settings,topography:terrain.topography,worldTree:terrain.worldTree};
@@ -58,7 +59,7 @@ export function WorldCreator({
       skylands:floatingIslands?generateSkylands(landscape):undefined};
     return {...terrain,preview,count:landmassCount(width,height,terrain.biomes)};
   },[width,height,seed,layout,livingBiomes,landforms,regionalBiomes,riverlands,floatingIslands,
-    climateEcology,worldTree]);
+    climateEcology,worldTree,volcanicWorld]);
   const landmasses=map.count+' landmass'+(map.count===1?'':'es');
   return <main className="evo-creator world-generator">
     <header className="evo-section-header">
@@ -163,7 +164,8 @@ export function WorldCreator({
                   seed:current.seed,size:current.size,layout:current.layout,landforms:current.landforms,
                   regionalBiomes:current.regionalBiomes??false,riverlands:current.riverlands??false,
                   worldTree:current.worldTree??false,floatingIslands:current.floatingIslands??false,
-                  climateEcology:current.climateEcology??false}))}
+                  climateEcology:current.climateEcology??false,
+                  volcanicWorld:current.volcanicWorld??false}))}
                   title="Reuse this world's seed, map size, and geography">↺ REUSE</button>
               </div>
               <small className="evo-seed-hint">A fresh seed is chosen for each new world.
@@ -200,6 +202,13 @@ export function WorldCreator({
                 onChange={e=>update('riverlands',e.target.checked)}/>
               <span><b>RIVERLANDS</b>
                 <small>Add glacial lakes, canyons, calderas, barrier islands, and seasonal floods.</small>
+              </span>
+            </label>
+            <label className="evo-hybrid-toggle" htmlFor="evo-volcanic-world">
+              <input id="evo-volcanic-world" type="checkbox" checked={!!draft.volcanicWorld}
+                onChange={e=>update('volcanicWorld',e.target.checked)}/>
+              <span><b>VOLCANOES &amp; UNDERWORLD</b>
+                <small>Volcanic island chains grow from lava. Quiet craters open a route below.</small>
               </span>
             </label>
             <label className="evo-hybrid-toggle" htmlFor="evo-climate-ecology">

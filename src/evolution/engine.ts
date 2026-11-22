@@ -64,6 +64,10 @@ import {generateSkylands,validSkylands,type Skyland} from './skylands';
 import {worldTreeBlocksBuilding,validWorldTree,type WorldTree} from './worldTree';
 import {tidalApproach,tidalCaves,validTidalExploration,validTidalSites,
   type TidalCave,type TidalExploration} from './tidalCaves';
+import {volcanoApproach,validVolcanicLayout,type VolcanicLayout} from './volcanicGeography';
+import {advanceVolcanism,resetVolcanicTile,validVolcanism,volcanicDay,type Volcanism} from './volcanism';
+import {advanceUnderworldPopulation,initializeUnderworld,validRealmExploration,validUnderworld,
+  type RealmExploration,type Underworld} from './underworld';
 export type Species='human'|'elf'|'dwarf'|'demon';
 export const BIOMES=['plains','forest','mountain','cave','wasteland','volcanic','water',
   'taiga','wetland','savanna'] as const;
@@ -81,6 +85,7 @@ export type WorldSettings={
   terrainCells?:boolean;
   floatingIslands?:boolean;
   worldTree?:boolean;
+  volcanicWorld?:boolean;
   /** Seasons, rainfall and herds shape habitats. Absent on older saves. */
   climateEcology?:boolean;
 };
@@ -91,7 +96,8 @@ export type MortalOutfit='wanderer'|'forager'|'artisan'|'scholar';
 export type MortalAppearance={skin:number;hair:number;hairStyle:number;
   outfit:MortalOutfit};
 export type DivineDescent={agentId:number;mode:'mortal'|'divine';createdYear:number;
-  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom;ship?:MortalShip;tidal?:TidalExploration};
+  place?:AdventurePlace;journal?:MortalJournal;surveys?:SiteSurvey[];interior?:MortalRoom;ship?:MortalShip;tidal?:TidalExploration;
+  realm?:RealmExploration};
 export type Agent={id:number;species:Species;ancestry:Ancestry;generation:number;
   x:number;y:number;age:number;energy:number;health:number;genes:Genes;
   appearance?:MortalAppearance;
@@ -158,6 +164,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   skylands?:Skyland[];
   worldTree?:WorldTree;
   tidalSites?:TidalCave[];
+  volcanicLayout?:VolcanicLayout;volcanism?:Volcanism;underworld?:Underworld;
   terrainPhysics?:TerrainPhysics;earthworks?:Earthwork[];agents:Agent[];
   settlements:Settlement[];bonds:Bond[];lineage:LineageRecord[];
   events:WorldEvent[];history:Sample[];totalBirths:number;totalDeaths:number;
@@ -247,6 +254,7 @@ export function normalizeSettings(input:Partial<WorldSettings>={}):WorldSettings
       {landforms:input.landforms,regionalGeography:true}:{}),
     ...(typeof input.terrainCells==='boolean'?{terrainCells:input.terrainCells}:{}),
     ...(typeof input.worldTree==='boolean'?{worldTree:input.worldTree}:{}),
+    ...(typeof input.volcanicWorld==='boolean'?{volcanicWorld:input.volcanicWorld}:{}),
     ...(typeof input.floatingIslands==='boolean'?{floatingIslands:input.floatingIslands}:{}),
     ...(typeof input.climateEcology==='boolean'?{climateEcology:input.climateEcology}:{}),
     ...(input.layout&&WORLD_LAYOUTS.includes(input.layout)?{layout:input.layout}:{})};
@@ -317,6 +325,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
     institutions:{guilds:[],nextGuildId:1,accords:[]},knowledge:{firsts:[]},
     ancientSites:[],culture:{faiths:[],nextFaithId:1,governments:[],history:[]}};
   if(geography.worldTree)world.worldTree=geography.worldTree;
+  if(geography.volcanoes)world.volcanicLayout=geography.volcanoes;
   world.tidalSites=[...tidalCaves(world)];
   if(settings.livingBiomes)world.woodland=initialWoodland(world);
   if(settings.climateEcology)world.wildlife=seedWildlife(world);
@@ -325,6 +334,7 @@ export function createWorld(input:Partial<WorldSettings>={}):World{
   world.deposits=createDeposits(world);
   world.ancientSites=generateAncientSites(world);
   if(settings.riverlands)addRiverLandmarks(world,geography.features);
+  world.underworld=initializeUnderworld(world).underworld;
   const occupied=new Set<number>();
   for(const s of SPECIES){
     const info=SPECIES_INFO[s];
@@ -459,6 +469,7 @@ export function stepWorld(previous:World):World{
       lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
     expeditions:previous.expeditions?.map(e=>({...e}))??[]};
   prepareDevelopment(world);
+  advanceUnderworldPopulation(world);
   if(world.settings.terrainCells)advanceTerrainCells(world);
   const newForests=world.settings.livingBiomes?advanceWoodland(world):[];
   const saplings=world.settings.climateEcology?advanceClimateEcology(world):[];
@@ -738,7 +749,7 @@ export function stepWorld(previous:World):World{
     if(biomeSuitability(a.ancestry,world.tiles[offset(world.width,a.x,a.y)].biome)<.55)
       continue;
     if(settlementCoverage[offset(world.width,a.x,a.y)]||worldTreeBlocksBuilding(world.worldTree,a.x,a.y)||
-      tidalApproach(world,offset(world.width,a.x,a.y)))continue;
+      (tidalApproach(world,offset(world.width,a.x,a.y))||volcanoApproach(world,offset(world.width,a.x,a.y))))continue;
     const nearby:Agent[]=[];
     for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
       const x=a.x+dx,y=a.y+dy;
@@ -754,7 +765,7 @@ export function stepWorld(previous:World):World{
         const x=a.x+dx,y=a.y+dy;
         if((!dx&&!dy)||!within(world.width,world.height,x,y))continue;
         const index=offset(world.width,x,y),tile=world.tiles[index];
-        if(settlementCoverage[index]||tile.biome==='water'||worldTreeBlocksBuilding(world.worldTree,x,y)||tidalApproach(world,index)||
+        if(settlementCoverage[index]||tile.biome==='water'||worldTreeBlocksBuilding(world.worldTree,x,y)||tidalApproach(world,index)||volcanoApproach(world,index)||
           biomeSuitability(a.ancestry,tile.biome)<.55)continue;
         const score=settlementGeography(world,index).score-Math.hypot(dx,dy)*.10;
         if(score<=best||nearby.filter(resident=>distance(resident,{x,y})<=4).length<4)continue;
@@ -821,7 +832,13 @@ export function stepWorld(previous:World):World{
 }
 export function advanceWorld(world:World,years:number):World{
   let next=world;
-  for(let i=0;i<clamp(Math.trunc(years),0,200);i++)next=stepWorld(next);
+  for(let i=0;i<clamp(Math.trunc(years),0,200)&&next.year<9999;i++){
+    if(next.volcanicLayout?.vents.length){
+      const boundary=volcanicDay(next)+365;
+      for(let day=volcanicDay(next)+1;day<=boundary;day++)next=advanceVolcanism(next,day);
+    }
+    next=stepWorld(next);
+  }
   return next;
 }
 export type Brush={kind:'inspect'}|{kind:'spawn';species:Species}|
@@ -864,7 +881,7 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
     if(tile.biome!==brush.biome)paintWoodland(world,index);
     const topography=generateTopography(world.width,world.height,
       world.tiles,world.settings.seed);
-    if(world.woodland!==undefined||world.settings.regionalGeography||world.terrainCells){
+    if(world.woodland!==undefined||world.settings.regionalGeography||world.terrainCells||world.volcanicLayout){
       // Canopy changes over time without raising or lowering the ground.
       // Only refresh the painted tile and any shore affected by this edit.
       const heights=topographyForWorld(previous).heights.slice();
@@ -879,6 +896,7 @@ export function editWorld(previous:World,x:number,y:number,brush:Brush):World{
     }
     world.topography=topography;
     clearTerrainTile(world,index);
+    resetVolcanicTile(world,index);
     editDeposit(world,index);
     reconcileTradeTerrain(world,index);
     reconcileTransportTerrain(world,index);
@@ -902,6 +920,7 @@ export function isWorld(value:unknown):value is World{
     settings.landforms!==undefined&&!Object.hasOwn(LANDFORM_NAMES,settings.landforms)||
     settings.terrainCells!==undefined&&typeof settings.terrainCells!=='boolean'||
     settings.worldTree!==undefined&&typeof settings.worldTree!=='boolean'||
+    settings.volcanicWorld!==undefined&&typeof settings.volcanicWorld!=='boolean'||
     settings.floatingIslands!==undefined&&typeof settings.floatingIslands!=='boolean'||
     settings.climateEcology!==undefined&&typeof settings.climateEcology!=='boolean'||
     !Number.isFinite(settings.resourceLevel)||settings.resourceLevel<.5||
@@ -939,6 +958,9 @@ export function isWorld(value:unknown):value is World{
   const width=w.width,height=w.height,year=w.year as number;
   if(w.worldTree!==undefined&&!validWorldTree(w.worldTree,width,height))return false;
   if(w.tidalSites!==undefined&&!validTidalSites(w.tidalSites,width,height))return false;
+  if(w.volcanicLayout!==undefined&&!validVolcanicLayout(w.volcanicLayout,width,height))return false;
+  if(w.volcanism!==undefined&&(!w.volcanicLayout||!validVolcanism(w.volcanism,width,height)))return false;
+  if(w.underworld!==undefined&&(!w.volcanicLayout||!validUnderworld(w.underworld,width,height)))return false;
   if(w.skylands!==undefined&&!validSkylands(w.skylands,width,height))return false;
   if(w.topography!==undefined&&!validTopography(w.topography,width,height))
     return false;
@@ -1114,6 +1136,8 @@ export function isWorld(value:unknown):value is World{
       d.surveys!==undefined&&!validSiteSurveys(d.surveys,year)||
       d.ship!==undefined&&(!validMortalShip(d.ship,width,height)||d.ship.underway&&!!d.interior)||
       d.interior!==undefined&&!validMortalRoom(d.interior)||
+      d.realm!==undefined&&(!validRealmExploration(d.realm,w.underworld,width,height)||
+        !!d.realm.visit&&(!!d.interior||!!d.ship?.underway||!!d.tidal?.inside))||
       d.tidal!==undefined&&(!validTidalExploration(d.tidal,width*height)||
         !!d.tidal.inside&&(!!d.interior||!!d.ship?.underway)))
       return false;

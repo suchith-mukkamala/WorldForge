@@ -18,9 +18,9 @@ const OUTFITS:readonly {id:MortalOutfit;label:string}[]=[
 ];
 const DEFAULT_LOOK:MortalAppearance={skin:0,hair:0,hairStyle:0,outfit:'wanderer'};
 
-export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,starting=false,arrivalName,atWorldTree=false}:{
+export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,starting=false,arrivalName,atWorldTree=false,craterName}:{
   world:World;onCreate:(options:MortalCreation,settledStart:boolean,shipyard?:number)=>void;
-  onResume:()=>void;onReturn:()=>void;error?:string;starting?:boolean;arrivalName?:string;atWorldTree?:boolean;
+  onResume:()=>void;onReturn:()=>void;error?:string;starting?:boolean;arrivalName?:string;atWorldTree?:boolean;craterName?:string;
 }){
   const [name,setName]=useState('');
   const [species,setSpecies]=useState<Species>('human');
@@ -28,11 +28,11 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,sta
   const [look,setLook]=useState<MortalAppearance>(DEFAULT_LOOK);
   const [settledStart,setSettledStart]=useState(world.year===0);
   const [shipyard,setShipyard]=useState<number|undefined>();
-  const canGrow=!arrivalName&&!atWorldTree&&!world.settlements.length&&world.agents.length>0&&world.year<9999;
+  const canGrow=!arrivalName&&!atWorldTree&&!craterName&&!world.settlements.length&&world.agents.length>0&&world.year<9999;
   const mortalId=world.descent?.agentId;
   const current=mortalId===undefined?undefined:
     world.agents.find(a=>a.id===mortalId);
-  const yards=!arrivalName&&!atWorldTree&&!current&&world.settlements.length?adventureMapFor(world).shipyards:undefined;
+  const yards=!arrivalName&&!atWorldTree&&!craterName&&!current&&world.settlements.length?adventureMapFor(world).shipyards:undefined;
   const ports=yards?world.settlements.filter(town=>yards.has(town.id)):[];
   const lineage=current?world.lineage.find(r=>r.id===current.id):undefined;
   const displayName=current?(lineage?personName(world,lineage):'Your mortal'):name||'Unnamed';
@@ -55,7 +55,7 @@ export function DivineDescentCreator({world,onCreate,onResume,onReturn,error,sta
   return <main className="evo-descent-page">
     <header className="evo-descent-heading">
       <h1>{current?'Your adventure':'Begin an adventure'}</h1>
-      <p>{atWorldTree?'Start on the root trail near the World Tree.':arrivalName?'Start on the banks of the '+arrivalName+'.':
+      <p>{craterName?'Start at the crater rim of '+craterName+'.':atWorldTree?'Start on the root trail near the World Tree.':arrivalName?'Start on the banks of the '+arrivalName+'.':
         'Explore settlements, follow trails, and sail from coastal shipyards.'}</p>
     </header>
     <div className="evo-descent-layout">

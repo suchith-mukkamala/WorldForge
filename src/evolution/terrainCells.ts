@@ -280,11 +280,16 @@ function firstCell(w:World,tile:number,columns:number):number{
   return Math.floor(tile/w.width)*SIDE*columns+tile%w.width*SIDE;
 }
 
-export function clearTerrainTile(w:World,tile:number):void{
+export const clearTerrainTile=(w:World,tile:number)=>clearTerrainTiles(w,[tile]);
+
+export function clearTerrainTiles(w:World,tiles:readonly number[]):void{
   const surface=terrainSurface(w);
   if(!surface)return;
-  const cells=surface.cells.slice(),{columns}=surface.base,first=firstCell(w,tile,columns);
-  for(let row=0;row<SIDE;row++)cells.fill(0,first+row*columns,first+row*columns+SIDE);
+  const cells=surface.cells.slice(),{columns}=surface.base;
+  for(const tile of tiles){
+    const first=firstCell(w,tile,columns);
+    for(let row=0;row<SIDE;row++)cells.fill(0,first+row*columns,first+row*columns+SIDE);
+  }
   saveCells(w,cells);
 }
 

@@ -1,3 +1,4 @@
+import {paintVolcanicSquares} from './volcanicArt';
 import {paintOverheadWorldTree} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
 import type {KeyboardEvent,MouseEvent} from 'react';
@@ -415,7 +416,10 @@ export function WorldCanvas({
       visible.clearRect(0,0,mapWidth,mapHeight);
       visible.imageSmoothingEnabled=false;
       visible.drawImage(background,0,0,mapWidth,mapHeight);
-      if(overlay==='terrain')visible.drawImage(atmosphere,0,0);
+      if(overlay==='terrain'){
+        visible.drawImage(atmosphere,0,0);
+        paintVolcanicSquares(visible,world,CELL);
+      }
       if(river&&overlay==='terrain')paintRiverCourse(visible,river,index=>({
         x:(index%W+.5)*CELL,y:(Math.floor(index/W)+.5)*CELL,
       }),mapWidth/(canvas.clientWidth||mapWidth));

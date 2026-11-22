@@ -1,3 +1,4 @@
+import {SEA_LEVEL,topographyForWorld} from './topography';
 import {terrainHash,terrainNoise,terrainTemperature} from './biomeGeneration';
 import {hydrologyForWorld,type Hydrology} from './hydrology';
 import type {Point} from './motion';
@@ -20,13 +21,15 @@ export function coastalLife(world:TerrainSource):CoastalLife{
   const depths=coastalDepth(width,height,i=>tiles[i].biome==='water');
   const sea=oceanBasins(world,drainage),reefs=new Uint8Array(tiles.length);
   const scale=Math.max(6,Math.min(width,height));
+  const beds=world.settings.volcanicWorld?topographyForWorld(world).heights:undefined;
   const spacing=5,columns=Math.ceil(width/spacing);
   const anchors=new Map<number,{index:number;score:number}>();
   for(let i=0;i<tiles.length;i++){
     const depth=depths[i];
     if(depth<1||depth>2)continue;
     const x=i%width,y=Math.floor(i/width);
-    if(sea.has(drainage.basin[i])&&terrainTemperature(x,y,scale,(y+.5)/height,seed)>.57&&
+    const shelf=beds&&beds[i]>=SEA_LEVEL-4&&beds[i]<SEA_LEVEL;
+    if(sea.has(drainage.basin[i])&&(shelf||terrainTemperature(x,y,scale,(y+.5)/height,seed)>.57)&&
       terrainNoise(x,y,7,seed+2627)>-.23)reefs[i]=1;
     // One swimmer in each small stretch of shoreline, often near a reef.
     const key=Math.floor(y/spacing)*columns+Math.floor(x/spacing);

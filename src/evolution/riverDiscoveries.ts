@@ -1,3 +1,4 @@
+import {volcanoApproach} from './volcanicGeography';
 import {tidalApproach} from './tidalCaves';
 import {worldTreeBlocksBuilding} from './worldTree';
 import type {World} from './engine';
@@ -34,7 +35,7 @@ export function addRiverLandmarks(world:World,landforms:readonly LandformSite[])
     for(const [dx,dy] of corners){
       const nx=x+dx,ny=y+dy,i=ny*world.width+nx;
       if(nx<0||ny<0||nx>=world.width||ny>=world.height||
-        occupied.has(i)||tidalApproach(world,i)||worldTreeBlocksBuilding(world.worldTree,nx,ny)||world.tiles[i].biome==='water')continue;
+        occupied.has(i)||tidalApproach(world,i)||volcanoApproach(world,i)||worldTreeBlocksBuilding(world.worldTree,nx,ny)||world.tiles[i].biome==='water')continue;
       sites.push({kind,id:sites.length+1,x:nx,y:ny,...entries[kind],
         origin:'ancient',visitors:[],visits:0,recovered:0});
       occupied.add(i);return;

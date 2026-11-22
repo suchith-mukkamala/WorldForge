@@ -8,10 +8,11 @@ import {atlasLabelSides} from './atlasMap';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {skylandName} from './skylands';
 import {chartedTidalCaves} from './tidalCaves';
+import {ventHasGround,volcanicIslandName,volcanoName} from './volcanicGeography';
 
-export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave}:{
+export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,onUnderworld}:{
   world:World;onTown:(id:number)=>void;onSite:(x:number,y:number)=>void;
-  onSkyland?:(id:number)=>void;onCave:(mouth:number)=>void;
+  onSkyland?:(id:number)=>void;onCave:(mouth:number)=>void;onVent?:(index:number)=>void;onUnderworld?:()=>void;
 }){
   const [open,setOpen]=useState(false);
   const [query,setQuery]=useState('');
@@ -46,12 +47,19 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave}:{
     matches(skylandName(site)+' floating islands')):[];
   const caves=open?chartedTidalCaves(world).filter(({cave})=>matches(cave.name+' sea caves'))
     .sort((a,b)=>a.cave.name.localeCompare(b.cave.name)):[];
+  const vents=open&&onVent?(world.volcanicLayout?.vents??[])
+    .filter(vent=>ventHasGround(world,vent)&&matches(volcanoName(vent,world)+' volcano crater')):[];
+  const islands=open&&onVent?(world.volcanicLayout?.islands??[])
+    .filter(island=>island.age!=='young'&&matches(volcanicIslandName(island))):[];
+  const underworld=open&&onUnderworld&&!!world.descent?.realm?.chart.length&&matches('Underworld map');
   const tree=open&&matches('World Tree root grove')?world.worldTree:undefined;
   const chooseTree=()=>{if(tree){close();onSite(tree.x,tree.y);}};
   const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
   const chooseTown=(id:number)=>{close();onTown(id);};
   const chooseSite=(site:AncientSite)=>{close();onSite(site.x,site.y);};
   const chooseSkyland=(id:number)=>{close();onSkyland?.(id);};
+  const chooseVent=(index:number)=>{close();onVent?.(index);};
+  const chooseUnderworld=()=>{close();onUnderworld?.();};
   const chooseCave=(mouth:number)=>{close();onCave(mouth);};
   return <div ref={picker} className="atlas-place-picker" onBlur={blur} onKeyDown={keyDown}>
     <button ref={trigger} type="button" className="atlas-places-toggle"
@@ -67,6 +75,9 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave}:{
           else if(tree)chooseTree();
           else if(sites.length)chooseSite(sites[0]);
           else if(caves.length)chooseCave(caves[0].cave.mouth);
+          else if(vents.length)chooseVent(vents[0].index);
+          else if(islands.length)chooseVent(islands[0].index);
+          else if(underworld)chooseUnderworld();
         }}/>
       <div className="atlas-places-results">
         {towns.length>0&&<><h3>Settlements</h3><ul>
@@ -76,6 +87,17 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave}:{
               <span>{town.name}<small>{SPECIES_INFO[town.species].name} · {settlementStage(town)}</small></span>
             </button>
           </li>)}
+        </ul></>}
+        {underworld&&<button className="underworld-atlas-link" type="button"
+          onClick={chooseUnderworld}>Underworld map</button>}
+        {(vents.length>0||islands.length>0)&&<><h3>Volcanic country</h3><ul>
+          {vents.map(vent=><li key={vent.index}><button type="button" onClick={()=>chooseVent(vent.index)}>
+            <span aria-hidden="true">▴</span>
+            <span>{volcanoName(vent,world)}<small>Volcano</small></span>
+          </button></li>)}
+          {islands.map(island=><li key={island.index}><button type="button" onClick={()=>chooseVent(island.index)}>
+            <span aria-hidden="true">◇</span><span>{volcanicIslandName(island)}</span>
+          </button></li>)}
         </ul></>}
         {caves.length>0&&<><h3>Sea caves</h3><ul>
           {caves.map(({cave,find})=><li key={cave.mouth}>
@@ -104,7 +126,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave}:{
             </button>
           </li>)}
         </ul></>}
-        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!tree&&filter&&<p>No places match your search.</p>}
+        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!vents.length&&!islands.length&&!underworld&&!tree&&filter&&<p>No places match your search.</p>}
       </div>
     </div>}
   </div>;
