@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {createWorld} from './engine';
 import {advanceWorldDays} from './calendar';
 import {packSimulationWorld,receiveSimulationWorld,shouldAcceptSimulation,type SimulationReply} from './simulationProtocol';
+import {underworldMap} from './underworld';
 
 describe('v1.8 background simulation safety',()=>{
   it('accepts only current, uninterrupted playback responses',()=>{
@@ -34,5 +35,22 @@ describe('v1.8 background simulation safety',()=>{
     expect(accepted.topography).toBe(world.topography);
     const edited={...next,tiles:next.tiles.map((tile,i)=>i===0?{...tile,biome:'volcanic' as const}:tile)};
     expect(packSimulationWorld(next,edited).retained).not.toContain('topography');
+  });
+  it('retains the underground map when its population changes and refreshes it for a new causeway',()=>{
+    const world=createWorld({seed:41,size:'small',volcanicWorld:true});
+    const state=world.underworld!,map=underworldMap(world);
+    expect(map).toBeDefined();
+    const population=state.population.map(group=>({...group,demons:group.demons+1}));
+    const next={...world,underworld:{...state,population}};
+    const hydrate=(a:typeof world,b:typeof world)=>receiveSimulationWorld(a,structuredClone({
+      kind:'advanced' as const,id:1,elapsedMs:0,...packSimulationWorld(a,b),
+    }));
+    const accepted=hydrate(world,next);
+    expect(accepted).toEqual(next);
+    expect(underworldMap(accepted)).toBe(map);
+    const terraces=[...state.terraces??[],0];
+    const built=hydrate(accepted,{...next,underworld:{...next.underworld,terraces}});
+    expect(built.underworld?.terraces).toEqual(terraces);
+    expect(underworldMap(built)).not.toBe(map);
   });
 });

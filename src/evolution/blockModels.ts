@@ -739,19 +739,42 @@ export function blockCrater(variant:number,hot:boolean):BlockModel{
 
 export function blockRealmHouse(ash:boolean,variant:number):BlockModel{
   return model('realm-house:'+Number(ash)+':'+variant,g=>{
-    const dark=ash?'#524047':'#37394e',wall=ash?'#77605c':'#5a566a',roof=ash?'#96685b':'#69637b';
-    const hot=ash?'#eaa06b':'#ccbea7',tall=variant%3===0?2:0;
-    g.box(-5,-4,0,10,9,2,dark);
+    const dark=ash?'#514348':'#343247',wall=ash?'#84695e':'#635c76',roof=ash?'#ad765b':'#7b6c8a';
+    const course=ash?'#755851':'#55516a',hot=ash?'#ffbb6a':'#e1d4a0',tall=variant%3===0?2:0;
+    g.box(-5,-4,0,10,9,1,dark);
+    g.box(-5,-4,1,10,9,1,course);
     g.box(-4,-3,2,8,7,5+tall,wall);
+    g.box(-4,-3,5,8,7,1,course);
     g.box(-5,-4,7+tall,10,9,1,roof);
-    g.box(-4,-4,8+tall,8,8,1,dark);
-    g.box(-3,-4,9+tall,6,7,2,roof);
-    g.box(-2,-3,11+tall,4,5,1,wall);
-    g.box(-1,4,2,2,1,4,dark);
-    for(const x of [-3,2])g.box(x,4,4,1,1,2,hot);
-    if(variant%2===0)g.box(2,-2,10+tall,2,2,4,dark);
-    g.box(-2,5,0,4,1,1,wall);
+    if(ash){
+      g.box(-4,-4,8+tall,8,8,1,course);
+      g.box(-3,-4,9+tall,6,7,2,roof);
+      g.box(-2,-3,11+tall,4,5,1,wall);
+    }else{
+      g.box(-4,-4,8+tall,8,8,1,dark);
+      for(const x of [-4,2])for(const y of [-4,2])g.box(x,y,9+tall,2,2,2,roof);
+      g.box(-2,-2,9+tall,4,4,1,course);
+    }
+    g.box(-2,4,2,4,1,4,dark);
+    g.box(-2,4,6,4,1,1,course);
+    for(const x of [-4,3])g.box(x,4,4,1,1,2,hot);
+    g.box(4,0,4,1,2,2,hot);
+    if(variant%2===0){
+      g.box(2,-2,9+tall,2,2,4,course);
+      g.box(2,-2,13+tall,2,2,1,dark);
+    }
+    g.box(-2,5,0,4,1,1,course);
   });
+}
+
+export function blockRealmFord(eastWest:boolean):BlockModel{
+  return model('realm-ford:'+Number(eastWest),g=>{
+    for(const y of [-5,-1,3]){
+      g.box(-3,y,0,6,3,1,'#6e5a59');
+      g.box(-2,y,1,4,3,1,'#ae9175');
+      g.box(-2,y,2,4,1,1,'#cdb18c');
+    }
+  },Number(eastWest));
 }
 
 export function blockRealmGrowth(crystal:boolean,variant:number):BlockModel{
@@ -759,9 +782,10 @@ export function blockRealmGrowth(crystal:boolean,variant:number):BlockModel{
     if(crystal){
       for(const [x,y,w,h] of [[-4,-1,3,5],[0,-2,4,9],[3,1,3,6]]){
         const z=h+(x+variant+7)%3;
-        g.box(x,y,0,w,w,z,'#766895');
-        g.box(x+1,y,1,1,w,z-1,'#9d83b3');
-        g.box(x+1,y+1,z,w-2,w-2,2,'#d9b5cf');
+        g.box(x-1,y,0,w+1,w,1,'#675971');
+        g.box(x,y,1,w,w,z-1,'#78649a');
+        g.box(x+1,y,2,1,w,z-2,'#a88ac6');
+        g.box(x+1,y+1,z,w-2,w-2,2,'#dcc1e5');
       }
     }else{
       g.box(-1,-1,0,2,2,7,'#6c8274');

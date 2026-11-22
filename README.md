@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.29.0 — Underworld Relief** opens a full-size, orbitable 3D map under **Underworld**. Use **Overhead** for a flat view, or **Places** to zoom to a town or shaft. Lava lights nearby rock, the Buried Sea has shallows, and underground towns have more detailed stonework. Temporary lava crossings update as time passes without redrawing the terrain.
+
 - **v2.28.0 — Stacked World** opens the Surface and the Underworld together in **Stacked 3D**. Orbit both layers with one camera, zoom in on the Underworld’s block-built terrain and towns, or select a crater shaft to see where it connects the two elevations. The layer selector also opens either atlas on its own. To travel between layers as a mortal, descend at a volcano and jump through its dormant crater.
 
 - **v2.27.1 — World Layers** puts **Surface** and **Underworld** in the same world atlas. Both layers cover the same world bounds. Pan and zoom underground, find towns and crater shafts in **Places**, and use **Show in Underworld** or **Show on Surface** to follow a passage between maps. Descended mortals reach the Underworld through a dormant crater and can open the full atlas while exploring below. Underground terrain is brighter and easier to distinguish.
@@ -147,7 +149,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current** — v2.28.0 shows the Surface and the Underworld together in a raised atlas. Saved worlds keep their terrain and histories. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
+- **Current** — v2.29.0 offers a raised Underworld atlas and a stacked view of both layers. Saved worlds keep their terrain and histories. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
 - **Play:** observe from the atlas, intervene in God Mode, or Descend as a mortal and walk the same world. Press **P** on the atlas to pause or resume time, and **?** for that hint. Mortal exploration keeps its own keys.
 - **Future visual direction** — Keep the pixel-art atlas and Descend view. Later, explore procedurally generated planets, additional realms, and interplanetary travel. Inhabiting an existing resident remains a future option.
 

@@ -1198,7 +1198,7 @@ export function WorldforgeApp(){
           {stacked?<StackedAtlas world={world} map={realmMap} at={realm?.visit?.at}
             onSurface={findCoast} onUnderworld={openUnderworld}/>:
             <UnderworldAtlas world={world} map={realmMap} focusSurface={belowFocus}
-              at={realm?.visit?.at} onSurface={findCoast}/>}
+              at={realm?.visit?.at} onSurface={findCoast} allowRelief/>}
         </Suspense>:<section className="evo-section-card realm-layer-empty" aria-label="Underworld layer">
           <h2>{stacked?'Stacked 3D':'Underworld'}</h2>
           <p>Add volcanoes to open crater passages beneath this world.</p>

@@ -2,20 +2,16 @@ import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ATLAS_TOWN_ZOOM,atlasScrollGeometry} from './atlasMap';
 import {BIOME_INFO,type Brush,type World} from './engine';
 import {DepthCanvas} from './DepthCanvas';
-import {blockRealmGrowth,blockRealmHouse} from './blockModels';
-import {depthBlockView,paintBlockScenery} from './blockScenery';
 import {terrainHash} from './biomeGeneration';
 import type {DepthCamera} from './depthProjection';
-import type {DepthPicking} from './depthTerrain';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
-import {paintRealmRelief,realmRasterSize,type RealmRasterRequest,type RealmRasterResult} from './realmRelief';
+import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {seaPoint} from './shipSave';
 import {STACKED_CAMERA,STACKED_RELIEF,stackedProjection} from './stackedProjection';
-import {VISUAL_TERRAIN_SIDE} from './terrainCells';
 import {topographyForWorld} from './topography';
-import {projectWorldLayer,RealmBiome,realmFordOpen,realmLinkName,type RealmLink,type RealmMap} from './underworld';
+import {projectWorldLayer,realmLinkName,type RealmLink,type RealmMap} from './underworld';
 import {UNDERWORLD_BIOMES} from './underworldArt';
 import {volcanicDay,volcanoPhase} from './volcanism';
 
@@ -34,32 +30,34 @@ function poly(ctx:CanvasRenderingContext2D,points:readonly Point[],ink:string){
 function StackedRock({projection,links,active}:{projection:Projection;
   links:readonly {surface:Point;underworld:Point;link:RealmLink}[];active?:number}){
   const ref=useRef<HTMLCanvasElement>(null);
-  const {size,surface,lowerTop,lowerHeight,footprint,upperCrust,lowerCrust,underneath}=projection;
+  const {size,surface,footprint,upperCrust}=projection;
   const scale=Math.min(1,Math.sqrt(1_900_000/(size.width*size.height)));
   useEffect(()=>{
     const canvas=ref.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
     ctx.setTransform(canvas.width/size.width,0,0,canvas.height/size.height,0,0);
     ctx.clearRect(0,0,size.width,size.height);
-    const lowerBase=underneath(-.5,-.5,0).y+lowerTop-footprint[0].y;
     const edges:number[]=[];
     if(surface.frontX)edges.push(surface.frontX>0?1:3);
     if(surface.frontY)edges.push(surface.frontY>0?2:0);
-    const crust=(y:number,depth:number,lower:boolean)=>{
-      for(const edge of edges){
-        const a=footprint[edge],b=footprint[(edge+1)%4];
-        const palette=lower?(edge%2?['#48445a','#37374c','#2b2e42']:['#5d546b','#494259','#35384e']):
-          edge%2?['#6e564c','#534650','#40404a']:['#927365','#715752','#4f4852'];
-        // Offset the side courses slightly under the top to seal their seams.
-        for(const [n,ink] of palette.entries()){
-          const top=y-1+depth*n/3,bottom=y+depth*(n+1)/3;
-          poly(ctx,[{x:a.x,y:a.y+top},{x:b.x,y:b.y+top},
-            {x:b.x,y:b.y+bottom},{x:a.x,y:a.y+bottom}],ink);
-        }
+    for(const edge of edges){
+      const a=footprint[edge],b=footprint[(edge+1)%4];
+      const colors=edge%2?['#786153','#554651','#3d414e']:['#ae8b70','#785d56','#544b55'];
+      for(const [n,ink] of colors.entries()){
+        const top=-1+upperCrust*n/3,bottom=upperCrust*(n+1)/3;
+        poly(ctx,[{x:a.x,y:a.y+top},{x:b.x,y:b.y+top},
+          {x:b.x,y:b.y+bottom},{x:a.x,y:a.y+bottom}],ink);
       }
-    };
-    crust(0,upperCrust,false);
-    crust(lowerBase,lowerCrust,true);
+      const columns=Math.ceil(Math.abs(b.x-a.x)/8);
+      for(let i=0;i<columns;i++){
+        const noise=terrainHash(i,edge,832),shift=upperCrust*(.22+noise*.63);
+        const start=i/columns,end=(i+.4+noise*.55)/columns;
+        const left={x:a.x+(b.x-a.x)*start,y:a.y+(b.y-a.y)*start+shift};
+        const right={x:a.x+(b.x-a.x)*end,y:a.y+(b.y-a.y)*end+shift};
+        poly(ctx,[left,right,{x:right.x,y:right.y+2},{x:left.x,y:left.y+2}],
+          noise>.64?'#dcbba42c':'#20263638');
+      }
+    }
     for(const shaft of links){
       const a=shaft.surface,b=shaft.underworld,on=shaft.link.surface===active;
       const bend={x:a.x,y:a.y+(b.y-a.y)*.74};
@@ -73,106 +71,7 @@ function StackedRock({projection,links,active}:{projection:Projection;
     }
   },[projection,links,active]);
   return <canvas ref={ref} className="strata-rock" aria-hidden="true"
-    width={Math.ceil(size.width*scale)} height={Math.ceil((lowerTop+lowerHeight)*scale)}/>;
-}
-
-function RealmReliefCanvas({world,map,projection,camera,maxHeight,onSelect,selected}:{
-  world:World;map:RealmMap;projection:Projection;camera:DepthCamera;maxHeight:number;
-  onSelect:(cell:number)=>void;selected?:number;
-}){
-  const raster=useRef<HTMLCanvasElement>(null),texture=useRef<HTMLCanvasElement|undefined>(undefined);
-  const worker=useRef<Worker|undefined>(undefined);
-  const nextId=useRef(0),picking=useRef<DepthPicking|undefined>(undefined);
-  const [ready,setReady]=useState(false);
-  const day=volcanicDay(world);
-  const fordDay=useMemo(()=>[...map.fords].filter(i=>realmFordOpen(map,i,day)).join(','),[map,day]);
-  const {size,lowerHeight,underneath,surface}=projection;
-  const frame=realmRasterSize(size.width,lowerHeight);
-
-  useEffect(()=>()=>{
-    worker.current?.terminate();worker.current=undefined;
-  },[]);
-  useEffect(()=>{
-    const canvas=raster.current,ctx=canvas?.getContext('2d');
-    if(!canvas||!ctx)return;
-    const id=++nextId.current;
-    const request:RealmRasterRequest={id,map,camera,day,maxRealmHeight:maxHeight,
-      world:{width:world.width,height:world.height,worldTree:world.worldTree,skylands:world.skylands}};
-    picking.current=undefined;setReady(false);
-    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,frame.width,frame.height);
-    const decorate=(hit:DepthPicking)=>{
-      const sx=hit.width/size.width,sy=hit.height/lowerHeight;
-      const view=depthBlockView(camera),units=Math.min(world.width/map.width,world.height/map.height);
-      const scenery=[...map.houses.keys()];
-      for(let i=0;i<map.biomes.length;i++){
-        if(map.roads.has(i)||map.houses.has(i)||
-          map.biomes[i]!==RealmBiome.glowroot&&map.biomes[i]!==RealmBiome.crystal)continue;
-        if(terrainHash(i,87,map.seed)>.923)scenery.push(i);
-      }
-      const order=(index:number)=>{
-        const {x,y}=seaPoint(map.width,index);
-        return surface.order(x*world.width/map.width,y*world.height/map.height);
-      };
-      scenery.sort((a,b)=>order(a)-order(b));
-      ctx.setTransform(sx,0,0,sy,0,0);
-      for(const i of scenery){
-        const {x,y}=seaPoint(map.width,i);
-        const p=underneath(x,y,map.heights[i]);
-        const px=Math.floor(p.x*sx),py=Math.floor(p.y*sy);
-        if(px<0||px>=hit.width||py<0||py>=hit.height||hit.ids[py*hit.width+px]!==i+1)continue;
-        const house=map.houses.get(i),crystal=map.biomes[i]===RealmBiome.crystal;
-        const model=house?blockRealmHouse(house.home==='ash-borne',i%7):blockRealmGrowth(crystal,i%4);
-        paintBlockScenery(ctx,model,p,view,units*(house?.64:.50));
-      }
-      picking.current=hit;setReady(true);
-    };
-    let idle=0;
-    const fallback=()=>{
-      idle=window.requestAnimationFrame(()=>{
-        const ink=texture.current??document.createElement('canvas');
-        texture.current=ink;ink.width=map.width*VISUAL_TERRAIN_SIDE;ink.height=map.height*VISUAL_TERRAIN_SIDE;
-        const p=ink.getContext('2d',{willReadFrequently:true});
-        if(p)decorate(paintRealmRelief(ctx,p,request));
-      });
-    };
-    try{
-      if(typeof Worker==='undefined'||typeof OffscreenCanvas==='undefined'){fallback();return ()=>cancelAnimationFrame(idle);}
-      const renderer=worker.current??new Worker(new URL('./realmRelief.worker.ts',import.meta.url),{type:'module'});
-      worker.current=renderer;
-      renderer.onmessage=({data}:MessageEvent<RealmRasterResult>)=>{
-        if(data.id!==id){data.bitmap.close();return;}
-        ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(data.bitmap,0,0);
-        data.bitmap.close();decorate(data.hit);
-      };
-      renderer.onerror=()=>{renderer.terminate();worker.current=undefined;fallback();};
-      renderer.postMessage(request);
-    }catch{fallback();}
-    return ()=>{cancelAnimationFrame(idle);};
-  },[map,projection,camera,fordDay,frame.width,frame.height,maxHeight]);
-  const selectedPoint=selected===undefined?undefined:seaPoint(map.width,selected);
-  const pin=selectedPoint&&underneath(selectedPoint.x,selectedPoint.y,map.heights[selected!]);
-  return <>
-    <canvas ref={raster} width={frame.width} height={frame.height} className="strata-floor"
-      role="grid" tabIndex={0} aria-label="Underworld relief with raised rock, towns, and lava rivers"
-      data-ready={ready||undefined} onClick={event=>{
-        const hit=picking.current;if(!hit)return;
-        const bounds=event.currentTarget.getBoundingClientRect();
-        const x=Math.floor((event.clientX-bounds.left)/bounds.width*hit.width);
-        const y=Math.floor((event.clientY-bounds.top)/bounds.height*hit.height);
-        const i=hit.ids[y*hit.width+x]-1;
-        if(i>=0&&i<map.biomes.length)onSelect(i);
-      }} onKeyDown={event=>{
-        if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;
-        event.preventDefault();
-        const p=selectedPoint??{x:map.width>>1,y:map.height>>1};
-        const x=Math.max(0,Math.min(map.width-1,p.x+Number(event.key==='ArrowRight')-Number(event.key==='ArrowLeft')));
-        const y=Math.max(0,Math.min(map.height-1,p.y+Number(event.key==='ArrowDown')-Number(event.key==='ArrowUp')));
-        onSelect(y*map.width+x);
-      }}/>
-    {pin&&<span className="strata-selection" aria-hidden="true"
-      style={{left:pin.x/size.width*100+'%',top:pin.y/lowerHeight*100+'%'}}/>}
-    {!ready&&<span className="strata-drawing" role="status">Drawing the Underworld relief…</span>}
-  </>;
+    width={Math.ceil(size.width*scale)} height={Math.ceil(size.height*scale)}/>;
 }
 
 export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;map:RealmMap;
@@ -311,8 +210,8 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
               onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway/>
           </div>
           <div className="strata-level strata-lower" style={{top:lowerTop/size.height*100+'%',height:lowerHeight/size.height*100+'%'}}>
-            <RealmReliefCanvas world={world} map={map} projection={projection} camera={camera}
-              maxHeight={maxHeight} selected={selected?.layer==='underworld'?selected.cell:undefined}
+            <RealmReliefCanvas map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}
+              selected={selected?.layer==='underworld'?selected.cell:undefined}
               onSelect={cell=>setSelected({layer:'underworld',cell})}/>
           </div>
           <span className="strata-label strata-label-surface">Surface</span>

@@ -1,10 +1,13 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ATLAS_PLACE_ZOOM,atlasLabelSides,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import type {DepthCamera} from './depthProjection';
 import type {World} from './engine';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
+import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {seaPoint} from './shipSave';
+import {realmDepthPoint,STACKED_CAMERA,stackedProjection} from './stackedProjection';
 import {VISUAL_TERRAIN_SIDE} from './terrainCells';
 import {projectWorldLayer,RealmBiome,realmFordOpen,realmLinkName,type RealmLink,type RealmMap} from './underworld';
 import {paintRealmFloor,UNDERWORLD_BIOMES} from './underworldArt';
@@ -12,22 +15,28 @@ import {volcanicDay} from './volcanism';
 
 type Feature={cell:number;name:string;kind:'town'|'shaft'|'passage';link?:RealmLink};
 type CameraMove={center:number}|{anchor:WorldZoomAnchor};
+type Perspective='depth'|'overhead';
 const zoomLabel=(n:number)=>Math.round(n*100)+'%';
 const overviewRegions=[RealmBiome.glowroot,RealmBiome.lava,RealmBiome.sea] as const;
 
 function RealmFloor({world,map,close,onInspect}:{world:World;map:RealmMap;
   close:boolean;onInspect:(cell:number)=>void}){
-  const terrain=useRef<HTMLCanvasElement>(null),stamp=useRef<{map:RealmMap;fords:string}>(null);
+  const terrain=useRef<HTMLCanvasElement>(null),stamp=useRef<{map:RealmMap;open:Set<number>}>(null);
   const structures=useRef<HTMLCanvasElement>(null);
   const width=map.width*VISUAL_TERRAIN_SIDE,height=map.height*VISUAL_TERRAIN_SIDE;
   const day=volcanicDay(world);
   useEffect(()=>{
     const canvas=terrain.current,ctx=canvas?.getContext('2d');
     if(!ctx)return;
-    const fords=[...map.fords].filter(i=>realmFordOpen(map,i,day)).join(',');
-    if(stamp.current?.map===map&&stamp.current.fords===fords)return;
-    paintRealmFloor(ctx,map,day,{x:0,y:0},map.width,map.height);
-    stamp.current={map,fords};
+    const open=new Set([...map.fords].filter(i=>realmFordOpen(map,i,day)));
+    const previous=stamp.current;
+    if(previous?.map!==map)paintRealmFloor(ctx,map,day,{x:0,y:0},map.width,map.height);
+    else for(const i of map.fords){
+      if(open.has(i)===previous.open.has(i))continue;
+      const {x,y}=seaPoint(map.width,i);
+      paintRealmFloor(ctx,map,day,{x,y},1,1,{x:x*VISUAL_TERRAIN_SIDE,y:y*VISUAL_TERRAIN_SIDE});
+    }
+    stamp.current={map,open};
   },[map,day]);
   useEffect(()=>{
     const canvas=structures.current,ctx=canvas?.getContext('2d');
@@ -74,14 +83,16 @@ function regionCenters(map:RealmMap){
 
 /** The same geography used by the walking scene, framed as its own atlas
  * layer. Browsing and zooming never move the mortal or change their realm. */
-export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMark}:{
-  world:World;map:RealmMap;focusSurface?:number;at?:number;marked?:number;
+export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMark,allowRelief=false}:{
+  world:World;map:RealmMap;focusSurface?:number;at?:number;marked?:number;allowRelief?:boolean;
   onSurface?:(surface:number)=>void;onMark?:(link:RealmLink)=>void;
 }){
   const start=focusSurface===undefined?undefined:map.links.find(link=>
     link.surface===focusSurface)?.cell??projectWorldLayer(focusSurface,world,map);
   const [zoom,setZoom]=useState(start===undefined?1:ATLAS_PLACE_ZOOM);
   const [selected,setSelected]=useState(start);
+  const [view,setView]=useState<Perspective>(allowRelief?'depth':'overhead');
+  const [camera,setCamera]=useState<DepthCamera>(STACKED_CAMERA);
   const [size,setSize]=useState<Point>({x:0,y:0});
   const viewport=useRef<HTMLDivElement>(null),sheet=useRef<HTMLDivElement>(null);
   const pending=useRef<CameraMove>(start===undefined?undefined:{center:start});
@@ -106,8 +117,16 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
   }),{demons:0,ashBorne:0});
   const regions=useMemo(()=>regionCenters(map),[map]);
   const overview=atlasLevel(zoom)==='world';
-  const fraction=(cell:number)=>({x:(cell%map.width+.5)/map.width,
-    y:(Math.floor(cell/map.width)+.5)/map.height});
+  const maxHeight=useMemo(()=>map.heights.reduce((max,value)=>Math.max(max,value),0),[map]);
+  const relief=useMemo(()=>view==='depth'?stackedProjection(world,map,camera,maxHeight).lower:undefined,
+    [view,world.width,world.height,world.skylands,world.worldTree,map,camera,maxHeight]);
+  const bounds=relief??world;
+  const fraction=(cell:number)=>{
+    const {x,y}=seaPoint(map.width,cell);
+    if(!relief)return {x:(x+.5)/map.width,y:(y+.5)/map.height};
+    const p=realmDepthPoint(relief,x,y,map.heights[cell]);
+    return {x:p.x/relief.width,y:p.y/relief.height};
+  };
   const position=(cell:number)=>{
     const p=fraction(cell);return {left:p.x*100+'%',top:p.y*100+'%'};
   };
@@ -140,7 +159,7 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
     if('center' in move){center(move.center);return;}
     const {x,y}=restoreWorldZoomAnchor(move.anchor,atlasScrollGeometry(panel,paper));
     panel.scrollTo(x+paper.offsetLeft,y+paper.offsetTop);
-  },[zoom,map]);
+  },[zoom,map,view,relief]);
   useEffect(()=>{
     const panel=viewport.current;
     if(!panel)return;
@@ -171,14 +190,36 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
     pending.current=undefined;setZoom(1);
     viewport.current?.scrollTo(0,0);
   };
+  const keepPlaceCentered=()=>{
+    if(selected!==undefined&&zoom>1)pending.current={center:selected};
+  };
+  const rotate=(degrees:number)=>{
+    keepPlaceCentered();setCamera(c=>({...c,yaw:(c.yaw+degrees+360)%360}));
+  };
+  const changeView=(next:Perspective)=>{
+    if(next===view)return;
+    keepPlaceCentered();setView(next);
+  };
   return <div className="evo-playground-layout realm-layer-layout">
-    <section className="evo-map-card" aria-label="Underworld layer" data-map-detail={atlasLevel(zoom)}>
+    <section className="evo-map-card" aria-label="Underworld layer" data-map-detail={atlasLevel(zoom)}
+      data-perspective={view}>
       <div className="evo-card-heading evo-map-heading">
         <div className="atlas-map-title" aria-live="polite">
           <strong>{town?.name??(link&&realmLinkName(world,link))??'Underworld map'}</strong>
-          <small>{link?'Passage to the Surface':biome?.name??'Underground world layer'}</small>
+          <small>{link?'Passage to the Surface':biome?.name??(relief?'Raised terrain':'Underground world layer')}</small>
         </div>
         <div className="evo-map-actions">
+          {allowRelief&&<div className="realm-view-controls" role="group" aria-label="Underworld perspective">
+            <button type="button" aria-pressed={view==='depth'} onClick={()=>changeView('depth')}>3D</button>
+            <button type="button" aria-pressed={view==='overhead'} onClick={()=>changeView('overhead')}>Overhead</button>
+          </div>}
+          {relief&&<div className="realm-view-controls" role="group" aria-label="Underworld camera">
+            <button type="button" aria-label="Rotate left" onClick={()=>rotate(-45)}>↶</button>
+            <button type="button" aria-label="Rotate right" onClick={()=>rotate(45)}>↷</button>
+            <button type="button" aria-pressed={camera.pitch!==STACKED_CAMERA.pitch} onClick={()=>{
+              keepPlaceCentered();setCamera(c=>({...c,pitch:c.pitch===STACKED_CAMERA.pitch?42:STACKED_CAMERA.pitch}));
+            }}>Tilt</button>
+          </div>}
           <details className="realm-atlas-places">
             <summary>Places</summary>
             <div>{features.map(feature=><button type="button" key={feature.cell} onClick={event=>{
@@ -191,7 +232,7 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
           <button type="button" onClick={()=>zoomBy(zoom+.5)} disabled={zoom>=8} aria-label="Zoom in">+</button>
         </div>
       </div>
-      <div ref={viewport} className="evo-map-scroll atlas-viewport realm-atlas-viewport"
+      <div ref={viewport} className={'evo-map-scroll atlas-viewport realm-atlas-viewport'+(relief?' realm-relief-viewport':'')}
         tabIndex={0} role="region" aria-label="Pan and zoom the Underworld"
         onKeyDown={event=>{
           if(event.target!==event.currentTarget)return;
@@ -228,9 +269,11 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
         }}>
         <div ref={sheet} className="atlas-sheet realm-atlas-sheet"
           style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+
-            zoom*world.width/world.height+'))',aspectRatio:world.width+'/'+world.height}}>
-          <RealmFloor world={world} map={map} close={!overview} onInspect={setSelected}/>
-          {overview&&regions.map(region=><span key={region.name} className="realm-region-label"
+            zoom*bounds.width/bounds.height+'))',aspectRatio:bounds.width+'/'+bounds.height}}>
+          {relief?<RealmReliefCanvas map={map} projection={relief} camera={camera} day={volcanicDay(world)}
+            onSelect={setSelected} selected={selected} showSelection={false}/>:
+            <RealmFloor world={world} map={map} close={!overview} onInspect={setSelected}/>}
+          {overview&&!relief&&regions.map(region=><span key={region.name} className="realm-region-label"
             style={position(region.cell)} aria-hidden="true">{region.name}</span>)}
           {features.map(feature=><button key={feature.cell} type="button"
             className="realm-atlas-pin" data-kind={feature.kind}
