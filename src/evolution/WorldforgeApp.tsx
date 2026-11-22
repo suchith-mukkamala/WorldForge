@@ -184,6 +184,7 @@ export function WorldforgeApp(){
   // Server-rendered previews have no browser database to restore.
   const [storageReady,setStorageReady]=useState(typeof window==='undefined');
   const [tab,setTab]=useState<Tab>('world');
+  const below=tab==='underworld',inAtlas=tab==='world'||below;
   const [playing,reactSetPlaying]=useState(false);
   const [mortalRunning,setMortalRunning]=useState(true);
   const simulationActive=useRef(false);
@@ -236,7 +237,7 @@ export function WorldforgeApp(){
   const simulationDays=isMortal?1:playback.days;
   const simulationInterval=isMortal?2000:playback.interval;
   const simulationEnabled=storageReady&&(isMortal?mortalRunning&&
-    world.agents.some(a=>a.id===world.descent?.agentId):playing&&(tab==='world'||tab==='underworld'||tab==='settlements'));
+    world.agents.some(a=>a.id===world.descent?.agentId):playing&&(inAtlas||tab==='settlements'));
   simulationActive.current=simulationEnabled;
   playbackDaysRef.current=simulationDays;
   const activeCameraPitch=CAMERA_PITCHES[cameraPitch];
@@ -247,13 +248,7 @@ export function WorldforgeApp(){
   const mapSheetRef=useRef<HTMLDivElement>(null);
   const surfaceScroll=useRef<Point|null>(null);
   const [belowFocus,setBelowFocus]=useState<number>();
-  useLayoutEffect(()=>{
-    const at=surfaceScroll.current;
-    if(tab==='world'&&at&&mapScrollRef.current){
-      mapScrollRef.current.scrollTo(at.x,at.y);
-      surfaceScroll.current=null;
-    }
-  },[tab]);
+
   const orbitFocusRef=useRef<AtlasPoint|null>(null);
   const pendingZoomAnchor=useRef<WorldZoomAnchor|null>(null);
   const [notice,setNotice]=useState('');
@@ -585,7 +580,7 @@ export function WorldforgeApp(){
     const timer=window.setTimeout(()=>checkpoint(world),500);
     return ()=>window.clearTimeout(timer);
   },[world,playing,storageReady,checkpoint]);
-  useEffect(()=>{if(tab!=='world'&&tab!=='settlements')setPlaying(false);},[tab]);
+  useEffect(()=>{if(!inAtlas&&tab!=='settlements')setPlaying(false);},[inAtlas,tab]);
   const requestSimulation=useCallback(()=>{
     const worker=simulationWorker.current,current=currentWorld.current;
     if(!worker||simulationPending.current||preparedSimulation.current||
@@ -824,7 +819,7 @@ export function WorldforgeApp(){
   const giveName=(id:number,name:string)=>setWorld(w=>renamePerson(w,id,name));
   const renamePlace=(id:number,name:string)=>setWorld(w=>renameSettlement(w,id,name));
   const locateAtlasPoint=(point:AtlasPoint,minimumZoom:number)=>{
-    pendingZoomAnchor.current=null;orbitFocusRef.current=null;
+    pendingZoomAnchor.current=null;orbitFocusRef.current=null;surfaceScroll.current=null;
     setSkySelection(null);
     setFollowId(null);setSelectedAgentId(null);setSelected(point);
     setBrush({kind:'inspect'});setZoom(value=>Math.max(minimumZoom,value));
@@ -854,7 +849,7 @@ export function WorldforgeApp(){
     elevation:topographyForWorld(world).heights[y*world.width+x]+
       DEPTH_RISE*DEPTH_TILE_WIDTH/2*WORLD_TREE_BLOCK*20*Math.sqrt(1.5)/RELIEF_LEVELS[reliefLevel]});
   const findAncientSite=(x:number,y:number)=>{
-    if(tab!=='world')setPlaying(false);
+    if(!inAtlas)setPlaying(false);
     if(tree?.x===x&&tree.y===y){
       setOverlay('terrain');locateAtlasPoint(treeFocus(x,y),1.65);setZoom(1.65);
     }else locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
@@ -916,7 +911,14 @@ export function WorldforgeApp(){
   // viewport. Center it on entry; otherwise first-time users see only the
   // empty skyline at the top-left of a large panorama.
   useEffect(()=>{
-    if(!storageReady||tab!=='world'||mapView!=='depth'||mapFocus!==null)return;
+    if(!storageReady||tab!=='world')return;
+    const viewport=mapScrollRef.current,previous=surfaceScroll.current;
+    if(viewport&&previous){
+      viewport.scrollTo(previous.x,previous.y);
+      surfaceScroll.current=null;
+      return;
+    }
+    if(mapView!=='depth'||mapFocus!==null)return;
     const frame=window.requestAnimationFrame(()=>{
       const island=selectedSkyland?.islands[0];
       const point:AtlasPoint=orbitFocusRef.current??(island?
@@ -965,7 +967,7 @@ export function WorldforgeApp(){
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
-    setZoom(1);
+    surfaceScroll.current=null;setZoom(1);
     setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
@@ -983,7 +985,7 @@ export function WorldforgeApp(){
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
-    setZoom(1);
+    surfaceScroll.current=null;setZoom(1);
     setNotice('World replayed from the same starting seed.');
   };
   const importWorld=async(event:ChangeEvent<HTMLInputElement>)=>{
@@ -1003,7 +1005,7 @@ export function WorldforgeApp(){
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
       pendingZoomAnchor.current=null;orbitFocusRef.current=null;
-      setZoom(1);
+      surfaceScroll.current=null;setZoom(1);
       setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
@@ -1064,7 +1066,7 @@ export function WorldforgeApp(){
       running={mortalRunning} onToggleTime={()=>setMortalRunning(value=>!value)}
       onChange={changeMortalWorld} onAscend={leaveMortalView}/>
   </Suspense>;
-  const below=tab==='underworld',realmMap=below?underworldMap(world):undefined;
+  const realmMap=below?underworldMap(world):undefined;
   return <div className="evo-app">
     <header className="evo-lab-nav">
       <div className="evo-lab-brand">
@@ -1072,8 +1074,8 @@ export function WorldforgeApp(){
         <strong>WORLDFORGE</strong>
       </div>
       <nav aria-label="WorldForge main navigation" className="evo-lab-tabs">
-        <button aria-current={tab==='world'||below?'page':undefined}
-          className={tab==='world'||below?'active':''} onClick={()=>navigate('world')}>
+        <button aria-current={inAtlas?'page':undefined}
+          className={inAtlas?'active':''} onClick={()=>{if(below)setTab('world');else navigate('world');}}>
           ◈ WORLD</button>
         <button aria-current={tab==='settlements'?'page':undefined}
           className={['settlements','people','family','culture','knowledge']
@@ -1187,7 +1189,7 @@ export function WorldforgeApp(){
         {notice&&<p className="evo-notice" role="status">{notice}</p>}
         {realmMap?<Suspense fallback={<p role="status">Opening the Underworld map…</p>}>
           <UnderworldAtlas world={world} map={realmMap} focusSurface={belowFocus}
-            at={realm?.visit?.at} onSurface={index=>{surfaceScroll.current=null;findCoast(index);}}/>
+            at={realm?.visit?.at} onSurface={findCoast}/>
         </Suspense>:<section className="evo-section-card realm-layer-empty" aria-label="Underworld layer">
           <h2>Underworld</h2>
           <p>Add volcanoes to open crater passages beneath this world.</p>
