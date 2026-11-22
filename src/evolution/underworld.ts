@@ -33,6 +33,16 @@ const dimensions=(width:number,height:number)=>({
   width:Math.max(34,Math.min(144,Math.round(width*.62))),
   height:Math.max(25,Math.min(96,Math.round(height*.62))),
 });
+type GridSize={width:number;height:number};
+
+/** Both atlas layers cover the same world footprint. The floor below uses
+ * fewer simulation tiles, so comparisons project through the shared bounds. */
+export function projectWorldLayer(index:number,from:GridSize,to:GridSize):number{
+  const {x,y}=seaPoint(from.width,index);
+  return Math.round(y/(from.height-1)*(to.height-1))*to.width+
+    Math.round(x/(from.width-1)*(to.width-1));
+}
+
 const distance=(a:number,b:number,w:number)=>
   Math.hypot(a%w-b%w,Math.floor(a/w)-Math.floor(b/w));
 const neighbors=(i:number,w:number,n:number)=>seaNeighbors(i,w,n).filter(j=>j>=0);
@@ -66,9 +76,8 @@ function baseRealm(world:World,links:readonly Omit<RealmLink,'cell'>[]){
   const flip=terrainHash(14,79,seed)<.5,reverse=terrainHash(311,21,seed)<.5;
   const cells=new Uint8Array(w*h),heights=new Uint8Array(cells.length);
   const project=(surface:number)=>{
-    const {x,y}=seaPoint(world.width,surface);
-    return Math.min(h-2,Math.max(1,Math.round(y/(world.height-1)*(h-1))))*w+
-      Math.min(w-2,Math.max(1,Math.round(x/(world.width-1)*(w-1))));
+    const {x,y}=seaPoint(w,projectWorldLayer(surface,world,{width:w,height:h}));
+    return Math.min(h-2,Math.max(1,y))*w+Math.min(w-2,Math.max(1,x));
   };
   const wet=links.filter(link=>link.kind!=='crater').map(link=>project(link.surface));
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){

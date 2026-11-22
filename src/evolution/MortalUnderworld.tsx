@@ -14,7 +14,7 @@ import {mortalName} from './MortalHUD';
 import {paintPerson} from './pixelArt';
 import {PixelPortrait} from './PixelPortrait';
 import {seaNeighbors,seaPoint} from './shipSave';
-import {UnderworldChart} from './UnderworldChart';
+import {UnderworldAtlas} from './UnderworldAtlas';
 import {realmLinkName,realmPeopleName,realmResidents,RealmBiome,
   type RealmResident} from './underworld';
 import {paintRealmResident,paintRealmTerrain,REALM_TILE,UNDERWORLD_BIOMES} from './underworldArt';
@@ -45,7 +45,8 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
     let moving=false;
     const resize=()=>{
       const box=canvas.getBoundingClientRect();if(!box.width||!box.height)return;
-      frameSize=adventureFrameSize(box.width,box.height);
+      const size=adventureFrameSize(box.width,box.height);
+      frameSize={width:Math.round(size.width*.85),height:Math.round(size.height*.85)};
       density=Math.min(6,Math.max(2,Math.ceil(box.width/frameSize.width*window.devicePixelRatio)));
       canvas.width=frameSize.width*density;canvas.height=frameSize.height*density;
       cols=Math.ceil(frameSize.width/TILE)+4;rows=Math.ceil(frameSize.height/TILE)+4;
@@ -149,10 +150,11 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
   const primary=actions[0];
   const controls=useAdventureControls({
     move:({x,y})=>{
+      if(chart)return 140;
       setFacing(directionBetween({x:0,y:0},{x,y}));
       step(moveUnderworld(current.current,x,y));return atSea?115:138;
     },
-    interact:()=>primary?.perform(),escape:()=>{if(chart)setChart(false);else setMessage('');},
+    interact:()=>{if(!chart)primary?.perform();},escape:()=>{if(chart)setChart(false);else setMessage('');},
     pause:onToggleTime,
   });
   const target=map.links.find(link=>link.surface===pin);
@@ -165,18 +167,21 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
     <header className="adventure-topbar">
       <div className="adventure-brand"><span aria-hidden="true">✦</span> WorldForge</div>
       <div className="adventure-top-actions">
-        <button aria-expanded={chart} onClick={()=>setChart(show=>!show)}>Underworld map</button>
+        <button aria-expanded={chart} onClick={()=>setChart(show=>!show)}>
+          {chart?(atSea?'Return to boat':'Return to walking'):'Underworld map'}</button>
         <button onClick={onToggleTime} aria-pressed={!running} aria-keyshortcuts="P">
           {running?'Pause time':'Resume time'}</button>
-        <button className="adventure-ascend" onClick={onAscend}>↑ Ascend</button>
+        <button className="adventure-ascend" onClick={onAscend}>God mode</button>
       </div>
     </header>
-    <main className="adventure-main">
+    <main className={chart?'adventure-main world-atlas realm-adventure-atlas':'adventure-main'}>
       <header className="adventure-heading">
-        <div><p>Underworld</p><h1>{town?.name??biome.name}</h1></div>
+        <div><p>Underworld · World layer</p><h1>{chart?'Underworld atlas':town?.name??biome.name}</h1></div>
         <time>{MONTH_NAMES[date.month]} {date.day} <span>· Year {date.year}</span></time>
       </header>
       {notice&&<p className="adventure-feedback" role="status">{notice}</p>}
+      {chart?<UnderworldAtlas world={world} map={map} at={visit.at} marked={pin}
+        onMark={link=>{setPin(link.surface);setChart(false);}}/>:
       <div className="adventure-layout">
         <div className="adventure-stage">
           <div className="adventure-picture underworld-picture">
@@ -206,24 +211,20 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
             <PixelPortrait person={actor} name={name} compact/>
             <div><strong>{name}</strong><small>{atSea?'Cavern boat':biome.name}</small></div>
           </section>
-          {chart?<section className="adventure-exits">
-            <h2>Underworld map</h2>
-            <UnderworldChart world={world} map={map} at={visit.at} marked={pin}
-              onMark={link=>setPin(value=>value===link.surface?undefined:link.surface)}/>
-          </section>:<section className="adventure-exits">
+          <section className="adventure-exits">
             <h2>Surface passage</h2>
             <button onClick={()=>setPin(value=>value===origin.surface?undefined:origin.surface)}
               aria-pressed={pin===origin.surface}>
               <span className="adventure-direction" aria-hidden="true">↑</span>
               <span><strong>Mark entry shaft</strong><small>{realmLinkName(world,origin)}</small></span>
             </button>
-          </section>}
+          </section>
           {target&&<section className="adventure-exits" aria-label="Marked passage">
             <h2>{realmLinkName(world,target)}</h2>
             <p>{way?way+' tiles '+heading:'At the passage'}</p>
           </section>}
         </aside>
-      </div>
+      </div>}
     </main>
   </div>;
 }
