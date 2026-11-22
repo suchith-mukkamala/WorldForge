@@ -37,11 +37,13 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   hit:DepthPicking,w:SurfaceWorld,
   projector:Projector,density:number,tiles:readonly number[],sea:string,
   tilePaint:(index:number)=>{color:string;grain:number;water:boolean},
-  plots?:Pick<BuildingPlots,'squares'|'decoratedTiles'>,sample=1):void{
+  plots?:Pick<BuildingPlots,'squares'|'decoratedTiles'>,sample=1,cutaway=false):void{
   const {width,height}=hit,image=ctx.createImageData(width,height);
   const pixels=new Uint32Array(image.data.buffer);
-  pixels.fill(terrainPixel(sea));
-  paintDepthSky(pixels,width,height,w.settings.seed,projector.skyBand*density);
+  if(!cutaway){
+    pixels.fill(terrainPixel(sea));
+    paintDepthSky(pixels,width,height,w.settings.seed,projector.skyBand*density);
+  }
   const grid=surfaceGrid(w),{columns,rows,ground,water,shore,rootRise}=grid;
   const decks=plots&&new Uint8Array(ground.length);
   if(decks)for(const [i,plot] of plots.squares){
