@@ -753,3 +753,24 @@ export function blockRealmHouse(ash:boolean,variant:number):BlockModel{
     g.box(-2,5,0,4,1,1,wall);
   });
 }
+
+export function blockRealmGrowth(crystal:boolean,variant:number):BlockModel{
+  return model('realm-growth:'+Number(crystal)+':'+variant,g=>{
+    if(crystal){
+      for(const [x,y,w,h] of [[-4,-1,3,5],[0,-2,4,9],[3,1,3,6]]){
+        const z=h+(x+variant+7)%3;
+        g.box(x,y,0,w,w,z,'#766895');
+        g.box(x+1,y,1,1,w,z-1,'#9d83b3');
+        g.box(x+1,y+1,z,w-2,w-2,2,'#d9b5cf');
+      }
+    }else{
+      g.box(-1,-1,0,2,2,7,'#6c8274');
+      g.box(-3,-2,6,6,5,2,'#4c766c');
+      g.box(-4,-3,8,8,7,2,'#739a83');
+      g.box(-3,-2,10,6,5,1,'#a6c29b');
+      g.box(-2,-2,11,2,2,1,'#d6d7ac');
+      g.box(3,1,0,1,2,4,'#8b9d8d');
+      g.box(2,0,4,4,4,2,'#7eac92');
+    }
+  });
+}

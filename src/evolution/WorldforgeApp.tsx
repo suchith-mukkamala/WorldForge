@@ -69,6 +69,7 @@ import {GOAL_LABELS} from './mind';
 const KnowledgeCodex=lazy(()=>import('./KnowledgeCodex').then(m=>({default:m.KnowledgeCodex})));
 const CultureCodex=lazy(()=>import('./CultureCodex').then(m=>({default:m.CultureCodex})));
 const SettlementView=lazy(()=>import('./SettlementView').then(m=>({default:m.SettlementView})));
+const StackedAtlas=lazy(()=>import('./StackedAtlas').then(m=>({default:m.StackedAtlas})));
 const UnderworldAtlas=lazy(()=>import('./UnderworldAtlas').then(m=>({default:m.UnderworldAtlas})));
 const MortalAdventure=lazy(()=>import('./MortalAdventure').then(m=>({default:m.MortalAdventure})));
 import {readSavedWorld,MAX_WORLD_FILE_BYTES,loadDatabaseSnapshot,
@@ -100,7 +101,7 @@ function initialWorld():World{
   });
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
-  'settlements'|'culture'|'descent'|'underworld';
+  'settlements'|'culture'|'descent'|'underworld'|'stacked';
 type AtlasPoint=Point&{elevation?:number};
 const format=(n:number)=>n.toLocaleString('en-US');
 const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
@@ -184,7 +185,7 @@ export function WorldforgeApp(){
   // Server-rendered previews have no browser database to restore.
   const [storageReady,setStorageReady]=useState(typeof window==='undefined');
   const [tab,setTab]=useState<Tab>('world');
-  const below=tab==='underworld',inAtlas=tab==='world'||below;
+  const below=tab==='underworld',stacked=tab==='stacked',inAtlas=tab==='world'||below||stacked;
   const [playing,reactSetPlaying]=useState(false);
   const [mortalRunning,setMortalRunning]=useState(true);
   const simulationActive=useRef(false);
@@ -537,6 +538,7 @@ export function WorldforgeApp(){
         setSaveWarning('Autosave paused');
         setNotice(decision.reason);
       }
+      setTab((decision.kind==='restored'?decision.world:currentWorld.current).underworld?'stacked':'world');
       setStorageReady(true);
     };
     loadDatabaseSnapshot().then(restored=>finish(restored))
@@ -855,9 +857,12 @@ export function WorldforgeApp(){
     }else locateAtlasPoint({x,y},ATLAS_PLACE_ZOOM);
     focusMap();
   };
-  const openUnderworld=(surface?:number)=>{
+  const rememberSurfaceCamera=()=>{
     const view=mapScrollRef.current;
     if(view)surfaceScroll.current={x:view.scrollLeft,y:view.scrollTop};
+  };
+  const openUnderworld=(surface?:number)=>{
+    rememberSurfaceCamera();
     setBelowFocus(surface);setTab('underworld');
   };
   const addVolcanoes=()=>{
@@ -962,7 +967,8 @@ export function WorldforgeApp(){
     if(!window.confirm('Generate a new world? This replaces your current simulation. '+
       'Use Export World JSON first to keep this timeline.'))return;
     holdAutosave.current=false;setSaveWarning('');
-    setPlaying(false);setWorld(createWorld(settings));setTab('world');
+    const next=createWorld(settings);
+    setPlaying(false);setWorld(next);setTab(next.underworld?'stacked':'world');
     setSavedDate(null);
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
@@ -1000,7 +1006,7 @@ export function WorldforgeApp(){
       const obj=readSavedWorld(await file.text());
       if(!obj)throw Error('Invalid or unsupported Worldforge world JSON.');
       holdAutosave.current=false;setSaveWarning('');
-      setPlaying(false);setWorld(obj);setTab('world');
+      setPlaying(false);setWorld(obj);setTab(obj.underworld?'stacked':'world');
       setSavedDate(null);
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
@@ -1044,7 +1050,7 @@ export function WorldforgeApp(){
   };
   const leaveMortalView=()=>{
     const current=currentWorld.current;
-    setPlaying(false);setBelowFocus(undefined);setTab(current.descent?.realm?.visit?'underworld':'world');setNotice('');
+    setPlaying(false);setBelowFocus(undefined);setTab(current.underworld?'stacked':'world');setNotice('');
     changeMortalWorld(setDescentMode(current,'divine'));
   };
   const applyDivine=(action:DivineAction)=>{
@@ -1066,7 +1072,7 @@ export function WorldforgeApp(){
       running={mortalRunning} onToggleTime={()=>setMortalRunning(value=>!value)}
       onChange={changeMortalWorld} onAscend={leaveMortalView}/>
   </Suspense>;
-  const realmMap=below?underworldMap(world):undefined;
+  const realmMap=below||stacked?underworldMap(world):undefined;
   return <div className="evo-app">
     <header className="evo-lab-nav">
       <div className="evo-lab-brand">
@@ -1075,7 +1081,7 @@ export function WorldforgeApp(){
       </div>
       <nav aria-label="WorldForge main navigation" className="evo-lab-tabs">
         <button aria-current={inAtlas?'page':undefined}
-          className={inAtlas?'active':''} onClick={()=>{if(below)setTab('world');else navigate('world');}}>
+          className={inAtlas?'active':''} onClick={()=>{if(!inAtlas)navigate(world.underworld?'stacked':'world');}}>
           ◈ WORLD</button>
         <button aria-current={tab==='settlements'?'page':undefined}
           className={['settlements','people','family','culture','knowledge']
@@ -1181,17 +1187,20 @@ export function WorldforgeApp(){
           </details>
         </div>
       </header>
-      <WorldLayerSwitch underground={below} onChange={next=>{
-        if(next===below)return;
-        if(next)openUnderworld(selectedVent?.rim??(displayed?drainageIndex:undefined));else setTab('world');
+      <WorldLayerSwitch view={stacked?'stacked':below?'underworld':'surface'} onChange={next=>{
+        if(next==='stacked'){if(!stacked){rememberSurfaceCamera();setTab(next);}return;}
+        if(next==='underworld'){if(!below)openUnderworld(selectedVent?.rim??(displayed?drainageIndex:undefined));return;}
+        setTab('world');
       }}/>
-      {below?<>
+      {below||stacked?<>
         {notice&&<p className="evo-notice" role="status">{notice}</p>}
-        {realmMap?<Suspense fallback={<p role="status">Opening the Underworld map…</p>}>
-          <UnderworldAtlas world={world} map={realmMap} focusSurface={belowFocus}
-            at={realm?.visit?.at} onSurface={findCoast}/>
+        {realmMap?<Suspense fallback={<p role="status">Opening the world layers…</p>}>
+          {stacked?<StackedAtlas world={world} map={realmMap} at={realm?.visit?.at}
+            onSurface={findCoast} onUnderworld={openUnderworld}/>:
+            <UnderworldAtlas world={world} map={realmMap} focusSurface={belowFocus}
+              at={realm?.visit?.at} onSurface={findCoast}/>}
         </Suspense>:<section className="evo-section-card realm-layer-empty" aria-label="Underworld layer">
-          <h2>Underworld</h2>
+          <h2>{stacked?'Stacked 3D':'Underworld'}</h2>
           <p>Add volcanoes to open crater passages beneath this world.</p>
           <button type="button" className="atlas-terrain-cell-zoom" onClick={addVolcanoes}>Add volcanoes</button>
         </section>}

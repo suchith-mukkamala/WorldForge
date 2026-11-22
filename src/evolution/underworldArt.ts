@@ -28,7 +28,7 @@ const rect=(ctx:CanvasRenderingContext2D,color:string,x:number,y:number,w:number
   ctx.fillStyle=color;ctx.fillRect(x,y,w,h);
 };
 
-export function paintRealmFloor(ctx:CanvasRenderingContext2D,map:RealmMap,day:number,
+export function paintRealmFloor(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,map:RealmMap,day:number,
   origin:Point,width:number,height:number){
   const iw=width*SIDE,ih=height*SIDE,image=ctx.createImageData(iw,ih);
   const pixels=new Uint32Array(image.data.buffer);
