@@ -1,3 +1,5 @@
+import {paintVolcanicSquares} from './volcanicArt';
+import {volcanoPhase} from './volcanism';
 import {surfaceGrid} from './surfaceGrid';
 import {WORLD_TREE_CROWN_RADIUS,WORLD_TREE_DESCENT_UNIT,WORLD_TREE_TRUNK_CLEARANCE} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
@@ -15,7 +17,7 @@ import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {waterSeason} from './riverSeasons';
-import {blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth} from './blockModels';
+import {blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth,blockCrater,blockRealmHouse} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -43,6 +45,8 @@ function sceneScenery({world,map,region,landmarks,caves}:Props,origin:Point,cols
   const signs=new Map<number,AdventureGate>();
   const caveTiles=new Map(caves?.map(cave=>[cave.mouth,cave]));
   const low=coastTide(world).low;
+  const craters=new Map((world.volcanicLayout?.vents??[]).map(vent=>[vent.index,vent]));
+  const outpost=world.underworld?.outpost;
   const tree=world.worldTree,treeCover=tree?surfaceGrid(world).treeCover:undefined;
   const ruins=new Map(landmarks.map(site=>[site.y*world.width+site.x,site]));
   const yards=new Map([...map.shipyards.values()].map(site=>[site.shore,site]));
@@ -103,7 +107,13 @@ function sceneScenery({world,map,region,landmarks,caves}:Props,origin:Point,cols
         const art=blockSceneryArt(model,{x:(x+.5)*TILE,y:(y+.58)*TILE},DESCENT_BLOCK_VIEW,1.62);
         scenery.push({x,y,depth:depth+3,opacity:1,art,target:{x,y}});
       }
-      const natural=!cave&&!treeCover?.has(index)&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
+      const vent=craters.get(index),hold=outpost===index&&world.tiles[index].biome!=='water';
+      if(vent&&world.tiles[index].biome!=='water'||hold){
+        const model=vent?blockCrater(vent.index%8,volcanoPhase(world,vent)!=='Dormant'):blockRealmHouse(true,1);
+        const art=blockSceneryArt(model,{x:(x+.5)*TILE,y:(y+.58)*TILE},DESCENT_BLOCK_VIEW,1.5);
+        scenery.push({x,y,depth:depth+3,opacity:1,art,target:{x,y}});
+      }
+      const natural=!vent&&!hold&&!cave&&!treeCover?.has(index)&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
         adventureProp(world,map,region,x,y):undefined;
       const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
       if(prop){
@@ -189,7 +199,9 @@ export function AdventureCanvas(props:Props){
       const plotsChanged=!plots||previous?.map!==map||previous?.world.topography!==world.topography||
         previous.world.terrainCells!==world.terrainCells||waterSeason(previous.world)!==waterSeason(world);
       if(!plots||plotsChanged)plots=buildingPlots(world);
-      const entrances=view.caves?.length?view.caves.map(cave=>cave.mouth).join(',')+':'+coastTide(world).low:'';
+      const caveKeys=view.caves?.length?view.caves.map(cave=>cave.mouth).join(',')+':'+coastTide(world).low:'';
+      const ventKeys=world.volcanicLayout?.vents.map(vent=>vent.index+volcanoPhase(world,vent)).join(',');
+      const entrances=caveKeys+'|'+(ventKeys??'')+'|'+world.underworld?.outpost;
       const restage=!samePoint(grid,origin)||plotsChanged||previous?.region!==region||caveStamp!==entrances;
       if(restage){
         caveStamp=entrances;
@@ -212,6 +224,7 @@ export function AdventureCanvas(props:Props){
         visibleArt.current={sprites:foreground,faded};
       }
       ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y,cols*TILE,rows*TILE);
+      paintVolcanicSquares(ctx,world,TILE,{x,y},{origin,width:cols,height:rows});
       for(const fish of swimmers){
         const pose=fishPose(fish,reducedMotion.matches?0:now);
         const tile=Math.floor(pose.y)*world.width+Math.floor(pose.x);

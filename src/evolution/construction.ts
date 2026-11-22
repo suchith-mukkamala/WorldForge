@@ -1,3 +1,4 @@
+import {volcanoApproach} from './volcanicGeography';
 import {tidalApproach} from './tidalCaves';
 import {worldTreeBlocksBuilding} from './worldTree';
 /** Evolution Lab v0.7 — deterministic settlement construction.
@@ -230,7 +231,7 @@ function chooseLocation(w:World,s:Settlement,type:BuildingType):{x:number;y:numb
   let best=-Infinity,target:null|{x:number;y:number}=null;
   for(const id of infra.land){
     const x=id%w.width,y=Math.floor(id/w.width),tile=w.tiles[id];
-    if(tile.biome==='water'||streams.has(id)||tidalApproach(w,id)||worldTreeBlocksBuilding(w.worldTree,x,y))continue;
+    if(tile.biome==='water'||streams.has(id)||tidalApproach(w,id)||volcanoApproach(w,id)||worldTreeBlocksBuilding(w.worldTree,x,y))continue;
     if(!buildingSiteClear({x,y},type,buildings,s))continue;
     if(type==='watermill'&&(!crossing||terrainDistance(w.width,id,crossing)>2||!riverBank(w,id)))continue;
     if(heights&&!bankSides.some(({x:dx,y:dy})=>{

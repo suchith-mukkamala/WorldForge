@@ -1,3 +1,4 @@
+import {paintVolcanicSquares} from './volcanicArt';
 import {WORLD_TREE_CROWN_RADIUS,WORLD_TREE_DESCENT_UNIT} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
@@ -90,6 +91,7 @@ export function SailingCanvas(props:Props){
         stamp={source:world,origin,size};
       }
       ctx.drawImage(land,origin.x*TILE-offset.x,origin.y*TILE-offset.y,size.x*TILE,size.y*TILE);
+      paintVolcanicSquares(ctx,world,TILE,offset,{origin,width:size.x,height:size.y});
       for(const vessel of activeVessels(world)){
         if(!vessel.merchant)continue;
         const {x,y}=seaPoint(world.width,vessel.at);

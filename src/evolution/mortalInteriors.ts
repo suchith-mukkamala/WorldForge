@@ -78,7 +78,7 @@ export function occupiedMortalRoom(world:World):MortalBuilding|null{
 }
 
 export function enterMortalRoom(world:World,reference:RoomReference):World{
-  if(!world.descent||world.descent.interior||world.descent.tidal?.inside||world.descent.ship?.underway)return world;
+  if(!world.descent||world.descent.interior||world.descent.realm?.visit||world.descent.tidal?.inside||world.descent.ship?.underway)return world;
   const site=findInteriorBuilding(world,reference);
   if(!site||site.distance!==0)return world;
   return {...world,descent:{...world.descent,interior:{...reference,position:{...INTERIOR_DOOR}}}};

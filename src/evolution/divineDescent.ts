@@ -1,3 +1,5 @@
+import {lavaField} from './volcanism';
+import {ventHasGround} from './volcanicGeography';
 import {WORLD_TREE_TRUNK_CLEARANCE} from './worldTree';
 /** v2.5.0 — Divine Descent creates a genuine mortal in the existing world.
  * Movement and player authority are deliberately deferred to v2.5.1. */
@@ -8,7 +10,7 @@ import {biomeHome} from './biomeGeneration';
 import {cleanIdentityName,renamePerson} from './identity';
 import type {Career} from './development';
 import {adventureArrival,adventureMapFor,riverTrailArrival} from './adventureMap';
-import type {RiverTrail,TownStop} from './adventurePlaces';
+import type {RiverTrail,TownStop,WildStop} from './adventurePlaces';
 import {isMultiIslandLayout} from './worldGeography';
 import {seaNeighbors,seaPoint} from './shipSave';
 
@@ -25,8 +27,8 @@ export type MortalCreation={name:string;species:Species;
 /** Choose a safe, available plot near a living settlement of this species.
  * On worlds without settlements, favor the species' native biome. This is a
  * one-time O(map area + population) query, never part of the frame loop. */
-function arrival(world:World,species:Species,mouth?:number,shipyard?:number,atWorldTree=false):{
-  point:{x:number;y:number};place?:TownStop|RiverTrail}|null{
+function arrival(world:World,species:Species,mouth?:number,shipyard?:number,atWorldTree=false,atCrater?:number):{
+  point:{x:number;y:number};place?:TownStop|RiverTrail|WildStop}|null{
   const settlement=world.settlements.find(s=>s.species===species);
   const home=biomeHome(world.settings.seed,species);
   const resident=isMultiIslandLayout(world.settings.layout)?
@@ -39,8 +41,19 @@ function arrival(world:World,species:Species,mouth?:number,shipyard?:number,atWo
     const id=a.y*world.width+a.x;
     occupancy.set(id,(occupancy.get(id)??0)+1);
   }
-  const available=(i:number)=>world.tiles[i].biome!=='water'&&
+  const hot=lavaField(world).hot;
+  const available=(i:number)=>world.tiles[i].biome!=='water'&&!hot.has(i)&&
     (occupancy.get(i)??0)<capacity[i];
+  if(atCrater!==undefined){
+    const vent=world.volcanicLayout?.vents.find(vent=>vent.index===atCrater);
+    const map=adventureMapFor(world);
+    if(!vent||!ventHasGround(world,vent))return null;
+    const index=[vent.rim,...seaNeighbors(vent.rim,world.width,world.tiles.length)]
+      .find(i=>map.open[i]&&available(i));
+    if(index===undefined)return null;
+    const point=seaPoint(world.width,index);
+    return {point,place:{kind:'wild',...point,expedition:true}};
+  }
   if(atWorldTree){
     const tree=world.worldTree;
     const map=adventureMapFor(world);
@@ -92,7 +105,7 @@ export function mortalArrivalSite(world:World,species:Species):{x:number;y:numbe
   return arrival(world,species)?.point??null;
 }
 
-export function createMortal(world:World,options:MortalCreation,mouth?:number,shipyard?:number,atWorldTree=false):{
+export function createMortal(world:World,options:MortalCreation,mouth?:number,shipyard?:number,atWorldTree=false,atCrater?:number):{
   world:World;agent:Agent}{
   const name=cleanIdentityName(options.name);
   if(!name)throw Error('Please choose a name of 2–64 letters or characters.');
@@ -106,8 +119,8 @@ export function createMortal(world:World,options:MortalCreation,mouth?:number,sh
     throw Error('Choose a valid appearance.');
   if(world.descent&&world.agents.some(a=>a.id===world.descent!.agentId))
     throw Error('You already have a living mortal. Resume their story first.');
-  const start=arrival(world,options.species,mouth,shipyard,atWorldTree);
-  if(!start)throw Error(atWorldTree?'The root trail has no open ground for a new mortal.':
+  const start=arrival(world,options.species,mouth,shipyard,atWorldTree,atCrater);
+  if(!start)throw Error(atCrater!==undefined?'The crater rim has no open ground for a new mortal.':atWorldTree?'The root trail has no open ground for a new mortal.':
     shipyard!==undefined?'This shipyard has no open ground for a new mortal.':
     mouth!==undefined?'This river trailhead has no open ground for a new mortal.':
       'This world has no safe space for a new mortal.');

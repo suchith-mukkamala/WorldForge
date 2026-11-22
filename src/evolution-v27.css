@@ -800,3 +800,31 @@
 .tidal-status li p { margin-top: 8px; }
 .tidal-status li strong { color: var(--paper); }
 .sea-chart i.sea-chart-cave { margin-left: 4px; background: #8bd6e3; }
+
+.volcano-status p { margin: 0 3px 9px; }
+.adventure-picture.underworld-picture { background: #171825; }
+.underworld-atlas { max-width: 900px; margin: 0 auto; }
+.underworld-chart canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  border: 1px solid #71637c;
+  border-radius: 3px;
+}
+.underworld-legend, .underworld-town-list ul, .underworld-passages {
+  padding: 0;
+  margin: 9px 0;
+  list-style: none;
+}
+.underworld-legend { display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: .76rem; }
+.underworld-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.underworld-legend i { width: 7px; height: 7px; display: inline-block; }
+.underworld-census { color: var(--paper); font-size: .84rem; margin: 10px 0; }
+.underworld-town-list { margin-bottom: 9px; }
+.underworld-town-list summary { cursor: pointer; }
+.underworld-town-list ul { display: grid; gap: 5px; }
+.underworld-town-list small { display: block; opacity: .82; }
+.underworld-passages button { font-size: .8rem; }
+.underworld-atlas-link { width: 100%; margin-bottom: 5px; }
+.sea-chart i.sea-chart-volcano { margin-left: 4px; background: #d48d6a; }

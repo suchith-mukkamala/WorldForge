@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.27.0 — Volcanoes & Underworld** adds seeded volcanic island chains, from fresh cones and black-sand shores to eroded islands and navigable coral lagoons. Lava moves downhill through small terrain squares, cools as it meets seawater, and can build new land that weathers and grows vegetation. Find a volcano under **Places**, walk to its rim, and **Jump into the crater** when it is dormant. Sail the Buried Sea, visit demon and Ash Borne settlements, and chart passages back to the surface. **Map options → Add volcanoes** brings crater shafts and the Underworld to an existing save. Generate a new world for the island chains.
+
 - **v2.26.0 — Tidal Caves** adds basalt arches, limestone chambers, and reef grottoes to the coast. Spot a cave from your sailboat, land on the nearby beach, and follow the dry ledge in at low tide. Find old moorings, fossil beds, or sheltered lagoons, and look for passages that open onto a second cove. The coastal journal records your finds and **Places → Sea caves** lists charted entrances. Existing worlds gain caves along their shores.
 
 - **v2.25.1 — World Tree refinement** sets the World Tree to three times its original sculpted size and rebuilds it with finer bark, tapered limbs, and layered leaf sprays. Scenery grows clear of the trunk and exposed roots. The raised atlas uses depth to hide trees and buildings behind the World Tree. Existing saves pick up the new art at the same site.

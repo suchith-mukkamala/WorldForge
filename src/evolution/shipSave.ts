@@ -28,4 +28,4 @@ export function validMortalShip(value:unknown,width:number,height:number):value 
 /** A voyage or cave visit reserves the mortal's land tile even in God Mode.
  * Navigation resumes from the saved ship or chamber position on return. */
 export const controlsMortal=(descent:DivineDescent|undefined,id:number)=>
-  descent?.agentId===id&&(descent.mode==='mortal'||descent.ship?.underway||!!descent.tidal?.inside);
+  descent?.agentId===id&&(descent.mode==='mortal'||descent.ship?.underway||!!descent.tidal?.inside||!!descent.realm?.visit);

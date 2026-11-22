@@ -1,3 +1,4 @@
+import {lavaField} from './volcanism';
 import {adventureMapFor,type AdventureMap} from './adventureMap';
 import type {World} from './engine';
 import {mortalTileCapacity,walkMortal,type MortalStep} from './mortalGameplay';
@@ -22,7 +23,7 @@ export function shipMooring(world:World,map:AdventureMap):{shore:number;water:nu
 
 export function launchShip(world:World,berth:Pick<Shipyard,'shore'|'water'>):MortalStep{
   const actor=player(world),descent=world.descent;
-  if(!actor||!descent||descent.interior||descent.tidal?.inside||descent.ship?.underway)
+  if(!actor||!descent||descent.interior||descent.realm?.visit||descent.tidal?.inside||descent.ship?.underway)
     return fail(world,'Reach the shipyard on foot to board.');
   if(world.shipments?.some(shipment=>shipment.carrierId===actor.id))
     return fail(world,'Deliver your merchant cargo before taking out a sailboat.');
@@ -30,6 +31,7 @@ export function launchShip(world:World,berth:Pick<Shipyard,'shore'|'water'>):Mor
   const matches=(site:Pick<Shipyard,'shore'|'water'>)=>site.shore===berth.shore&&site.water===berth.water;
   if(!(mooring&&matches(mooring))&&![...map.shipyards.values()].some(matches))
     return fail(world,'The berth is unavailable.');
+  if(lavaField(world).hot.has(berth.water))return fail(world,'Wait for the water at the berth to cool.');
   const shore=seaPoint(world.width,berth.shore),water=seaPoint(world.width,berth.water);
   const dx=shore.x-actor.x,dy=shore.y-actor.y;
   if(Math.max(Math.abs(dx),Math.abs(dy))>1)return fail(world,'Walk to the marked berth to board.');
@@ -49,6 +51,7 @@ export function steerShip(world:World,dx:number,dy:number,bridges:ReadonlySet<nu
   if(next.x<0||next.x>=world.width||next.y<0||next.y>=world.height)
     return fail(world,'You have reached the edge of the chart.');
   const destination=at(world,next);
+  if(lavaField(world).hot.has(destination))return fail(world,'Steam and lava block this stretch of water.');
   if(!sailingWater(world,destination,bridges))return fail(world,
     bridges.has(destination)?'The bridge is too low for your sail.':'Choose Land to go ashore here.');
   return {world:{...world,descent:{...descent!,ship:{...ship,at:destination,
@@ -59,8 +62,9 @@ export function landingSites(world:World,map:AdventureMap):number[]{
   const ship=world.descent?.ship;
   if(!ship?.underway)return [];
   const heights=topographyForWorld(world).heights;
+  const hot=lavaField(world).hot;
   return seaNeighbors(ship.at,world.width,world.tiles.length).filter(i=>
-    i>=0&&world.tiles[i].biome!=='water'&&map.open[i]&&Math.abs(heights[i]-heights[ship.at])<=MAX_LANDING_RISE);
+    i>=0&&world.tiles[i].biome!=='water'&&map.open[i]&&!hot.has(i)&&Math.abs(heights[i]-heights[ship.at])<=MAX_LANDING_RISE);
 }
 
 export function landShip(world:World,shore:number):MortalStep{

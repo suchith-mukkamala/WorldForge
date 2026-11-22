@@ -1,0 +1,229 @@
+import {useEffect,useRef,useState} from 'react';
+import {adventureCamera,adventureFrameSize} from './adventureCamera';
+import {AdventureDirections} from './AdventureDirections';
+import {adventureDistance} from './adventureMap';
+import {blockSailboat} from './blockModels';
+import {DESCENT_BLOCK_VIEW,paintBlockScenery} from './blockScenery';
+import {calendarDate,MONTH_NAMES} from './calendar';
+import type {World} from './engine';
+import type {MortalStep} from './mortalGameplay';
+import {boardRealmBoat,landRealmBoat,leaveUnderworld,moveUnderworld,occupiedUnderworld,
+  realmBerth,realmLandings} from './mortalUnderworld';
+import {canAnimate,directionBetween,inFrontOf,motionFrame,samePoint,type Facing,type Motion,type Point} from './motion';
+import {mortalName} from './MortalHUD';
+import {paintPerson} from './pixelArt';
+import {PixelPortrait} from './PixelPortrait';
+import {seaNeighbors,seaPoint} from './shipSave';
+import {UnderworldChart} from './UnderworldChart';
+import {realmLinkName,realmPeopleName,realmResidents,RealmBiome,
+  type RealmResident} from './underworld';
+import {paintRealmResident,paintRealmTerrain,REALM_TILE,UNDERWORLD_BIOMES} from './underworldArt';
+import {VISUAL_TERRAIN_SIDE} from './terrainCells';
+import {useAdventureControls} from './useAdventureControls';
+import {volcanicDay} from './volcanism';
+
+type Visit=NonNullable<ReturnType<typeof occupiedUnderworld>>;
+type Scene={active:Visit;day:number;facing:Facing;residents:RealmResident[];marked?:number};
+const TILE=REALM_TILE;
+
+function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}){
+  const ref=useRef<HTMLCanvasElement>(null),latest=useRef(scene);
+  const viewport=useRef({x:0,y:0,width:312,height:184});
+  latest.current=scene;
+  useEffect(()=>{
+    const canvas=ref.current,ctx=canvas?.getContext('2d');
+    const stamp=document.createElement('canvas'),ground=stamp.getContext('2d');
+    const texture=document.createElement('canvas');
+    if(!canvas||!ctx||!ground)return;
+    const start=latest.current.active;
+    const {width,height}=start.map,bounds={width:width*TILE,height:height*TILE};
+    const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame=0,previous:Scene|undefined,frameSize={width:312,height:184},density=3;
+    let painted:Point|undefined,cols=0,rows=0;
+    const startPoint=seaPoint(width,start.visit.at);
+    let motion:Motion={from:startPoint,to:startPoint,start:0,duration:1,facing:'north'};
+    let moving=false;
+    const resize=()=>{
+      const box=canvas.getBoundingClientRect();if(!box.width||!box.height)return;
+      frameSize=adventureFrameSize(box.width,box.height);
+      density=Math.min(6,Math.max(2,Math.ceil(box.width/frameSize.width*window.devicePixelRatio)));
+      canvas.width=frameSize.width*density;canvas.height=frameSize.height*density;
+      cols=Math.ceil(frameSize.width/TILE)+4;rows=Math.ceil(frameSize.height/TILE)+4;
+      stamp.width=cols*TILE*density;stamp.height=rows*TILE*density;
+      texture.width=cols*VISUAL_TERRAIN_SIDE;texture.height=rows*VISUAL_TERRAIN_SIDE;
+      painted=undefined;previous=undefined;
+    };
+    const observer=new ResizeObserver(resize);observer.observe(canvas);resize();
+    const draw=(now:number)=>{
+      frame=requestAnimationFrame(draw);
+      const view=latest.current,{active:{map,visit,actor},day,facing,marked,residents}=view;
+      if(previous===view&&!moving)return;
+      const to=seaPoint(width,visit.at),ship=visit.ship,atSea=!!ship?.underway;
+      if(!samePoint(to,motion.to)){
+        const from=motionFrame(motion,now);
+        motion={from:canAnimate(from,to)?from:to,to,start:now,duration:reduced.matches?1:atSea?108:125,facing};
+      }
+      const position=motionFrame(motion,now);
+      const p={x:(position.x+.5)*TILE,y:(position.y+.77)*TILE};
+      const camera=adventureCamera(p,frameSize,bounds);
+      viewport.current={...camera,...frameSize};
+      const origin={x:Math.floor(camera.x/TILE)-1,y:Math.floor(camera.y/TILE)-1};
+      if(!painted||!samePoint(painted,origin)||previous?.day!==day||previous?.active.map!==map){
+        ground.setTransform(density,0,0,density,0,0);
+        paintRealmTerrain(ground,texture,map,day,origin,cols,rows);painted=origin;
+      }
+      ctx.setTransform(density,0,0,density,0,0);ctx.imageSmoothingEnabled=false;
+      ctx.drawImage(stamp,origin.x*TILE-camera.x,origin.y*TILE-camera.y,cols*TILE,rows*TILE);
+      ctx.save();ctx.translate(-camera.x,-camera.y);
+      if(marked!==undefined){
+        const {x,y}=seaPoint(width,marked),px=x*TILE,py=y*TILE;
+        ctx.fillStyle='#f5db99';
+        for(const xx of [2,TILE-3])for(const yy of [2,TILE-3]){
+          ctx.fillRect(px+xx,py+yy,1,1);
+          ctx.fillRect(px+xx+(xx===2?1:-1),py+yy,1,1);
+          ctx.fillRect(px+xx,py+yy+(yy===2?1:-1),1,1);
+        }
+      }
+      const boatAt=ship?.at??map.towns.find(town=>town.berth!==undefined)?.berth;
+      if(boatAt!==undefined&&!atSea){
+        const dock=seaPoint(width,boatAt);
+        paintBlockScenery(ctx,blockSailboat(ship?.heading??'south',false),
+          {x:(dock.x+.5)*TILE,y:(dock.y+.57)*TILE},DESCENT_BLOCK_VIEW,1.25);
+      }
+      for(const resident of residents){
+        const {x,y}=seaPoint(width,resident.index);
+        if(x<origin.x||y<origin.y||x>=origin.x+cols||y>=origin.y+rows)continue;
+        paintRealmResident(ctx,resident,x*TILE+12,y*TILE+18);
+      }
+      if(atSea)paintBlockScenery(ctx,blockSailboat(ship.heading,true),{x:p.x,y:p.y-4},DESCENT_BLOCK_VIEW,1.45);
+      else paintPerson(ctx,actor,Math.round(p.x-8),Math.round(p.y-20),facing,
+        position.stride,position.walking?'walk':'idle');
+      ctx.restore();
+      previous=view;moving=position.walking;
+    };
+    frame=requestAnimationFrame(draw);
+    return ()=>{observer.disconnect();cancelAnimationFrame(frame);};
+  },[]);
+  const {map,visit}=scene.active,{x,y}=seaPoint(map.width,visit.at);
+  return <canvas ref={ref} className="adventure-canvas" role="img"
+    aria-label={'Underworld position '+x+', '+y} onClick={event=>{
+      const box=event.currentTarget.getBoundingClientRect(),view=viewport.current;
+      const xx=Math.floor((view.x+(event.clientX-box.left)*view.width/box.width)/TILE);
+      const yy=Math.floor((view.y+(event.clientY-box.top)*view.height/box.height)/TILE);
+      if(xx>=0&&yy>=0&&xx<map.width&&yy<map.height)onSelect(yy*map.width+xx);
+    }}/>;
+}
+
+export function MortalUnderworld({world,active,notice,running,onToggleTime,onChange,onAscend}:{
+  world:World;active:Visit;notice?:string;running:boolean;onToggleTime:()=>void;
+  onChange:(world:World)=>void;onAscend:()=>void;
+}){
+  const current=useRef(world);current.current=world;
+  const [facing,setFacing]=useState<Facing>('north'),[message,setMessage]=useState('');
+  const [chart,setChart]=useState(false),[pin,setPin]=useState<number>();
+  const {map,visit,actor,origin}=active,point=seaPoint(map.width,visit.at);
+  const day=volcanicDay(world),date=calendarDate(world),atSea=!!visit.ship?.underway;
+  const residents=realmResidents(world,map),nearby=seaNeighbors(visit.at,map.width,map.biomes.length);
+  const near=(i:number)=>i===visit.at||nearby.includes(i);
+  const town=map.towns.find(town=>adventureDistance(point,seaPoint(map.width,town.index))<=2);
+  const name=mortalName(world,actor),biome=UNDERWORLD_BIOMES[map.biomes[visit.at]];
+  const step=(result:MortalStep)=>{
+    if(result.moved){current.current=result.world;onChange(result.world);setMessage('');}
+    else setMessage(result.reason??'The passage is blocked.');
+  };
+  const localLinks=atSea?[]:map.links.filter(link=>near(link.cell));
+  const landings=realmLandings(world,map,visit);
+  const ahead=inFrontOf(point,visit.ship?.heading??facing),lead=ahead.y*map.width+ahead.x;
+  const landing=landings.includes(lead)?lead:landings[0];
+  const berth=realmBerth(map,visit);
+  type Action={label:string;point:number;perform:()=>void};
+  const shoreAction=(i:number):Action=>({label:'Go ashore',point:i,perform:()=>step(landRealmBoat(current.current,i))});
+  const actions:Action[]=atSea?(landing===undefined?[]:[shoreAction(landing),
+    ...landings.filter(i=>i!==landing).map(i=>({...shoreAction(i),label:'Land '+directionBetween(point,seaPoint(map.width,i))}))]):[
+    ...localLinks.map(link=>({label:link.surface===visit.origin?'Return to the surface':
+      'Climb to '+realmLinkName(world,link),point:link.cell,perform:()=>step(leaveUnderworld(current.current,link))})),
+    ...(berth?[{label:'Board cavern boat',point:berth.water,perform:()=>step(boardRealmBoat(current.current))}]:[]),
+    ...residents.filter(resident=>near(resident.index)).map(resident=>({label:'Talk to '+resident.name,
+      point:resident.index,perform:()=>setMessage(resident.name+' · '+realmPeopleName(resident.people)+' — '+resident.line)})),
+  ];
+  const primary=actions[0];
+  const controls=useAdventureControls({
+    move:({x,y})=>{
+      setFacing(directionBetween({x:0,y:0},{x,y}));
+      step(moveUnderworld(current.current,x,y));return atSea?115:138;
+    },
+    interact:()=>primary?.perform(),escape:()=>{if(chart)setChart(false);else setMessage('');},
+    pause:onToggleTime,
+  });
+  const target=map.links.find(link=>link.surface===pin);
+  const marked=target?.cell??primary?.point;
+  const route=target&&seaPoint(map.width,target.cell);
+  const way=route&&Math.abs(route.x-point.x)+Math.abs(route.y-point.y);
+  const heading=route&&((route.y<point.y?'N':route.y>point.y?'S':'')+
+    (route.x<point.x?'W':route.x>point.x?'E':''));
+  return <div className="evo-app adventure-shell underworld-shell">
+    <header className="adventure-topbar">
+      <div className="adventure-brand"><span aria-hidden="true">✦</span> WorldForge</div>
+      <div className="adventure-top-actions">
+        <button aria-expanded={chart} onClick={()=>setChart(show=>!show)}>Underworld map</button>
+        <button onClick={onToggleTime} aria-pressed={!running} aria-keyshortcuts="P">
+          {running?'Pause time':'Resume time'}</button>
+        <button className="adventure-ascend" onClick={onAscend}>↑ Ascend</button>
+      </div>
+    </header>
+    <main className="adventure-main">
+      <header className="adventure-heading">
+        <div><p>Underworld</p><h1>{town?.name??biome.name}</h1></div>
+        <time>{MONTH_NAMES[date.month]} {date.day} <span>· Year {date.year}</span></time>
+      </header>
+      {notice&&<p className="adventure-feedback" role="status">{notice}</p>}
+      <div className="adventure-layout">
+        <div className="adventure-stage">
+          <div className="adventure-picture underworld-picture">
+            <RealmCanvas scene={{active,day,facing,residents,marked}} onSelect={index=>{
+              actions.find(action=>action.point===index)?.perform();
+            }}/>
+          </div>
+          <div className="adventure-controls" role="group" aria-label="Underworld controls">
+            <AdventureDirections controls={controls} action={atSea?'Sail':'Move'}/>
+            <div className="adventure-controls-main">
+              <div className="adventure-hints"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> {atSea?'Steer':'Move'}</span>
+                {primary&&<span><kbd>E</kbd> Interact</span>}</div>
+              {primary&&<button className="adventure-primary" aria-keyshortcuts="E"
+                onClick={primary.perform}>{primary.label}</button>}
+              {actions.length>1&&<details className="adventure-nearby">
+                <summary>Nearby</summary>
+                <div>{actions.slice(1).map(action=><button key={action.label} onClick={event=>{
+                  event.currentTarget.closest('details')?.removeAttribute('open');action.perform();
+                }}>{action.label}</button>)}</div>
+              </details>}
+              {message&&<p className="adventure-feedback" role="status">{message}</p>}
+            </div>
+          </div>
+        </div>
+        <aside className="adventure-sidebar">
+          <section className="adventure-profile" aria-label="Your mortal">
+            <PixelPortrait person={actor} name={name} compact/>
+            <div><strong>{name}</strong><small>{atSea?'Cavern boat':biome.name}</small></div>
+          </section>
+          {chart?<section className="adventure-exits">
+            <h2>Underworld map</h2>
+            <UnderworldChart world={world} map={map} at={visit.at} marked={pin}
+              onMark={link=>setPin(value=>value===link.surface?undefined:link.surface)}/>
+          </section>:<section className="adventure-exits">
+            <h2>Surface passage</h2>
+            <button onClick={()=>setPin(value=>value===origin.surface?undefined:origin.surface)}
+              aria-pressed={pin===origin.surface}>
+              <span className="adventure-direction" aria-hidden="true">↑</span>
+              <span><strong>Mark entry shaft</strong><small>{realmLinkName(world,origin)}</small></span>
+            </button>
+          </section>}
+          {target&&<section className="adventure-exits" aria-label="Marked passage">
+            <h2>{realmLinkName(world,target)}</h2>
+            <p>{way?way+' tiles '+heading:'At the passage'}</p>
+          </section>}
+        </aside>
+      </div>
+    </main>
+  </div>;
+}

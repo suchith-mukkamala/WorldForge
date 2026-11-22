@@ -1,3 +1,7 @@
+import {MortalUnderworld} from './MortalUnderworld';
+import {enterUnderworld,leaveUnderworld,occupiedUnderworld,volcanoEntryUsable} from './mortalUnderworld';
+import {volcanoName,type Volcano} from './volcanicGeography';
+import {volcanoPhase} from './volcanism';
 import {useEffect,useRef,useState} from 'react';
 import type {Agent,World} from './engine';
 import {calendarDate,MONTH_NAMES} from './calendar';
@@ -33,7 +37,7 @@ import type {AncientSite} from './knowledge';
 import {directionBetween,samePoint as equal,type Facing,type Point} from './motion';
 import {launchShip,recoverShip,shipMooring} from './mortalSailing';
 import {MortalSailing} from './MortalSailing';
-import {seaPoint} from './shipSave';
+import {seaNeighbors,seaPoint} from './shipSave';
 import {MortalCave} from './MortalCave';
 import {enterTideCave,leaveTideCave,occupiedTidalCave,usableTidalCave,waitForCaveTide} from './mortalTidalCaves';
 import {coastTide,tidalCaves,type TidalCave} from './tidalCaves';
@@ -58,13 +62,18 @@ type AdventureProps={
 
 export function MortalAdventure(props:AdventureProps){
   const {world,onChange}=props,ship=world.descent?.ship,visit=occupiedTidalCave(world);
+  const realm=occupiedUnderworld(world);
   useEffect(()=>{
+    if(world.descent?.realm?.visit&&!realm){
+      onChange(leaveUnderworld(world).world);return;
+    }
     if(world.descent?.tidal?.inside&&!visit){
       onChange(leaveTideCave(world).world);return;
     }
     const recovered=recoverShip(world);
     if(recovered!==world)onChange(recovered);
-  },[world,onChange,!!visit]);
+  },[world,onChange,!!visit,!!realm]);
+  if(realm)return <MortalUnderworld key={realm.visit.origin} {...props} active={realm}/>;
   if(visit)return <MortalCave key={visit.cave.mouth} {...props} visit={visit}/>;
   return ship?.underway?<MortalSailing {...props} ship={ship}/>:<MortalOnFoot {...props}/>;
 }
@@ -84,6 +93,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   const [landmarkPin,setLandmarkPin]=useState<number|null>(null);
   const [markRiver,setMarkRiver]=useState(false);
   const [cavePin,setCavePin]=useState<number|null>(null);
+  const [volcanoPin,setVolcanoPin]=useState<number|null>(null);
   const [markedBerth,setMarkedBerth]=useState(false);
   const map=adventureMapFor(world),region=adventureRegion(world,map,actor);
   const caves=tidalCaves(world).filter(cave=>region.area.has(cave.mouth)&&usableTidalCave(world,map,cave));
@@ -91,6 +101,17 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   const cave=caves.find(c=>c.mouth===cavePin)??[...caves].sort((a,b)=>distanceToCave(a)-distanceToCave(b))[0];
   const cavePoint=cave&&seaPoint(world.width,cave.mouth),caveNear=!!cave&&distanceToCave(cave)<=1;
   const tide=coastTide(world);
+  const distanceToVent=(vent:Volcano)=>adventureDistance(actor,seaPoint(world.width,vent.rim));
+  const vents=(world.volcanicLayout?.vents??[]).filter(vent=>region.area.has(vent.rim)&&
+    volcanoEntryUsable(world,vent));
+  const vent=vents.find(site=>site.index===volcanoPin)??[...vents].sort((a,b)=>distanceToVent(a)-distanceToVent(b))[0];
+  const ventRim=vent&&seaPoint(world.width,vent.rim),ventNear=!!vent&&distanceToVent(vent)<=1;
+  const phase=vent&&volcanoPhase(world,vent);
+  const outpost=world.underworld?.outpost;
+  const hold=outpost!==undefined&&world.tiles[outpost].biome!=='water'&&
+    seaNeighbors(outpost,world.width,world.tiles.length).some(i=>region.area.has(i))?
+      seaPoint(world.width,outpost):undefined;
+  const holdNear=!!hold&&adventureDistance(actor,hold)<=1;
   const scene=adventurePlaceKey(region.place);
   const interiorSite=occupiedMortalRoom(world);
   const interior=interiorSite?world.descent?.interior:undefined;
@@ -302,6 +323,17 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
       if(!low)setMessage('The tide has fallen. The sand below the arch is exposed.');
     }else setMessage(result.reason??'Approach the ledge.');
   };
+  const jump=(site:Volcano)=>{
+    const result=enterUnderworld(current.current,site.index);
+    if(result.moved)commit(result.world);
+    else setMessage(result.reason??'The shaft is closed.');
+  };
+  const craterAction:Interaction|undefined=ventNear&&vent&&phase==='Dormant'?
+    {label:'Jump into the crater',point:ventRim,run:()=>jump(vent)}:undefined;
+  const holdAction:Interaction|undefined=holdNear&&hold?{
+    label:'Talk to the Ash Borne keeper',point:hold,run:()=>setMessage(
+      'Vela Glass · Ash Borne — My people quarried these steps from old lava. Find a quiet crater to visit the towns below.'),
+  }:undefined;
   const caveAction:Interaction|undefined=caveNear&&cave?
     {label:tide.low?'Enter sea cave':'Wait for low tide',point:cavePoint,run:()=>exploreCave(cave)}:undefined;
   let actions:Interaction[];
@@ -323,6 +355,8 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
       run:()=>selectLandmark(closeLandmark)}]:[];
     const exits=gates.filter(g=>g.distance<=1).map(g=>gateAction(g.gate));
     actions=[
+      ...(craterAction?[craterAction]:[]),
+      ...(holdAction?[holdAction]:[]),
       ...(berthDistance<=1?[{label:boatLabel,point:berthPoint,run:boardShip}]:[]),
       ...(workAction?[workAction]:[]),
       ...(caveAction?[caveAction]:[]),
@@ -394,6 +428,13 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     if(showBoard)return;
     const index=point.y*world.width+point.x;
     if(berth&&(index===berth.shore||index===berth.water)){boardShip();return;}
+    const volcano=vents.find(site=>site.index===index||site.rim===index);
+    if(volcano){
+      if(distanceToVent(volcano)<=1)jump(volcano);
+      else{clear();setVolcanoPin(volcano.index);}
+      return;
+    }
+    if(holdAction&&outpost===index){holdAction.run();return;}
     const mouth=caves.find(c=>c.mouth===index);
     if(mouth){
       if(tide.low&&distanceToCave(mouth)<=1)exploreCave(mouth);
@@ -500,6 +541,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
                 focused={focusedBuilding?.building??markedDoor?.building}
                 marked={focusedBuilding?.entrance??focusedPerson??markedDoor?.entrance??
                   (markedBerth?berthPoint:undefined)??(boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
+                  (volcanoPin!==null&&vent?.index===volcanoPin?ventRim:undefined)??
                   (cavePin!==null&&cave?.mouth===cavePin?cavePoint:undefined)??
                   goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
                 onSelect={selectTile}/>
@@ -539,6 +581,23 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
           {!interior&&!berthPoint&&mooring&&<section className="adventure-exits">
             <h2>Sailboat mooring</h2>
             <p>{adventureDistance(actor,seaPoint(world.width,mooring.shore))} tiles {directionTo(actor,seaPoint(world.width,mooring.shore))}</p>
+          </section>}
+          {!interior&&vent&&ventRim&&<section className="adventure-exits volcano-status" aria-label="Volcano">
+            <h2>{volcanoName(vent,world)}</h2>
+            <p>{phase==='Dormant'?'Dormant · Shaft open':phase+' · Shaft closed'}</p>
+            {!ventNear?<button onClick={()=>{clear();setVolcanoPin(value=>value===vent.index?null:vent.index);}}
+              aria-pressed={volcanoPin===vent.index}>
+              <span className="adventure-direction" aria-hidden="true">▴</span>
+              <span><strong>Mark crater rim</strong>
+                <small>{distanceToVent(vent)} tiles {directionTo(actor,ventRim)}</small></span>
+              <span aria-hidden="true">›</span>
+            </button>:craterAction&&(primary!==craterAction||!showAction)&&
+              <button onClick={craterAction.run}>{craterAction.label}</button>}
+          </section>}
+          {!interior&&hold&&<section className="adventure-exits volcano-status" aria-label="Ash Borne outpost">
+            <h2>Basalt Anchorage</h2><p>A surface outpost of the Ash Borne.</p>
+            {holdAction&&(primary!==holdAction||!showAction)&&
+              <button onClick={holdAction.run}>{holdAction.label}</button>}
           </section>}
           {!interior&&cave&&cavePoint&&<section className="adventure-exits tidal-status" aria-label="Sea cave">
             <h2>{cave.name}</h2>

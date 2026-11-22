@@ -1,6 +1,8 @@
+import {ventHasGround,volcanoName,type Volcano} from './volcanicGeography';
+import {volcanoPhase} from './volcanism';
 import {useEffect,useRef,useState} from 'react';
 import {AdventureDirections} from './AdventureDirections';
-import {adventureMapFor,type AdventureMap} from './adventureMap';
+import {adventureDistance,adventureMapFor,type AdventureMap} from './adventureMap';
 import {calendarDate,MONTH_NAMES} from './calendar';
 import type {World} from './engine';
 import {landShip,landingSites,steerShip} from './mortalSailing';
@@ -11,8 +13,8 @@ import {cavesInSight,chartCaves} from './mortalTidalCaves';
 import {coastTide,tidalCaves,type TidalCave} from './tidalCaves';
 import {useAdventureControls} from './useAdventureControls';
 
-function SeaChart({world,map,ship,caves}:{world:World;map:AdventureMap;ship:MortalShip;
-  caves:readonly TidalCave[]}){
+function SeaChart({world,map,ship,caves,vents}:{world:World;map:AdventureMap;ship:MortalShip;
+  caves:readonly TidalCave[];vents:readonly Volcano[]}){
   const ref=useRef<HTMLCanvasElement>(null);
   const terrain=useRef<{tiles:World['tiles'];image:HTMLCanvasElement}|null>(null);
   const treeLanding=world.worldTree?.trail.at(-1);
@@ -42,13 +44,15 @@ function SeaChart({world,map,ship,caves}:{world:World;map:AdventureMap;ship:Mort
     for(const i of ship.landfalls)marker(i,'#96cfbd',1);
     if(treeLanding!==undefined)marker(treeLanding,'#cba5e6',1);
     for(const cave of caves)marker(cave.mouth,'#8bd6e3',1);
+    for(const vent of vents)marker(vent.index,'#d48d6a',1);
     marker(ship.at,'#ffe4a6',2);
-  },[world.tiles,world.width,world.height,map.shipyards,ship,treeLanding,caves]);
+  },[world.tiles,world.width,world.height,map.shipyards,ship,treeLanding,caves,vents]);
   return <section className="adventure-exits sea-chart" aria-label="Navigation">
     <h2>Sea chart</h2>
     <canvas ref={ref} width={world.width} height={world.height} role="img"
       aria-label={'Your ship at X '+here.x+', Y '+here.y}/>
-    <small><i/> Shipyards <i/> Charted landfalls{treeLanding!==undefined&&<><i/> World Tree landing</>}{caves.length>0&&<><i className="sea-chart-cave"/> Sea caves</>}</small>
+    <small><i/> Shipyards <i/> Charted landfalls{treeLanding!==undefined&&<><i/> World Tree landing</>}{caves.length>0&&<><i className="sea-chart-cave"/> Sea caves</>}
+      {vents.length>0&&<><i className="sea-chart-volcano"/> Volcanoes</>}</small>
   </section>;
 }
 
@@ -61,6 +65,8 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
   const map=adventureMapFor(world),landings=landingSites(world,map);
   const position=seaPoint(world.width,ship.at),front=inFrontOf(position,ship.heading);
   const sighted=cavesInSight(world,map);
+  const vents=(world.volcanicLayout?.vents??[]).filter(vent=>ventHasGround(world,vent)&&
+    adventureDistance(position,seaPoint(world.width,vent.index))<=10);
   const known=new Set(world.descent?.tidal?.chart.map(entry=>entry.mouth));
   const charted=tidalCaves(world).filter(cave=>known.has(cave.mouth)||sighted.includes(cave));
   useEffect(()=>{
@@ -121,7 +127,12 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
           </div>
         </div>
         <aside className="adventure-sidebar">
-          <SeaChart world={world} map={map} ship={ship} caves={charted}/>
+          <SeaChart world={world} map={map} ship={ship} caves={charted} vents={vents}/>
+          {vents.length>0&&<section className="adventure-exits volcano-status" aria-label="Volcanoes in sight">
+            <h2>Volcanoes in sight</h2>
+            {vents.map(vent=><p key={vent.index}><strong>{volcanoName(vent,world)}</strong>
+              {' · '+volcanoPhase(world,vent)+' · '+directionBetween(position,seaPoint(world.width,vent.index))}</p>)}
+          </section>}
           {sighted.length>0&&<section className="adventure-exits tidal-status" aria-label="Sea caves in sight">
             <h2>Sea caves in sight</h2>
             <p>{tide.low?'Low tide · Sand exposed':'High tide · Low tide in '+tide.untilLow+
