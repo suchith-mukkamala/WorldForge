@@ -12,23 +12,23 @@ const SIDE=VISUAL_TERRAIN_SIDE,T=REALM_TILE;
 const {basalt,ember,lava,steam,glowroot,crystal,chalk,sea}=RealmBiome;
 
 export const UNDERWORLD_BIOMES=[
-  {name:'Basalt galleries',color:'#484452',floor:['#302e3c','#3d3847','#494251','#524954']},
-  {name:'Ember Rivers',color:'#826069',floor:['#48363f','#573c47','#634551','#755259']},
-  {name:'Molten channels',color:'#ef7348',floor:['#973d3b','#ba4939','#df5d3a','#fb8448']},
-  {name:'Steam banks',color:'#9d9990',floor:['#665f62','#746e68','#8b8276','#a09886']},
-  {name:'Glowroot Forests',color:'#527e73',floor:['#293d43','#364e50','#405e5b','#4e6f66']},
-  {name:'Crystal halls',color:'#73658d',floor:['#393748','#49425b','#5b4f69','#6d5c7c']},
-  {name:'Pale shores',color:'#b2a68e',floor:['#796f72','#8f8179','#a18e81','#b6a48c']},
-  {name:'Buried Sea',color:'#327b8b',floor:['#173d55','#205369','#276775','#377b85']},
+  {name:'Basalt galleries',color:'#797583',floor:['#646171','#716d7d','#7b7686','#86808c']},
+  {name:'Ember Rivers',color:'#9a6c60',floor:['#744d4a','#875951','#98655a','#a67666']},
+  {name:'Molten channels',color:'#ff9754',floor:['#bf5142','#df693f','#f78948','#ffae5f']},
+  {name:'Steam banks',color:'#b9ac91',floor:['#93847c','#a39685','#b7a98f','#c3b69e']},
+  {name:'Glowroot Forests',color:'#578d72',floor:['#426e65','#4f7c6e','#5b8c75','#69987e']},
+  {name:'Crystal halls',color:'#967cb1',floor:['#6b5f81','#796a92','#8a76a2','#a48bb8']},
+  {name:'Pale shores',color:'#d9c393',floor:['#b2a080','#c0ad88','#d0bb90','#decb9e']},
+  {name:'Buried Sea',color:'#367d99',floor:['#255873','#2c6b85','#327b96','#4a91a4']},
 ] as const;
 const palette=UNDERWORLD_BIOMES.map(biome=>biome.floor.map(terrainPixel));
-const paving=['#625860','#796775','#8e7c7d','#9f8d88'].map(terrainPixel);
+const paving=['#877b76','#978782','#ad9d8e','#b9a89a'].map(terrainPixel);
 const piers=['#796b68','#938278','#a48f7e','#b7a38a'].map(terrainPixel);
 const rect=(ctx:CanvasRenderingContext2D,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(x,y,w,h);
 };
 
-function terrainImage(ctx:CanvasRenderingContext2D,map:RealmMap,day:number,
+export function paintRealmFloor(ctx:CanvasRenderingContext2D,map:RealmMap,day:number,
   origin:Point,width:number,height:number){
   const iw=width*SIDE,ih=height*SIDE,image=ctx.createImageData(iw,ih);
   const pixels=new Uint32Array(image.data.buffer);
@@ -45,7 +45,7 @@ function terrainImage(ctx:CanvasRenderingContext2D,map:RealmMap,day:number,
       const px=x*SIDE+dx,py=y*SIDE+dy;
       const grain=Math.imul(px+map.seed,1597334677)^Math.imul(py,122949829);
       const hash=Math.imul(grain^grain>>>14,0x45d9f3b);
-      const variation=terrainNoise(px,py,6,map.seed)*(kind===sea?1.2:1.8);
+      const variation=terrainNoise(px,py,9,map.seed)*(kind===sea?.9:1.35);
       const level=Math.max(0,Math.min(3,Math.floor(1.65+variation+(hash>>>28)*.08)));
       const edge=dy===0?north:dy===7?south:dx===0?west:dx===7?east:undefined;
       const blend=edge!==undefined&&edge!==lava&&edge!==sea&&kind!==lava&&kind!==sea&&
@@ -92,7 +92,7 @@ function prisms(ctx:CanvasRenderingContext2D,x:number,y:number,grain:number){
 export function paintRealmTerrain(ground:CanvasRenderingContext2D,texture:HTMLCanvasElement,
   map:RealmMap,day:number,origin:Point,width:number,height:number){
   const small=texture.getContext('2d');if(!small)return;
-  terrainImage(small,map,day,origin,width,height);
+  paintRealmFloor(small,map,day,origin,width,height);
   ground.imageSmoothingEnabled=false;
   ground.drawImage(texture,0,0,width*T,height*T);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
