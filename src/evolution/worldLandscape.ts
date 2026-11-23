@@ -8,6 +8,7 @@ import {plantWorldTree,worldTreeBlocksBuilding} from './worldTree';
 import {sculptLandforms} from './riverLandforms';
 import {applyClimateBiomes} from './climate';
 import {sculptVolcanicIslands,volcanicLayout} from './volcanicGeography';
+import {sculptCaldera} from './caldera';
 
 type LandscapeSettings=Pick<WorldSettings,'seed'|'layout'|'regionalGeography'|
   'landforms'|'regionalBiomes'|'riverlands'|'climateEcology'|'worldTree'|'volcanicWorld'>;
@@ -51,6 +52,8 @@ export function generateWorldLandscape(width:number,height:number,settings:Lands
     terrain.biomes,topography.heights,terrain.homes):[];
   const volcanoIslands=settings.volcanicWorld?sculptVolcanicIslands(width,height,seed,
     terrain.biomes,topography.heights):[];
+  const caldera=sculptCaldera(width,seed,terrain.biomes,topography.heights,
+    volcanoIslands.find(island=>island.age==='weathered'));
   const biomes=settings.regionalBiomes?
     regionalBiomes(width,height,terrain.biomes,topography.heights,seed):terrain.biomes;
   const climateBiomes=settings.climateEcology?
@@ -59,6 +62,6 @@ export function generateWorldLandscape(width:number,height:number,settings:Lands
     topography.heights,Object.values(terrain.homes)):undefined;
   const volcanoes=settings.volcanicWorld?volcanicLayout(width,height,seed,climateBiomes,
     topography.heights,volcanoIslands,index=>
-      worldTreeBlocksBuilding(worldTree,index%width,Math.floor(index/width))):undefined;
+      worldTreeBlocksBuilding(worldTree,index%width,Math.floor(index/width)),caldera):undefined;
   return {...terrain,topography,features,biomes:climateBiomes,worldTree,volcanoes};
 }

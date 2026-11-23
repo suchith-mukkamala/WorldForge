@@ -5,6 +5,9 @@
 Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.com/suchith-mukkamala/CircuitBuilder) and became an independent project at the v0.7.1 milestone. It is now developed as a standalone application—not an electronics laboratory.
 
 ## What you can do
+
+- **v2.35.0 — Caldera Lakes & Drifting Clouds** adds translucent square clouds to the Surface in both perspectives and in **Stacked 3D**. Find **Caldera Lake** under **Places** in a new volcanic world. When spring runoff opens its rim, a channel reaches the coast and the receding lake exposes terraces you can explore on foot.
+
 - **v2.34.1 — Volcanic Island Variety** gives each seed distinct volcanic coastlines, slopes, summits, and coral lagoons.
 
 - **v2.34.0 — Connected Waters** links a Surface river to a waterfall in the Underworld. The lake rises in Bloom, then Highsun exposes the same shoreline for walking. Where lava dams the feeder and a spillway is available, the river fills a second pool. Follow it from **Surface → Rivers → Cavern feeder**, or look for **Seep Lake** under **Underworld → Places**.

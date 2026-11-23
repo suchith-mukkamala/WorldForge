@@ -1,5 +1,5 @@
 /** v2.1.5 — layered pixel-art atmosphere shared by overhead and raised views.
- * The colors, seasonal motes, distant haze and cloud shadows are a deterministic
+ * The colors, seasonal motes and distant haze are a deterministic
  * presentation of the calendar. They do not create weather or modify biomes,
  * ecology, RNG, visibility, collisions or the 2.5D picking buffer.
  */
@@ -10,22 +10,22 @@ export function visualSeason(day:number):VisualSeason{
   return VISUAL_SEASONS[Math.floor((safe%365)/365*4)];
 }
 export type Atmosphere={
-  season:VisualSeason;wash:string;cloud:string;highlight:string;
+  season:VisualSeason;wash:string;highlight:string;
   particle:string;density:number;
 };
 function seasonPalette(season:VisualSeason):Atmosphere{
   switch(season){
     case 'Bloom':return {season,wash:'rgba(111,157,132,.075)',
-      cloud:'rgba(24,61,65,.08)',highlight:'rgba(250,229,171,.14)',
+      highlight:'rgba(250,229,171,.14)',
       particle:'#deebac',density:50};
     case 'Highsun':return {season,wash:'rgba(236,180,106,.075)',
-      cloud:'rgba(20,47,66,.09)',highlight:'rgba(255,222,148,.19)',
+      highlight:'rgba(255,222,148,.19)',
       particle:'#f9d590',density:34};
     case 'Harvest':return {season,wash:'rgba(183,109,93,.105)',
-      cloud:'rgba(43,37,66,.10)',highlight:'rgba(249,179,116,.16)',
+      highlight:'rgba(249,179,116,.16)',
       particle:'#f3a66f',density:58};
     case 'Frost':return {season,wash:'rgba(117,162,206,.15)',
-      cloud:'rgba(35,56,84,.14)',highlight:'rgba(213,235,255,.12)',
+      highlight:'rgba(213,235,255,.12)',
       particle:'#e7f3ff',density:74};
   }
 }
@@ -58,7 +58,6 @@ export function sceneAtmosphere(day:number):Atmosphere{
   if(progress===0)return {...previous,season:next.season};
   return {season:next.season,
     wash:mixColor(previous.wash,next.wash,progress),
-    cloud:mixColor(previous.cloud,next.cloud,progress),
     highlight:mixColor(previous.highlight,next.highlight,progress),
     particle:mixColor(previous.particle,next.particle,progress),
     density:Math.round(previous.density+(next.density-previous.density)*progress)};
@@ -75,7 +74,6 @@ export function paintSceneAtmosphere(ctx:CanvasRenderingContext2D,
   const width=ctx.canvas.width,height=ctx.canvas.height;
   if(!width||!height)return;
   const atmosphere=sceneAtmosphere(day);
-  const scale=view==='depth'?1.25:1;
   ctx.save();
   // Soft directional light makes tall walls and treetops feel distinct without
   // smoothing the native pixel grid underneath.
@@ -86,16 +84,6 @@ export function paintSceneAtmosphere(ctx:CanvasRenderingContext2D,
   sunlight.addColorStop(.43,'rgba(255,239,205,.025)');
   sunlight.addColorStop(1,'rgba(7,18,40,.15)');
   ctx.fillStyle=sunlight;ctx.fillRect(0,0,width,height);
-  // Wide dappled cloud shadows: sparse, seeded and shifted with calendar days.
-  const drift=Math.floor(day/6),count=view==='depth'?13:9;
-  for(let i=0;i<count;i++){
-    const n=hash(seed^Math.imul(i+73,0x9e3779b1)^year*131);
-    const x=(n%Math.max(1,width*2)+drift*9)%(width+180)-110;
-    const y=((n>>>10)%Math.max(1,height+65))-30;
-    ctx.fillStyle=atmosphere.cloud;
-    ctx.fillRect(x,y,Math.max(12,Math.round(width/7))*scale,3*scale);
-    ctx.fillRect(x+11*scale,y+3*scale,Math.max(9,Math.round(width/10))*scale,2*scale);
-  }
   // Distinct seasonal particles at fixed positions. Frost snowfall, harvest
   // leaves, spring pollen and highsummer fireflies are artistic accents only.
   const countParticles=Math.min(110,atmosphere.density+

@@ -537,11 +537,12 @@
 .atlas-sheet .evo-world-canvas,
 .adventure-canvas,
 .world-preview-card canvas,
+.atlas-clouds,
 .atlas-fish {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
-.atlas-fish { position: absolute; pointer-events: none; }
+.atlas-clouds, .atlas-fish { position: absolute; pointer-events: none; }
 .atlas-river-guide {
   display: grid;
   gap: 7px;

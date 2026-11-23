@@ -1,3 +1,4 @@
+import {terrainHash} from './biomeGeneration';
 import {ARCHITECTURE,buildingTier,type Building,type SettlementStage} from './construction';
 import type {Species} from './engine';
 import type {AncientKind} from './knowledge';
@@ -86,6 +87,26 @@ class BlockGrid {
       this.cells.set(cell(u,v,k+this.lift),color);
     }
   }
+}
+
+/** Round clusters carved on the same cube lattice as the atlas scenery. */
+export function blockCloud(shape:number):BlockModel{
+  return model('cloud:'+shape,grid=>{
+    const lobes=[
+      {x:-7,y:0,z:2.5,rx:6.4,ry:3.8,rz:2.6},
+      {x:-3,y:1,z:4,rx:5.4,ry:5.2,rz:4.2},
+      {x:3,y:-1,z:4.7,rx:5.5,ry:5.4,rz:4.4},
+      {x:8,y:0,z:3.1,rx:5.5,ry:3.5,rz:3.1},
+    ].map((p,i)=>({...p,y:p.y+(terrainHash(shape,i,1412)-.5)*4,
+      z:p.z+(terrainHash(shape,i,5729)-.5)*2.3}));
+    const tints=['#b1cdd5','#cbe2e2','#ddebe6','#ebf4ea'];
+    for(let z=0;z<11;z++)for(let y=-8;y<=8;y++)for(let x=-14;x<=14;x++){
+      const edge=terrainHash(x+37*z,y,shape+932);
+      if(!lobes.some(p=>((x-p.x)/p.rx)**2+((y-p.y)/p.ry)**2+((z-p.z)/p.rz)**2<.93+edge*.19))continue;
+      const tone=Math.min(tints.length-1,Math.floor(z*.37+edge*.9));
+      grid.box(x,y,z,1,1,1,tints[tone]);
+    }
+  });
 }
 
 export type BlockProp=TreeKind|'boulder'|'snowstone'|'basalt'|'crystal'|

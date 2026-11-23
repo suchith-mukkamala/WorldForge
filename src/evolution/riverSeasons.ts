@@ -1,18 +1,19 @@
 import type {World} from './engine';
+import {calderaRiver} from './caldera';
 import {hydrologyForWorld,type Hydrology} from './hydrology';
 import {visualSeason} from './sceneAtmosphere';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 
 export const waterSeason=(world:Pick<World,'dayOfYear'>)=>visualSeason(world.dayOfYear??0);
 
-type WaterwayLand=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'dayOfYear'>;
+type WaterwayLand=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'dayOfYear'|'volcanicLayout'>;
 export type RiverLink={dx:number;dy:number;tier:number;other:number};
 export const bankSides=[{x:0,y:1},{x:1,y:0},{x:0,y:-1},{x:-1,y:0}] as const;
 export const DOCK_BANK_DROP=28;
-const linkCache=new WeakMap<Hydrology,Map<number,RiverLink[]>>();
+const linkCache=new WeakMap<Hydrology,{outflow?:readonly number[];links:Map<number,RiverLink[]>}>();
 export function riverLinks(world:WaterwayLand):ReadonlyMap<number,readonly RiverLink[]>{
-  const drainage=hydrologyForWorld(world),cached=linkCache.get(drainage);
-  if(cached)return cached;
+  const drainage=hydrologyForWorld(world),cached=linkCache.get(drainage),outflow=calderaRiver(world);
+  if(cached&&cached.outflow===outflow)return cached.links;
   const links=new Map<number,RiverLink[]>(),{width}=world;
   const add=(from:number,other:number,tier:number)=>{
     const list=links.get(from)??[];
@@ -25,7 +26,13 @@ export function riverLinks(world:WaterwayLand):ReadonlyMap<number,readonly River
     if(!tier||next<0)continue;
     add(i,next,tier);add(next,i,tier);
   }
-  linkCache.set(drainage,links);
+  if(outflow)for(let i=1;i<outflow.length;i++){
+    const from=outflow[i-1],to=outflow[i];
+    if(!links.get(from)?.some(link=>link.other===to)){
+      add(from,to,2);add(to,from,2);
+    }
+  }
+  linkCache.set(drainage,{outflow,links});
   return links;
 }
 
