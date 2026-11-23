@@ -13,6 +13,7 @@ import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
 import {MapLayerLegend} from './MapLayerLegend';
 import {RiverGuide} from './RiverGuide';
+import {cavernFeederCourse,realmWater} from './realmWater';
 import {riverCourses} from './riverCourses';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {TradePanel} from './TradePanel';
@@ -209,7 +210,10 @@ export function WorldforgeApp(){
   const craterArrival=world.volcanicLayout?.vents.find(vent=>vent.index===descentCrater);
   const [descentRiver,setDescentRiver]=useState<number|null>(null);
   const rivers=showRivers||descentRiver!==null?riverCourses(world):[];
-  const chartedRiver=rivers.find(r=>r.mouth===riverMouth)??rivers[0];
+  const riverFloor=showRivers&&tab==='world'?underworldMap(world):undefined;
+  const riverWater=riverFloor?realmWater(world,riverFloor):undefined;
+  const chartedRiver=riverWater&&(riverMouth===-1||!rivers.length)?cavernFeederCourse(riverWater):
+    rivers.find(r=>r.mouth===riverMouth)??rivers[0];
   const riverArrival=descentRiver===null?undefined:rivers.find(r=>r.mouth===descentRiver);
   const [mapView,setMapView]=useState<'overhead'|'depth'>(()=>{
     try{return readWorldPerspective(
@@ -1460,7 +1464,7 @@ export function WorldforgeApp(){
           </div>}
           </details>
           {overlay!=='terrain'&&<MapLayerLegend overlay={overlay}/>}
-          {showRivers&&<RiverGuide world={world} course={chartedRiver} onCourse={setRiverMouth}
+          {showRivers&&<RiverGuide world={world} course={chartedRiver} onCourse={setRiverMouth} water={riverWater} onBelow={openUnderworld}
             onLocate={index=>locateAtlasPoint({x:index%world.width,y:Math.floor(index/world.width)},ATLAS_TOWN_ZOOM)}
             onStart={mouth=>{navigate('descent');setDescentRiver(mouth);}}/>}
           <div className="evo-map-scroll atlas-viewport surface-atlas-viewport" ref={mapScrollRef}>

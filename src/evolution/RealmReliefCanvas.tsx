@@ -150,6 +150,18 @@ function reliefGlimmers(map:RealmMap,projection:RealmProjection,camera:DepthCame
     const lift=form?realmEffectLift(kind)*realmFormationUnit(form.size)*rise:0;
     projected.push({kind,phase,x:at.x+(phase-.5)*5,y:at.y-lift});
   }
+  const seep=map.water?.fall;
+  if(seep){
+    const bank=seaPoint(map.width,seep.bank),outlet=seaPoint(map.width,seep.outlet);
+    const dx=outlet.x-bank.x,dy=outlet.y-bank.y;
+    const p=realmPropPoint(map,projection,seep.bank);
+    const drop=map.heights[seep.bank]-map.heights[seep.outlet];
+    if(drop>0&&(dx&&dx===projection.frontX||dy&&dy===projection.frontY)&&
+      visibleGround(p,seep.bank,hit,sx,sy)){
+      const lip=realmPropPoint(map,projection,seep.bank,dx*.47,dy*.47);
+      projected.push({kind:'cascade',phase:0,...lip,dx:0,dy:drop*projection.rise,flow:seep.flow});
+    }
+  }
   return projected;
 }
 

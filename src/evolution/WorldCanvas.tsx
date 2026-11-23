@@ -25,6 +25,7 @@ import {springFlood,waterSeason} from './riverSeasons';
 import {boardwalkSite} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
 import {paintRiverCourse} from './riverCourseArt';
+import {cavernFlow,cavernFlowKey} from './realmWater';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {paintTradeRoutes} from './tradeRoutes';
 import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
@@ -95,7 +96,7 @@ export function WorldCanvas({
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     street:boolean;regional:boolean;
     terrainCells:World['terrainCells'];skylands:World['skylands'];worldTree:World['worldTree'];
-    width:number;height:number;season:string;
+    width:number;height:number;season:string;feederKey:string;
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
   const prior=useRef<{year:number;day:number;seed:number;
@@ -135,10 +136,11 @@ export function WorldCanvas({
     const showResidents=atlasLevel(zoom)==='street';
     const regional=!!world.settings.regionalGeography;
     const woodland=overlay==='terrain'||overlay==='trade'?world.woodland:undefined;
+    const feederKey=cavernFlowKey(cavernFlow(world));
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
       stamp.terrainCells!==terrainCells||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||stamp.season!==season||
-      stamp.woodland!==woodland||
+      stamp.woodland!==woodland||stamp.feederKey!==feederKey||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       overlay==='deposits'&&stamp.deposits!==world.deposits||stamp.transport!==world.transport||
@@ -334,7 +336,7 @@ export function WorldCanvas({
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
       terrainCells,skylands:world.skylands,worldTree:world.worldTree,
-      width:canvas.width,height:canvas.height,season};
+      width:canvas.width,height:canvas.height,season,feederKey};
     }
     else if(stamp)stamp.tiles=world.tiles;
     const current=new Map(world.agents.map(a=>[a.id,

@@ -8,7 +8,7 @@ import {calendarDate,MONTH_NAMES} from './calendar';
 import type {World} from './engine';
 import type {MortalStep} from './mortalGameplay';
 import {boardRealmBoat,landRealmBoat,leaveUnderworld,moveUnderworld,occupiedUnderworld,
-  realmBerth,realmLandings} from './mortalUnderworld';
+  realmBerth,realmLandings,realmWadingBank,wadeRealmBank} from './mortalUnderworld';
 import {canAnimate,directionBetween,inFrontOf,motionFrame,samePoint,type Facing,type Motion,type Point} from './motion';
 import {mortalName} from './MortalHUD';
 import {paintPerson} from './pixelArt';
@@ -16,6 +16,7 @@ import {PixelPortrait} from './PixelPortrait';
 import {paintRealmAmbient,paintRealmWildlife,REALM_AMBIENT_STEP,realmEffectLift,
   type RealmGlimmer,type RealmTrack} from './realmAmbient';
 import {realmFormationUnit,realmScenery} from './realmScenery';
+import {realmWaterStatus} from './realmWater';
 import {realmWildlife} from './realmWildlife';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {UnderworldAtlas} from './UnderworldAtlas';
@@ -86,6 +87,12 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
           const lift=form?realmEffectLift(kind)*realmFormationUnit(form.size)*1.95*DESCENT_BLOCK_VIEW.rise:0;
           return [{kind,phase,x:(x+.5+(form?.dx??0))*TILE,y:(y+.69+(form?.dy??0))*TILE-lift}];
         });
+        const fall=map.water?.fall;
+        if(fall){
+          const a=seaPoint(width,fall.bank),b=seaPoint(width,fall.outlet);
+          if(nearby(a)||nearby(b))glimmers.push({kind:'cascade',phase:0,
+            x:(a.x+.5)*TILE,y:(a.y+.58)*TILE,dx:(b.x-a.x)*TILE,dy:(b.y-a.y)*TILE,flow:fall.flow});
+        }
         tracks=realmWildlife(map).flatMap(({cells,kind,phase})=>{
           const tiles=cells.map(cell=>seaPoint(width,cell));
           return tiles.some(nearby)?[{kind,phase,points:tiles.map(({x,y})=>({x:(x+.5)*TILE,y:(y+.63)*TILE}))}]:[];
@@ -148,7 +155,7 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
   const current=useRef(world);current.current=world;
   const [facing,setFacing]=useState<Facing>('north'),[message,setMessage]=useState('');
   const [chart,setChart]=useState(false),[pin,setPin]=useState<number>();
-  const {map,visit,actor,origin}=active,point=seaPoint(map.width,visit.at);
+  const {map,floor,visit,actor,origin,water}=active,point=seaPoint(map.width,visit.at);
   const day=volcanicDay(world),date=calendarDate(world),atSea=!!visit.ship?.underway;
   const residents=realmResidents(world,map),nearby=seaNeighbors(visit.at,map.width,map.biomes.length);
   const near=(i:number)=>i===visit.at||nearby.includes(i);
@@ -163,12 +170,15 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
   const ahead=inFrontOf(point,visit.ship?.heading??facing),lead=ahead.y*map.width+ahead.x;
   const landing=landings.includes(lead)?lead:landings[0];
   const berth=realmBerth(map,visit);
+  const wading=realmWadingBank(map,visit,day);
+  const grounded=atSea&&map.biomes[visit.at]!==RealmBiome.sea;
   type Action={label:string;point:number;perform:()=>void};
   const shoreAction=(i:number):Action=>({label:'Go ashore',point:i,perform:()=>step(landRealmBoat(current.current,i))});
   const actions:Action[]=atSea?(landing===undefined?[]:[shoreAction(landing),
     ...landings.filter(i=>i!==landing).map(i=>({...shoreAction(i),label:'Land '+directionBetween(point,seaPoint(map.width,i))}))]):[
     ...localLinks.map(link=>({label:link.surface===visit.origin?'Return to the surface':
       'Climb to '+realmLinkName(world,link),point:link.cell,perform:()=>step(leaveUnderworld(current.current,link))})),
+    ...(wading===undefined?[]:[{label:'Wade to dry ground',point:wading,perform:()=>step(wadeRealmBank(current.current))}]),
     ...(berth?[{label:'Board cavern boat',point:berth.water,perform:()=>step(boardRealmBoat(current.current))}]:[]),
     ...residents.filter(resident=>near(resident.index)).map(resident=>({label:'Talk to '+resident.name,
       point:resident.index,perform:()=>setMessage(resident.name+' · '+realmPeopleName(resident.people)+' — '+resident.line)})),
@@ -206,7 +216,7 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
         <time>{MONTH_NAMES[date.month]} {date.day} <span>· Year {date.year}</span></time>
       </header>
       {notice&&<p className="adventure-feedback" role="status">{notice}</p>}
-      {chart?<UnderworldAtlas world={world} map={map} at={visit.at} marked={pin}
+      {chart?<UnderworldAtlas world={world} map={floor} at={visit.at} marked={pin}
         onMark={link=>{setPin(link.surface);setChart(false);}}/>:
       <div className="adventure-layout">
         <div className="adventure-stage">
@@ -229,6 +239,7 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
                 }}>{action.label}</button>)}</div>
               </details>}
               {message&&<p className="adventure-feedback" role="status">{message}</p>}
+              {grounded&&<p className="adventure-feedback" role="status">Water receded. Go ashore or steer into deeper water.</p>}
             </div>
           </div>
         </div>
@@ -248,6 +259,9 @@ export function MortalUnderworld({world,active,notice,running,onToggleTime,onCha
           {target&&<section className="adventure-exits" aria-label="Marked passage">
             <h2>{realmLinkName(world,target)}</h2>
             <p>{way?way+' tiles '+heading:'At the passage'}</p>
+          </section>}
+          {water&&<section className="adventure-exits" aria-label="Cave water">
+            <h2>Lake waterline</h2><p>{realmWaterStatus(water)}</p>
           </section>}
         </aside>
       </div>}

@@ -3,6 +3,7 @@ import type {World} from './engine';
 import {cloneCognition} from './mindII';
 import {directionBetween} from './motion';
 import {mortalTileCapacity,type MortalStep} from './mortalGameplay';
+import {realmWater} from './realmWater';
 import {seaNeighbors,seaPoint,type MortalShip} from './shipSave';
 import {initializeUnderworld,RealmBiome,realmWalkable,underworldMap,underworldVent,
   type RealmLink,type RealmMap,type RealmVisit} from './underworld';
@@ -19,13 +20,14 @@ const near=(map:RealmMap,a:number,b:number)=>a===b||neighbors(map,a).includes(b)
 export function occupiedUnderworld(world:World){
   const visit=world.descent?.realm?.visit,actor=mortal(world);
   if(!visit||!actor||world.descent?.ship?.underway||world.descent?.interior||world.descent?.tidal?.inside)return;
-  const map=underworldMap(world);
-  const origin=map?.links.find(link=>link.surface===visit.origin&&link.kind==='crater');
-  if(!map||!origin||indexOf(world,actor)!==origin.surface)return;
-  if(visit.ship?.underway?map.biomes[visit.at]!==RealmBiome.sea:
-      !realmWalkable(map,visit.at,volcanicDay(world))&&
-      !map.fords.has(visit.at))return;
-  return {actor,visit,map,origin};
+  const floor=underworldMap(world);
+  const origin=floor?.links.find(link=>link.surface===visit.origin&&link.kind==='crater');
+  if(!floor||!origin||indexOf(world,actor)!==origin.surface)return;
+  const water=realmWater(world,floor),map=water?.map??floor;
+  const seasonal=map.water?.seasonal.has(visit.at);
+  if(!seasonal&&(visit.ship?.underway?map.biomes[visit.at]!==RealmBiome.sea:
+      !realmWalkable(map,visit.at,volcanicDay(world))&&!map.fords.has(visit.at)))return;
+  return {actor,visit,map,floor,origin,water};
 }
 
 function updateVisit(world:World,map:RealmMap,visit:RealmVisit):World{
@@ -92,20 +94,24 @@ export function moveUnderworld(world:World,dx:number,dy:number):MortalStep{
     return fail(world,'The cavern wall closes in here.');
   const ship=visit.ship;
   if(ship?.underway){
-    if(map.biomes[at]!==RealmBiome.sea)return fail(world,'Use Land at a dry bank.');
+    if(map.biomes[at]!==RealmBiome.sea)return fail(world,map.water?.seasonal.has(at)?
+      'The ledge is exposed. Go ashore here or steer into deeper water.':'Use Land at a dry bank.');
     return {world:updateVisit(world,map,{...visit,at,
       ship:{...ship,at,heading:directionBetween({x,y},next)}}),moved:true};
   }
   if(!realmWalkable(map,at,volcanicDay(world)))
     return fail(world,map.biomes[at]===RealmBiome.lava?'Hot lava covers the ground here. Look for a basalt span.':
-      map.biomes[at]===RealmBiome.sea?'Take a boat across the Buried Sea.':'The basalt wall blocks your path.');
+      map.biomes[at]===RealmBiome.sea?map.water?.seasonal.has(at)?
+        'The ledge is submerged. Use a boat or return at low water.':'Take a boat across the Buried Sea.':
+        'The basalt wall blocks your path.');
   return {world:updateVisit(world,map,{...visit,at}),moved:true};
 }
 
 export function realmBerth(map:RealmMap,visit:RealmVisit){
   const ship=visit.ship;
   if(ship?.underway)return;
-  if(ship&&near(map,visit.at,ship.shore))return {shore:ship.shore,water:ship.at};
+  if(ship&&near(map,visit.at,ship.shore)&&map.biomes[ship.at]===RealmBiome.sea)
+    return {shore:ship.shore,water:ship.at};
   const port=map.towns.find(town=>town.berth!==undefined&&near(map,visit.at,town.index));
   return port&&{shore:port.index,water:port.berth!};
 }
@@ -132,6 +138,26 @@ export function landRealmBoat(world:World,shore:number):MortalStep{
   const landfalls=ship.landfalls.includes(shore)?ship.landfalls:[...ship.landfalls,shore].slice(-128);
   return {world:updateVisit(world,map,{...visit,at:shore,
     ship:{...ship,shore,underway:false,landfalls}}),moved:true};
+}
+
+/** A season can change while the player is standing in a pool. Let them
+ * wade through just the flooded bed to reach the nearest safe bank. */
+export function realmWadingBank(map:RealmMap,visit:RealmVisit,day:number):number|undefined{
+  const flooded=map.water?.seasonal;
+  if(!flooded?.has(visit.at)||map.biomes[visit.at]!==RealmBiome.sea||visit.ship?.underway)return;
+  const seen=new Set([visit.at]);
+  for(const i of seen)for(const next of neighbors(map,i)){
+    if(next<0||seen.has(next))continue;
+    if(map.biomes[next]!==RealmBiome.lava&&realmWalkable(map,next,day))return next;
+    if(flooded.has(next)&&map.biomes[next]===RealmBiome.sea)seen.add(next);
+  }
+}
+
+export function wadeRealmBank(world:World):MortalStep{
+  const active=occupiedUnderworld(world);
+  const at=active&&realmWadingBank(active.map,active.visit,volcanicDay(world));
+  if(!active||at===undefined)return fail(world,'There is no flooded ledge to cross here.');
+  return {world:updateVisit(world,active.map,{...active.visit,at}),moved:true};
 }
 
 export const volcanoEntryUsable=(world:World,vent:Volcano)=>ventHasGround(world,vent)&&

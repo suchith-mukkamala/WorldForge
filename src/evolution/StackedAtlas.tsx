@@ -8,7 +8,8 @@ import {MAX_ATLAS_ZOOM,stepAtlasZoom,boundedMapZoom,captureWorldZoomAnchor,gestu
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import {ATLAS_PERSON_SIZE} from './personSpriteScale';
 import type {Point} from './motion';
-import {caveConnections,caveRoomName,realmCaverns} from './realmCaverns';
+import {caveConnections,caveRoomName,realmCaverns,type CaveConnection} from './realmCaverns';
+import {cavernFeederCourse,realmWater,realmWaterStatus} from './realmWater';
 import {REALM_ATLAS_PERSON_HEIGHT} from './RealmAtlasResident';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {seaPoint} from './shipSave';
@@ -25,6 +26,7 @@ type CameraMove={anchor:WorldZoomAnchor}|{point:Point};
 const inspect:Brush={kind:'inspect'};
 const ignoreEdit=()=>{};
 const geology={seep:'Water seep',skylight:'Cave skylight',fault:'Volcanic fracture'};
+const connectionName=(site:CaveConnection)=>site.overflow?'Overflow seep':geology[site.kind];
 
 function poly(ctx:CanvasRenderingContext2D,points:readonly Point[],ink:string){
   ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
@@ -67,11 +69,12 @@ function StackedRock({projection,world,links,active}:{projection:Projection;worl
     width={Math.ceil(size.width*scale)} height={Math.ceil(size.height*scale)}/>;
 }
 
-export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;map:RealmMap;
+export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld}:{world:World;map:RealmMap;
   at?:number;onSurface:(cell:number)=>void;onUnderworld:(cell?:number)=>void}){
   const [camera,setCamera]=useState<DepthCamera>(STACKED_CAMERA);
   const [zoom,setZoom]=useState(1),[selected,setSelected]=useState<Selection>();
   const [roof,setRoof]=useState(false);
+  const water=realmWater(world,floor),map=water?.map??floor;
   const maxHeight=useMemo(()=>map.heights.reduce((max,value)=>Math.max(max,value),0),[map]);
   const elevations=topographyForWorld(world).heights;
   const projection=useMemo(()=>stackedProjection(world,map,camera,maxHeight,STACKED_RELIEF,elevations),
@@ -79,8 +82,8 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
   const {surface,size,lowerTop,lowerHeight,underneath}=projection;
   const street=atlasLevel(zoom)==='street';
   const residents=useMemo(()=>street?realmResidents(world,map):[],[street,world,map]);
-  const caverns=realmCaverns(map);
-  const connections=useMemo(()=>caveConnections(world,map,caverns),[map,caverns,elevations]);
+  const caverns=realmCaverns(floor);
+  const connections=useMemo(()=>caveConnections(world,floor,caverns),[floor,caverns,elevations,world.underworld?.watershed]);
   const openings=connections.filter(site=>site.kind!=='fault');
   const feature=selected?connections.find(site=>
     (selected.layer==='surface'?site.surface:site.cell)===selected.cell):undefined;
@@ -212,6 +215,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           <StackedRock projection={projection} world={world} links={links} active={corresponding?.link.surface}/>
           <div className="strata-level strata-upper" style={{height:surface.size.height/size.height*100+'%'}}>
             <DepthCanvas world={world} overlay="terrain" brush={inspect}
+              river={water&&feature?.kind==='seep'?cavernFeederCourse(water):undefined}
               selected={selected?.layer==='surface'?chosen??null:null}
               onSelect={(x,y)=>setSelected({layer:'surface',cell:y*world.width+x})}
               onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway/>
@@ -221,7 +225,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
               selected={selected?.layer==='underworld'?selected.cell:undefined} residents={residents}
               onSelect={cell=>setSelected({layer:'underworld',cell})}/>
           </div>
-          {openings.map(site=><span key={site.kind} className="strata-geology" data-kind={site.kind}
+          {openings.map(site=><span key={site.surface} className="strata-geology" data-kind={site.kind}
             data-active={feature===site||undefined} style={spot(surfacePoint(site.surface))} aria-hidden="true"/>)}
           <span className="strata-label strata-label-surface">Surface</span>
           <span className="strata-label strata-label-realm" style={{top:lowerTop/size.height*100+'%'}}>Underworld</span>
@@ -252,7 +256,9 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           {vent&&<p>{volcanoPhase(world,vent)} · Volcano</p>}
           {selected?.layer==='underworld'&&<p>{caveRoomName(caverns,selected.cell)}
             {' · '}{caverns.clearance[selected.cell]} blocks of headroom</p>}
-          {feature&&<p>{geology[feature.kind]}</p>}
+          {feature&&<p>{connectionName(feature)}</p>}
+          {water&&(feature?.kind==='seep'||!selected)&&<p aria-label="Cave water" data-water-level={water.level}
+            data-water-route={water.route}>{realmWaterStatus(water)}</p>}
           {feature&&feature.kind!=='fault'&&<button className="atlas-terrain-cell-zoom" type="button" onClick={()=>{
             const layer=selected?.layer==='surface'?'underworld':'surface';
             const cell=layer==='surface'?feature.surface:feature.cell;
@@ -273,15 +279,15 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           {selected?.layer==='surface'&&<button type="button" className="atlas-terrain-cell-zoom"
             onClick={()=>onSurface(selected.cell)}>Open Surface atlas</button>}
           {selected?.layer==='underworld'&&<button type="button" className="atlas-terrain-cell-zoom"
-            onClick={()=>onUnderworld(corresponding?.link.surface??projectWorldLayer(selected.cell,map,world))}>
+            onClick={()=>onUnderworld(feature?.surface??corresponding?.link.surface??projectWorldLayer(selected.cell,map,world))}>
             Open Underworld atlas</button>}
           {openings.length>0&&<details className="strata-openings">
             <summary>Natural openings</summary>
-            {openings.map(site=><button key={site.kind} type="button" className="atlas-terrain-cell-zoom"
+            {openings.map(site=><button key={site.surface} type="button" className="atlas-terrain-cell-zoom"
               onClick={event=>{
                 event.currentTarget.closest('details')?.removeAttribute('open');
                 setSelected({layer:'surface',cell:site.surface});focus(surfacePoint(site.surface));
-              }}>{geology[site.kind]}</button>)}
+              }}>{connectionName(site)}</button>)}
           </details>}
           <div className="strata-focus-row">
             <button type="button" className="atlas-terrain-cell-zoom"

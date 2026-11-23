@@ -10,6 +10,7 @@ import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {caveRoomName,realmCaverns} from './realmCaverns';
 import {REALM_LAYOUT_NAMES} from './realmGeography';
 import {realmScenery} from './realmScenery';
+import {inletSurface,realmWater,realmWaterStatus} from './realmWater';
 import {seaPoint} from './shipSave';
 import {realmDepthPoint,STACKED_CAMERA,stackedProjection} from './stackedProjection';
 import {VISUAL_TERRAIN_SIDE} from './terrainCells';
@@ -87,15 +88,18 @@ function regionCenters(map:RealmMap){
 
 /** The same geography used by the walking scene, framed as its own atlas
  * layer. Browsing and zooming never move the mortal or change their realm. */
-export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMark,allowRelief=false}:{
+export function UnderworldAtlas({world,map:floor,focusSurface,at,marked,onSurface,onMark,allowRelief=false}:{
   world:World;map:RealmMap;focusSurface?:number;at?:number;marked?:number;allowRelief?:boolean;
   onSurface?:(surface:number)=>void;onMark?:(link:RealmLink)=>void;
 }){
-  const start=focusSurface===undefined?undefined:map.links.find(link=>
+  const water=realmWater(world,floor),map=water?.map??floor;
+  const pools=water?[{inlet:water.plan.main,name:'Seep Lake'},
+    ...(water.plan.spill?[{inlet:water.plan.spill,name:'Overflow Pool'}]:[])]:[];
+  const start=focusSurface===undefined?undefined:pools.find(pool=>inletSurface(pool.inlet)===focusSurface)?.inlet.cell??map.links.find(link=>
     link.surface===focusSurface)?.cell??projectWorldLayer(focusSurface,world,map);
   const [zoom,setZoom]=useState(start===undefined?1:ATLAS_PLACE_ZOOM);
   const [selected,setSelected]=useState(start);
-  const caverns=realmCaverns(map);
+  const caverns=realmCaverns(floor);
   const [view,setView]=useState<Perspective>(allowRelief?'depth':'overhead');
   const [camera,setCamera]=useState<DepthCamera>(STACKED_CAMERA);
   const [size,setSize]=useState<Point>({x:0,y:0});
@@ -106,7 +110,8 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
   const drag=useRef<{pointer:number;x:number;y:number;scrollLeft:number;scrollTop:number;moving:boolean}|undefined>(undefined);
   const chart=world.descent?.realm?.chart;
   const naturalSites=realmScenery(map).naturalSites;
-  const chambers=caverns.chambers.filter(chamber=>!naturalSites.some(site=>site.cell===chamber.cell));
+  const chambers=caverns.chambers.filter(chamber=>!naturalSites.some(site=>site.cell===chamber.cell)&&
+    !pools.some(pool=>pool.inlet.cell===chamber.cell));
   const features:Feature[]=[
     ...map.towns.map(town=>({cell:town.index,name:town.name,kind:'town' as const})),
     ...map.links.filter(link=>link.kind==='crater'||chart?.includes(link.surface))
@@ -114,13 +119,15 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
         kind:link.kind==='crater'?'shaft' as const:'passage' as const,link})),
     ...naturalSites.map(site=>({cell:site.cell,name:site.name,kind:'landmark' as const})),
     ...chambers.map(chamber=>({cell:chamber.cell,name:chamber.name,kind:'landmark' as const})),
+    ...pools.map(({inlet,name})=>({cell:inlet.cell,name,kind:'landmark' as const})),
   ];
   const town=map.towns.find(town=>town.index===selected);
   const link=features.find(feature=>feature.cell===selected)?.link;
   const site=naturalSites.find(site=>site.cell===selected);
-  const name=town?.name??(link&&realmLinkName(world,link))??site?.name??chambers.find(room=>room.cell===selected)?.name;
+  const pool=pools.find(({inlet})=>inlet.cell===selected);
+  const name=town?.name??(link&&realmLinkName(world,link))??pool?.name??site?.name??chambers.find(room=>room.cell===selected)?.name;
   const pins=features.filter(feature=>feature.kind!=='landmark'||feature.cell===selected);
-  const surface=link?.surface??(selected===undefined?undefined:projectWorldLayer(selected,map,world));
+  const surface=pool?inletSurface(pool.inlet):link?.surface??(selected===undefined?undefined:projectWorldLayer(selected,map,world));
   const place=surface===undefined?undefined:seaPoint(world.width,surface);
   const biome=selected===undefined?undefined:UNDERWORLD_BIOMES[map.biomes[selected]];
   const population=world.underworld?.population??[];
@@ -328,6 +335,8 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
           onClick={()=>locate(selected,true)}>Zoom to place</button>}
         {town?.berth!==undefined&&<p>Port on the Buried Sea</p>}
         {site&&<p>{site.description}</p>}
+        {water&&(pool||selected===undefined||map.water?.seasonal.has(selected))&&
+          <p aria-label="Cave water" data-water-level={water.level} data-water-route={water.route}>{realmWaterStatus(water)}</p>}
         {surface!==undefined&&onSurface&&<button type="button" className="atlas-terrain-cell-zoom"
           onClick={()=>onSurface(surface)}>Show on Surface</button>}
         {link&&onMark&&<button type="button" className="atlas-terrain-cell-zoom"

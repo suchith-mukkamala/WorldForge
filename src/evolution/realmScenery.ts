@@ -8,7 +8,7 @@ export type RealmFormation={kind:RealmFormationKind;variant:number;size:number;d
 export type RealmEffectKind='spore'|'spark'|'foam'|'steam'|'gleam'|'bat';
 export type RealmEffect={cell:number;kind:RealmEffectKind;phase:number};
 export type RealmNaturalSite={cell:number;name:string;description:string};
-type RealmFall={outlet:number;dx:number;dy:number};
+type RealmFall={outlet:number;dx:number;dy:number;flow?:1|2};
 export type RealmScenery={
   formations:Map<number,RealmFormation>;
   landmarks:Set<number>;
@@ -72,7 +72,7 @@ export function realmScenery(map:RealmMap):RealmScenery{
   const {width:w,height:h,biomes,heights,seed}=map;
   const formations=new Map<number,RealmFormation>(),docks=new Map<number,Facing>(),landmarks=new Set<number>();
   const gates=new Map(map.links.map(link=>[link.cell,link.kind]));
-  const occupied=new Set([...map.roads,...map.houses.keys(),...gates.keys()]);
+  const occupied=new Set([...map.roads,...map.houses.keys(),...gates.keys(),...map.water?.seasonal??[]]);
   const structures=new Set([...map.houses.keys(),...gates.keys(),...map.towns.map(town=>town.index)]);
   for(const town of map.towns){
     occupied.add(town.index);
@@ -84,6 +84,12 @@ export function realmScenery(map:RealmMap):RealmScenery{
     docks.set(town.berth,x<land.x?'east':x>land.x?'west':y<land.y?'south':'north');
   }
   const {falls,spray}=shoreFalls(map,occupied);
+  const seep=map.water?.fall;
+  if(seep){
+    const a=seaPoint(w,seep.bank),b=seaPoint(w,seep.outlet);
+    falls.set(seep.bank,{outlet:seep.outlet,dx:b.x-a.x,dy:b.y-a.y,flow:seep.flow});
+    spray.add(seep.outlet);
+  }
   for(const cell of falls.keys())occupied.add(cell);
   const coast=coastalDepth(map),effects:RealmEffect[]=[];
   const density=Math.max(.58,Math.min(1,Math.sqrt(2800/biomes.length)));

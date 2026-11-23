@@ -12,7 +12,7 @@ import {realmFloorPixels} from './underworldArt';
 export type RealmRasterRequest={id:number;projection:RealmProjection;map?:RealmMap};
 export type RealmRasterResult={id:number;pixels:Uint32Array<ArrayBuffer>;hit:DepthPicking};
 type PreparedRealm={map:RealmMap;palette:Uint32Array;columns:number;rows:number;
-  elevations:Float32Array;falls:Int8Array};
+  elevations:Float32Array;falls:Int8Array;fallWidths:Uint8Array};
 const SIDE=VISUAL_TERRAIN_SIDE;
 const cataract=['#5d98a8','#96cfcb','#bae0cd','#83bbc3'].map(terrainPixel);
 export function realmRasterSize(width:number,height:number){
@@ -24,8 +24,11 @@ export function prepareRealmRelief(map:RealmMap):PreparedRealm{
   const {width,height,biomes,heights}=map,columns=width*SIDE,rows=height*SIDE;
   const palette=realmFloorPixels(map,undefined,{x:0,y:0},width,height);
   const elevations=new Float32Array(palette.length);
-  const falls=new Int8Array(biomes.length);
-  for(const [cell,{dx,dy}] of realmScenery(map).falls)falls[cell]=dx+2*dy;
+  const falls=new Int8Array(biomes.length),fallWidths=new Uint8Array(biomes.length);
+  for(const [cell,{dx,dy,flow}] of realmScenery(map).falls){
+    falls[cell]=dx+2*dy;
+    fallWidths[cell]=flow===2?3:flow===1?1:2;
+  }
   const lighting=new Float32Array(biomes.length);
   for(let i=0;i<lighting.length;i++){
     const x=i%width,y=Math.floor(i/width);
@@ -41,7 +44,7 @@ export function prepareRealmRelief(map:RealmMap):PreparedRealm{
     elevations[i]=Math.round((level*.54+slope*.46)*4)/4;
     palette[i]=shadeTerrainPixel(palette[i],lighting[tile]);
   }
-  return {map,palette,columns,rows,elevations,falls};
+  return {map,palette,columns,rows,elevations,falls,fallWidths};
 }
 
 function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint32Array,map:RealmMap){
@@ -67,7 +70,7 @@ function paintCliff(hit:DepthPicking,pixels:Uint32Array,face:readonly Point[],ti
  * palette stays valid as time advances, while temporary fords have their
  * own overlay. Each opaque terrain face writes its exact picking ID. */
 export function rasterizeRealm({id,projection}:RealmRasterRequest,
-  {map,palette,columns,rows,elevations,falls}:PreparedRealm):RealmRasterResult{
+  {map,palette,columns,rows,elevations,falls,fallWidths}:PreparedRealm):RealmRasterResult{
   const {width,height}=realmRasterSize(projection.width,projection.height);
   const densityX=width/projection.width,densityY=height/projection.height;
   const hit={width,height,ids:new Uint32Array(width*height)},pixels=new Uint32Array(width*height);
@@ -87,7 +90,7 @@ export function rasterizeRealm({id,projection}:RealmRasterRequest,
       const i=y*columns+x,z=elevations[i],ink=palette[i];
       const tile=Math.floor(y/SIDE)*map.width+Math.floor(x/SIDE);
       const molten=map.biomes[tile]===RealmBiome.lava&&!map.bridges.has(tile);
-      const fall=falls[tile];
+      const fall=falls[tile],spread=fallWidths[tile];
       a.x=ox+x*ux+y*vx;a.y=oy+x*uy+y*vy-z*rise;
       b.x=a.x+ux;b.y=a.y+uy;c.x=b.x+vx;c.y=b.y+vy;d.x=a.x+vx;d.y=a.y+vy;
       const neighborX=x+frontX>=0&&x+frontX<columns?elevations[i+frontX]:0;
@@ -96,17 +99,17 @@ export function rasterizeRealm({id,projection}:RealmRasterRequest,
         const drop=(z-neighborX)*rise;
         e.x=faceX[1].x;e.y=faceX[1].y+drop;
         f.x=faceX[0].x;f.y=faceX[0].y+drop;
-        const stripe=y%SIDE,spill=fall===frontX&&x%SIDE===(frontX>0?SIDE-1:0)&&stripe>=2&&stripe<=5;
+        const stripe=y%SIDE,spill=fall===frontX&&x%SIDE===(frontX>0?SIDE-1:0)&&Math.abs(stripe-3.5)<spread;
         paintCliff(hit,pixels,faceX,tile,drop,
-          spill?cataract[stripe-2]:shadeTerrainPixel(ink,molten?.83:.65+(x&3)*.02),!molten&&!spill);
+          spill?cataract[(stripe+2)%4]:shadeTerrainPixel(ink,molten?.83:.65+(x&3)*.02),!molten&&!spill);
       }
       if(frontY&&neighborY<z){
         const drop=(z-neighborY)*rise;
         e.x=faceY[1].x;e.y=faceY[1].y+drop;
         f.x=faceY[0].x;f.y=faceY[0].y+drop;
-        const stripe=x%SIDE,spill=fall===2*frontY&&y%SIDE===(frontY>0?SIDE-1:0)&&stripe>=2&&stripe<=5;
+        const stripe=x%SIDE,spill=fall===2*frontY&&y%SIDE===(frontY>0?SIDE-1:0)&&Math.abs(stripe-3.5)<spread;
         paintCliff(hit,pixels,faceY,tile,drop,
-          spill?cataract[stripe-2]:shadeTerrainPixel(ink,molten?.92:.75+(y&3)*.02),!molten&&!spill);
+          spill?cataract[(stripe+2)%4]:shadeTerrainPixel(ink,molten?.92:.75+(y&3)*.02),!molten&&!spill);
       }
       pickTerrainFace(hit,top,tile,pixels,ink);
     }

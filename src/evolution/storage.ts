@@ -3,6 +3,7 @@ import {
   type Agent,type Biome,type Tile,type World,type WorldSettings,
 } from './engine';
 import {livingRecord,pureAncestry} from './family';
+import {initializeRealmWater} from './underworld';
 import {migrateWildlife,type Herd} from './wildlife';
 
 /**
@@ -343,11 +344,11 @@ export function readSavedWorld(raw:string|null):World|null{
       const tiles=decodeTiles(parsed.terrain,Number(width)*Number(height));
       if(!tiles)return null;
       const candidate=restorePackedWildlife({...inner,tiles});
-      return isWorld(candidate)?candidate:null;
+      return isWorld(candidate)?initializeRealmWater(candidate):null;
     }
     if(parsed.version===1)return migrateLegacyWorld(parsed);
     const current=restorePackedWildlife(parsed);
-    return isWorld(current)?current:null;
+    return isWorld(current)?initializeRealmWater(current):null;
   }catch{return null;}
 }
 function finiteTime(raw:unknown):number{
