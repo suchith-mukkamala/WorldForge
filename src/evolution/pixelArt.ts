@@ -72,6 +72,17 @@ export function spriteKey(person:PixelPerson):string{
     .join(':');
 }
 
+const spriteShades=new Map<string,string>();
+function spriteShade(color:string,level:number):string{
+  const key=color+':'+level,cached=spriteShades.get(key);
+  if(cached)return cached;
+  const value=parseInt(color.slice(1),16);
+  const rgb=[16,8,0].map(shift=>Math.min(255,Math.round((value>>shift&255)*level)));
+  const tone='rgb('+rgb.join(',')+')';
+  spriteShades.set(key,tone);
+  return tone;
+}
+
 /** Draw at native 16 × 22 pixel resolution; scale with nearest-neighbor only. */
 export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
   ox=0,oy=0,facing:Facing='south',stride:0|1|2|3=0,
@@ -83,7 +94,7 @@ export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
   const top=short>=3?7:4;
   const skin=c.skin,ink='#252a39';
   // Cast shadow, feet and garment silhouette; independent of camera scale.
-  p('#26304088',3,20,10,1);
+  p('#26304047',2,20,12,2);p('#20293687',4,20,8,1);
   p(ink,4,17,4,4);p(ink,9,17,4,4);
   p(c.boots,4,19,4,2);p(c.boots,9,19,4,2);
   if(person.species==='demon'){
@@ -94,12 +105,17 @@ export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
   }
   p(ink,3,10,10,9-short);p(c.outfit,4,11,8,7-short);
   p(ink,2,12,2,5-short);p(ink,12,12,2,5-short);
-  p(c.outfit,3,12,2,4-short);p(c.outfit,11,12,2,4-short);
+  p(spriteShade(c.outfit,1.10),3,12,2,4-short);
+  p(spriteShade(c.outfit,.80),11,12,2,4-short);
+  p(spriteShade(c.outfit,1.19),5,11,5,1);
+  p(spriteShade(c.outfit,.84),8,13,3,Math.max(1,4-short));
   p(skin,3,16-short,2,2);p(skin,11,16-short,2,2);
   p(c.trim,6,12,1,5-short);p('#433d4b',5,17-short,7,1);
-  p('#edcd91',9,17-short,2,1);
+  p('#edcd91',9,17-short,2,1);p('#fdedbc',9,17-short,1,1);
   // Neck, distinctive face and hairline.
   p(ink,4,top+1,8,7);p(skin,5,top+2,6,6);
+  p(spriteShade(skin,1.14),5,top+3,1,4);
+  p(spriteShade(skin,.87),10,top+3,1,4);
   p('#b77b69',7,top+7,2,1);p(c.eyes,6,top+5,1,1);p(c.eyes,9,top+5,1,1);
   if(person.species==='human'){
     p(c.hair,4,top,8,3);p(c.hair,4,top+2,2,3);
@@ -146,6 +162,8 @@ export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
     // No eyes from behind: hairstyle, cloak and shoulder straps reveal the back.
     p(ink,4,top+1,8,8);p(c.hair,5,top+1,6,7);
     p('#374556',5,12,6,6-short);p(c.outfit,7,12,2,5-short);
+    p(spriteShade(c.outfit,1.11),7,12,3,1);
+    p(spriteShade(c.hair,1.19),6,top+2,2,3);
     p(c.trim,6,12,1,5-short);
   }else if(facing==='east'||facing==='west'){
     // A single visible eye and a side silhouette distinguish left and right.

@@ -17,7 +17,7 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
 import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain';
 import {orderedDepthTiles,paintDepthBackdrop,type DepthRasterRequest,type DepthRasterResult} from './depthBackdrop';
-import {AtlasFish} from './AtlasFish';
+import {AtlasWater} from './AtlasWater';
 import {waterSeason} from './riverSeasons';
 import {surfaceGrid,VISUAL_TERRAIN_SIDE,type SurfaceGrid} from './surfaceGrid';
 import {fitStructure,structureFootings,structureForBuilding,structureSite,surfaceHeightAt,type StructureSite} from './structureGround';
@@ -764,11 +764,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds seed={world.settings.seed}
       columns={world.width} rows={world.height} width={size.width} unit={DEPTH_TILE_WIDTH/(2*VISUAL_TERRAIN_SIDE)}
       view={depthBlockView(camera)} project={cloudProjection}/>}
-    {fillWidth&&overlay==='terrain'&&showBuildings&&!orbiting&&
-      <AtlasFish world={world} width={size.width} height={size.height} square={1.5} project={p=>{
+    {fillWidth&&overlay==='terrain'&&!orbiting&&
+      <AtlasWater world={world} width={size.width} height={size.height} square={1.5} showFish={showBuildings} project={p=>{
         const index=Math.floor(p.y)*world.width+Math.floor(p.x);
-        const elevation=topographyForWorld(world).heights[index];
-        const point=projector.projectSmooth(p.x-.5,p.y-.5,elevation);
+        const bed=topography.heights[index];
+        const point=projector.projectSmooth(p.x-.5,p.y-.5,bed>SEA_LEVEL?bed:SEA_LEVEL-9);
         if(skyArtRef.current&&skylandHit(skyArtRef.current.art,point.x,point.y)!==undefined)return;
         const hit=pickingRef.current;
         if(!hit)return;

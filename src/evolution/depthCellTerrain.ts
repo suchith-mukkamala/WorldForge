@@ -8,6 +8,7 @@ import {cellPixel,firstTerrainSquare,shadeTerrainPixel,terrainPixel,
   terrainSwatches} from './terrainCellArt';
 import {CONTACT_SHADE,insetEdge,RIM_LIGHT,stampSegment,waterCrest} from './depthForm';
 import {SEA_LEVEL} from './topography';
+import {surfaceLight} from './surfaceLight';
 
 type Projector=ReturnType<typeof createDepthProjector>;
 const SIDE=VISUAL_TERRAIN_SIDE;
@@ -20,16 +21,6 @@ function paintPlotSquare(base:number,color:string){
 }
 const GLINT=terrainPixel('#9bcacc');
 const SPARK=terrainPixel('#d8e6d9');
-const wallColors=new WeakMap<Uint32Array,{east:Uint32Array;south:Uint32Array}>();
-function terrainWalls(palette:Uint32Array){
-  const cached=wallColors.get(palette);
-  if(cached)return cached;
-  const walls={east:palette.map(pixel=>shadeTerrainPixel(pixel,.71)),
-    south:palette.map(pixel=>shadeTerrainPixel(pixel,.83))};
-  wallColors.set(palette,walls);
-  return walls;
-}
-
 /** Rasterize a single world-wide grid. Terrain and selection IDs use the same
  * spans. A small face costs a few contiguous writes instead of a canvas path. */
 export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,
@@ -41,6 +32,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   const pixels=new Uint32Array(image.data.buffer);
   if(!cutaway)pixels.fill(terrainPixel(sea));
   const grid=surfaceGrid(w),{columns,rows,ground,water,shore,rootRise}=grid;
+  const light=surfaceLight(w);
   const decks=plots&&new Uint8Array(ground.length);
   if(decks)for(const [i,plot] of plots.squares){
     if(plot.kind==='boardwalk')decks[i]=2*TERRAIN_ELEVATION_UNITS;
@@ -67,20 +59,29 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
     stampSegment(pixels,width,height,edge.ax,edge.ay,edge.bx,edge.by,
       shadeTerrainPixel(face,factor),face);
   };
+  const seam=(topA:typeof a,topB:typeof b,upper:number,lower:number,wall:number)=>{
+    const drop=(upper-lower)*rise;
+    if(drop<6)return;
+    const band=(upper-Math.floor((upper-4)/24)*24)*rise;
+    if(band<1.2||band>drop-1.2)return;
+    stampSegment(pixels,width,height,topA.x,topA.y+band,topB.x,topB.y+band,
+      shadeTerrainPixel(wall,.79),wall);
+  };
+  const xWall=frontX<0?.92:.69,yWall=frontY<0?.88:.77;
   const horizontal=frontX>0?[b,c,e,f]:[d,a,e,f];
   const vertical=frontY>0?[c,d,e,f]:[a,b,e,f];
   for(const index of tiles){
     const first=firstTerrainSquare(w.width,columns,index);
     const baseX=first%columns,baseY=Math.floor(first/columns);
     const paint=tilePaint(index),palette=terrainSwatches(paint.color,paint.water);
-    const walls=terrainWalls(palette);
+    const sunlight=light[index];
     const decorated=plots?.decoratedTiles.has(index)?plots.squares:undefined;
     for(const cell of order){
       const x=baseX+cell%SIDE,y=baseY+Math.floor(cell/SIDE);
       const i=(y+offset)*columns+x+offset;
       const z=level(i);
       const plot=decorated?.get(i);
-      const surface=cellPixel(grid,i,palette,paint.grain);
+      const surface=cellPixel(grid,i,palette,paint.grain,sunlight);
       const color=plot?paintPlotSquare(surface,plot.color):surface;
       a.x=origin.x*density+x*ux+y*vx;a.y=origin.y*density+x*uy+y*vy-z*rise;
       b.x=a.x+ux*sample;b.y=a.y+uy*sample;
@@ -92,16 +93,16 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
       if(frontX&&zX<z){
         e.x=horizontal[1].x;e.y=horizontal[1].y+(z-zX)*rise;
         f.x=horizontal[0].x;f.y=horizontal[0].y+(z-zX)*rise;
-        const wall=!plot&&shore[i]===Shore.ground?cellPixel(grid,i,walls.east,paint.grain):
-          shadeTerrainPixel(color,.71);
+        const wall=shadeTerrainPixel(color,xWall);
         pickTerrainFace(hit,horizontal,index,pixels,wall);
+        if(!plot&&!paint.water)seam(horizontal[0],horizontal[1],z,zX,wall);
       }
       if(frontY&&zY<z){
         e.x=vertical[1].x;e.y=vertical[1].y+(z-zY)*rise;
         f.x=vertical[0].x;f.y=vertical[0].y+(z-zY)*rise;
-        const wall=!plot&&shore[i]===Shore.ground?cellPixel(grid,i,walls.south,paint.grain):
-          shadeTerrainPixel(color,.83);
+        const wall=shadeTerrainPixel(color,yWall);
         pickTerrainFace(hit,vertical,index,pixels,wall);
+        if(!plot&&!paint.water)seam(vertical[0],vertical[1],z,zY,wall);
       }
       pickTerrainFace(hit,top,index,pixels,color);
       if(!plot){

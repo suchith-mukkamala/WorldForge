@@ -8,7 +8,9 @@ import type {TerrainSource} from './terrainCells';
 
 export type Fish={x:number;y:number;width:number;height:number;seed:number;color:string};
 type FishPose=Point&{lift:number};
-type CoastalLife={reefs:Uint8Array;fish:Fish[]};
+export type Wavelet=Point&{phase:number;period:number};
+type WavePose=Point&{opacity:number};
+type CoastalLife={depths:Uint8Array;reefs:Uint8Array;fish:Fish[];waves:Wavelet[]};
 
 const palette=['#ffd184','#f49c86','#ffb7cb','#96ebd9','#f5e4a0'];
 const cache=new WeakMap<Hydrology,CoastalLife>();
@@ -24,10 +26,20 @@ export function coastalLife(world:TerrainSource):CoastalLife{
   const beds=world.settings.volcanicWorld?topographyForWorld(world).heights:undefined;
   const spacing=5,columns=Math.ceil(width/spacing);
   const anchors=new Map<number,{index:number;score:number}>();
+  const interval=Math.max(4,Math.ceil(Math.sqrt(tiles.length/180)));
+  const waves=new Map<number,{wave:Wavelet;score:number}>();
+  const waveColumns=Math.ceil(width/interval);
   for(let i=0;i<tiles.length;i++){
     const depth=depths[i];
-    if(depth<1||depth>2)continue;
+    if(!depth)continue;
     const x=i%width,y=Math.floor(i/width);
+    const waveKey=Math.floor(y/interval)*waveColumns+Math.floor(x/interval);
+    const ripple=terrainHash(x,y,seed+6771),waveScore=ripple+(depth<4?.22:0);
+    if(waveScore>(waves.get(waveKey)?.score??-1)){
+      waves.set(waveKey,{score:waveScore,wave:{x,y,phase:ripple,
+        period:2000+terrainHash(x,y,seed+8857)*2400}});
+    }
+    if(depth>2)continue;
     const shelf=beds&&beds[i]>=SEA_LEVEL-4&&beds[i]<SEA_LEVEL;
     if(sea.has(drainage.basin[i])&&(shelf||terrainTemperature(x,y,scale,(y+.5)/height,seed)>.57)&&
       terrainNoise(x,y,7,seed+2627)>-.23)reefs[i]=1;
@@ -47,7 +59,7 @@ export function coastalLife(world:TerrainSource):CoastalLife{
     fish.push({x:Math.min(x,nx),y:Math.min(y,ny),width:Math.abs(nx-x)+1,height:Math.abs(ny-y)+1,
       seed:Math.imul(index+1,668265263)^seed,color:palette[Math.floor(roll*palette.length)%palette.length]});
   }
-  const life={reefs,fish};
+  const life={depths,reefs,fish,waves:[...waves.values()].map(({wave})=>wave)};
   cache.set(drainage,life);
   return life;
 }
@@ -84,4 +96,24 @@ export function paintFish(ctx:CanvasRenderingContext2D,fish:Fish,p:Point,
   }
   ctx.fillStyle=fish.color;
   ctx.fillRect(x,y-snap(lift*size*2.6),size,size);
+}
+
+export function wavePose(wave:Wavelet,time:number):WavePose{
+  const phase=(wave.phase+time/wave.period)%1;
+  const fade=Math.max(0,Math.sin(Math.PI*phase)*1.45-.59);
+  return {x:wave.x+.27+phase*.40,y:wave.y+.34+phase*.25,opacity:fade*.45};
+}
+
+export function paintWavelet(ctx:CanvasRenderingContext2D,pose:WavePose,unit:number,pixel:number):void{
+  if(pose.opacity<=.02)return;
+  const step=Math.max(pixel,Math.round(unit/pixel)*pixel);
+  const x=Math.round(pose.x/pixel)*pixel,y=Math.round(pose.y/pixel)*pixel;
+  ctx.fillStyle='#c4e5dc';
+  ctx.globalAlpha=pose.opacity*.66;
+  ctx.fillRect(x-step*2,y,step*2,step);
+  ctx.globalAlpha=pose.opacity;
+  ctx.fillRect(x,y-step,step*3,step);
+  ctx.globalAlpha=pose.opacity*.48;
+  ctx.fillRect(x+step*3,y,step*2,step);
+  ctx.globalAlpha=1;
 }

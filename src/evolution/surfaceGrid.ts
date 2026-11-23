@@ -13,7 +13,7 @@ import {skylandMesh,skylandShadows} from './skylands';
 export {VISUAL_TERRAIN_SIDE};
 export const Shore={ground:0,wetSand:1,drySand:2,shallows:3,channel:4,
   gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12,pool:13,spray:14,rootTrail:15,rootBark:16,rootMoss:17,rootWet:18,rootSubmerged:19} as const;
-export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array;shadow?:Uint8Array;rootRise?:Uint8Array;treeCover?:ReadonlySet<number>};
+export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array;coast?:Uint8Array;shadow?:Uint8Array;rootRise?:Uint8Array;treeCover?:ReadonlySet<number>};
 export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldTree'|'volcanism'|'underworld'|'volcanicLayout'>&
   Partial<Pick<World,'settlements'|'ancientSites'|'ruins'>>&{rootClearings?:readonly number[];feeder?:CavernFlow};
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
@@ -44,7 +44,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const ground=new Uint16Array(count),water=new Uint8Array(count);
   const material=new Uint8Array(count),shore=new Uint8Array(count),openWater=new Uint8Array(count);
   const links=divertedRiverLinks(riverLinks(world),width,feeder),flood=riverlands&&season==='Bloom'?floodplains(world):null;
-  const {reefs}=coastalLife(world),seed=world.settings.seed;
+  const {reefs,depths:coast}=coastalLife(world),seed=world.settings.seed;
   const land=Uint8Array.from(tiles,t=>+(t.biome!=='water'));
   const neighbour=(x:number,y:number)=>clamp(y,0,height-1)*width+clamp(x,0,width-1);
   const offset=Array.from({length:SIDE},(_,i)=>(i+.5)/SIDE-.5);
@@ -234,7 +234,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
       }
     }
   }
-  const grid={columns,rows,ground,water,material,shore,openWater,shadow,rootRise,treeCover};
+  const grid={columns,rows,ground,water,material,shore,openWater,coast,shadow,rootRise,treeCover};
   cache.set(base,{season,riverlands,feederKey,outflow,skylands,worldTree,clearings,grid});
   return grid;
 }

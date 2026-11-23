@@ -1,6 +1,8 @@
 import {terrainNoise} from './biomeGeneration';
-import {DESCENT_BLOCK_VIEW,paintBlockContact,paintBlockScenery} from './blockScenery';
+import type {PlacedArt} from './atlasBuildingArt';
+import {blockSceneryArt,DESCENT_BLOCK_VIEW,paintBlockContact} from './blockScenery';
 import type {Point} from './motion';
+import {litCavernPixel,realmLight} from './realmLight';
 import {realmScenery,type RealmFormation} from './realmScenery';
 import {realmPropAt} from './realmSceneryArt';
 import {shadeTerrainPixel,terrainPixel} from './terrainCellArt';
@@ -35,7 +37,7 @@ const lakeBed=['#837977','#9d907f','#bcaa8e','#cbba9c'].map(terrainPixel);
 const piers=['#796b68','#938278','#a48f7e','#b7a38a'].map(terrainPixel);
 const emberLight=terrainPixel('#ffb06a');
 const abyss=terrainPixel('#171825');
-const lavaCrust=['#442941','#653246','#863c42'].map(terrainPixel);
+const lavaCrust=['#39233c','#5d2f3c','#873b41'].map(terrainPixel);
 const mineralSpecks=['#b38fc9','#76c2c9','#e6af79'].map(terrainPixel);
 const fungusLight=['#75e3c7','#e6a9e0','#aee6a0'].map(terrainPixel);
 const steamLight=terrainPixel('#9cd1b7');
@@ -57,7 +59,7 @@ function formationLight(formation:RealmFormation|undefined){
 export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,width:number,height:number){
   const iw=width*SIDE;
   const pixels=new Uint32Array(iw*height*SIDE);
-  const scene=realmScenery(map);
+  const scene=realmScenery(map),glow=realmLight(map);
   const deepWater=map.layout?water[map.layout]:palette[sea];
   pixels.fill(abyss);
   for(let row=0;row<height;row++)for(let col=0;col<width;col++){
@@ -98,12 +100,16 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
         const bank=Math.min(north!==lava?dy:SIDE,south!==lava?SIDE-1-dy:SIDE,
           west!==lava?dx:SIDE,east!==lava?SIDE-1-dx:SIDE);
         const crust=bank===0||bank===1&&variation<-.13;
-        color=crust?lavaCrust[level%3]:palette[lava][pulse>.17?3:pulse>-.24?2:1];
+        color=crust?lavaCrust[level%3]:palette[lava][pulse>.22?3:pulse>-.24?2:1];
+        const fissure=(px+(py>>1)+mineral)&7;
+        if(!crust&&pulse>-.31&&fissure===0&&((py>>1)+dx)%3!==0)
+          color=tintStone(color,emberLight,.52);
+        if(crust&&bank===1&&(hash>>>28)>10)color=tintStone(color,emberLight,.25);
       }else if(!span&&kind===sea){
         const width=2+(hash&1);
         const shallow=shoreNorth&&dy<width||shoreSouth&&dy>=SIDE-width||
           shoreWest&&dx<width||shoreEast&&dx>=SIDE-width;
-        const ripple=(py+mineral+(hash>>>27&1))%9===0&&variation>.04;
+        const ripple=(py+(px>>3)+((px>>5)&1))%9===0&&((px+(py>>2)*5)&15)<7&&variation>-.08;
         const reef=coast<=2&&variation>.17;
         color=(shallow||reef?shallows:deepWater)[ripple?3:level];
         if(!shallow&&!reef&&coast===4)color=shadeTerrainPixel(color,.83);
@@ -133,7 +139,8 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
           else if(run>=-1.5&&width<=reach+1)color=tintStone(color,foam[0],.3);
         }
       }
-      pixels[(row*SIDE+dy)*iw+col*SIDE+dx]=color;
+      pixels[(row*SIDE+dy)*iw+col*SIDE+dx]=kind===lava?color:
+        litCavernPixel(glow,color,x,y,(dx+.5)/SIDE,(dy+.5)/SIDE);
     }
   }
   return pixels;
@@ -146,9 +153,12 @@ export function paintRealmFloor(ctx:CanvasRenderingContext2D,map:RealmMap,day:nu
     offset?.x??0,offset?.y??0);
 }
 
+export type RealmForeground={depth:number;sprite:PlacedArt};
+
 export function paintRealmTerrain(ground:CanvasRenderingContext2D,texture:HTMLCanvasElement,
-  map:RealmMap,day:number,origin:Point,width:number,height:number){
-  const small=texture.getContext('2d');if(!small)return;
+  map:RealmMap,day:number,origin:Point,width:number,height:number):RealmForeground[]{
+  const small=texture.getContext('2d');if(!small)return [];
+  const sprites:RealmForeground[]=[];
   paintRealmFloor(small,map,day,origin,width,height);
   ground.imageSmoothingEnabled=false;
   ground.drawImage(texture,0,0,width*T,height*T);
@@ -160,16 +170,22 @@ export function paintRealmTerrain(ground:CanvasRenderingContext2D,texture:HTMLCa
     if(!prop)continue;
     const point={x:(x+.5+prop.dx)*T,y:(y+.69+prop.dy)*T},unit=prop.unit*1.95;
     paintBlockContact(ground,prop.model,point,DESCENT_BLOCK_VIEW,unit);
-    paintBlockScenery(ground,prop.model,point,DESCENT_BLOCK_VIEW,unit);
+    const at={x:point.x+origin.x*T,y:point.y+origin.y*T};
+    const sprite=blockSceneryArt(prop.model,at,DESCENT_BLOCK_VIEW,unit);
+    if(sprite)sprites.push({depth:at.y,sprite});
   }
+  return sprites.sort((a,b)=>a.depth-b.depth);
 }
 
 export function paintRealmResident(ctx:CanvasRenderingContext2D,resident:RealmResident,x:number,y:number){
   const ash=resident.people==='ash-borne',skin=ash?'#7d777a':'#c58582',cloth=ash?'#78616c':'#625e87';
-  rect(ctx,'#1e202a',x-5,y-1,11,3);
-  rect(ctx,cloth,x-4,y-9,8,7);
-  rect(ctx,'#4d4352',x-3,y-4,6,3);
+  rect(ctx,'#191b2b88',x-6,y-1,12,2);rect(ctx,'#222030bf',x-4,y,8,2);
+  rect(ctx,'#313041',x-4,y-9,8,9);
+  rect(ctx,cloth,x-3,y-9,6,7);
+  rect(ctx,ash?'#c3a18f':'#9e93bc',x-3,y-9,2,4);
+  rect(ctx,'#4d4352',x-3,y-4,6,3);rect(ctx,'#d0a67d',x+1,y-4,1,1);
   rect(ctx,skin,x-3,y-15,6,7);
+  rect(ctx,ash?'#a7a1a0':'#dda099',x-3,y-13,1,4);
   rect(ctx,ash?'#a1a09e':'#714558',x-4,y-16,8,3);
   if(!ash){
     rect(ctx,'#cfb49a',x-4,y-18,2,3);
