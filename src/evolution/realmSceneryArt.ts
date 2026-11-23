@@ -5,8 +5,11 @@ import type {RealmMap} from './underworld';
 
 export function realmPropAt(map:RealmMap,scene:RealmScenery,cell:number){
   const formation=scene.formations.get(cell);
-  if(formation)return {model:blockRealmFormation(formation.kind,formation.variant),
-    dx:formation.dx,dy:formation.dy,unit:realmFormationUnit(formation.size)};
+  if(formation){
+    const landmark=scene.naturalSites.some(site=>site.cell===cell);
+    return {model:blockRealmFormation(formation.kind,formation.variant,landmark),
+      dx:formation.dx,dy:formation.dy,unit:realmFormationUnit(formation.size)};
+  }
   const house=map.houses.get(cell),gate=scene.gates.get(cell),dock=scene.docks.get(cell);
   if(house){
     const hall=scene.landmarks.has(cell),variant=Math.floor(terrainHash(cell,77,map.seed)*3);

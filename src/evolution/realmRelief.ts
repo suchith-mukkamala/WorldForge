@@ -1,8 +1,8 @@
 import {interpolatedGroundHeight} from './depthProjection';
 import {pickTerrainFace,rasterFace,type DepthPicking} from './depthTerrain';
-import {terrainHash} from './biomeGeneration';
 import {realmDepthPoint,type RealmProjection} from './stackedProjection';
-import {shadeTerrainPixel,terrainPixel} from './terrainCellArt';
+import {exposedRock,paintCutRock} from './strataRock';
+import {shadeTerrainPixel} from './terrainCellArt';
 import {VISUAL_TERRAIN_SIDE} from './terrainCells';
 import {RealmBiome,type RealmMap} from './underworld';
 import {realmFloorPixels} from './underworldArt';
@@ -11,9 +11,6 @@ export type RealmRasterRequest={id:number;projection:RealmProjection;map?:RealmM
 export type RealmRasterResult={id:number;pixels:Uint32Array<ArrayBuffer>;hit:DepthPicking};
 type PreparedRealm={map:RealmMap;palette:Uint32Array;columns:number;rows:number;elevations:Float32Array};
 const SIDE=VISUAL_TERRAIN_SIDE;
-const rock=[['#625666','#503f58','#342c43'],['#4d4355','#3d324b','#292b41']]
-  .map(course=>course.map(terrainPixel));
-
 export function realmRasterSize(width:number,height:number){
   const density=Math.min(1.55,Math.sqrt(2_300_000/(width*height)));
   return {width:Math.ceil(width*density),height:Math.ceil(height*density)};
@@ -41,35 +38,14 @@ export function prepareRealmRelief(map:RealmMap):PreparedRealm{
   return {map,palette,columns,rows,elevations};
 }
 
-/** Draw the exposed bedding as narrow courses of stone below the terrain. */
 function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint32Array,map:RealmMap){
   const sx=hit.width/projection.width,sy=hit.height/projection.height;
-  const rimX=projection.frontX>0?map.width-.5:-.5;
-  const rimY=projection.frontY>0?map.height-.5:-.5;
-  const edge=(width:number,x:number,y:number,alongX:boolean)=>{
-    const layer=rock[alongX?0:1];
-    for(let i=0;i<width;i++){
-      const a=realmDepthPoint(projection,x+(alongX?i:0),y+(alongX?0:i),0);
-      const b=realmDepthPoint(projection,x+(alongX?i+1:0),y+(alongX?0:i+1),0);
-      const grain=terrainHash(i,Number(alongX),map.seed);
-      for(const [n,ink] of layer.entries()){
-        const top=(projection.crust*n/3-1+(n===1?grain*1.4:0))*sy;
-        const bottom=projection.crust*(n+1)/3*sy;
-        rasterFace(hit,[{x:a.x*sx,y:a.y*sy+top},{x:b.x*sx,y:b.y*sy+top},
-          {x:b.x*sx,y:b.y*sy+bottom},{x:a.x*sx,y:a.y*sy+bottom}],pixels,
-        shadeTerrainPixel(ink,.87+grain*.23));
-        if(n===1&&grain>.34){
-          const line=top+(bottom-top)*(.28+grain*.25);
-          const end={x:a.x+(b.x-a.x)*.68,y:a.y+(b.y-a.y)*.68};
-          rasterFace(hit,[{x:a.x*sx,y:a.y*sy+line},{x:end.x*sx,y:end.y*sy+line},
-            {x:end.x*sx,y:end.y*sy+line+sy},{x:a.x*sx,y:a.y*sy+line+sy}],pixels,
-          shadeTerrainPixel(ink,grain>.67?1.25:.75));
-        }
-      }
-    }
-  };
-  if(projection.frontX)edge(map.height,rimX,-.5,false);
-  if(projection.frontY)edge(map.width,-.5,rimY,true);
+  const {frontX,frontY,crust}=projection;
+  const rock=exposedRock(map,frontX,frontY,crust,map.seed,'underworld',
+    (x,y)=>realmDepthPoint(projection,x,y,0));
+  paintCutRock(rock,'underworld',(points,ink)=>{
+    rasterFace(hit,points.map(p=>({x:p.x*sx,y:p.y*sy})),pixels,ink);
+  });
 }
 
 /** Project the same square heightfield into both atlas views. The floor

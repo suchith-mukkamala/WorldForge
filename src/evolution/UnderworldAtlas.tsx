@@ -6,6 +6,7 @@ import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
+import {realmScenery} from './realmScenery';
 import {seaPoint} from './shipSave';
 import {realmDepthPoint,STACKED_CAMERA,stackedProjection} from './stackedProjection';
 import {VISUAL_TERRAIN_SIDE} from './terrainCells';
@@ -13,7 +14,7 @@ import {projectWorldLayer,RealmBiome,realmFordOpen,realmLinkName,type RealmLink,
 import {paintRealmFloor,UNDERWORLD_BIOMES} from './underworldArt';
 import {volcanicDay} from './volcanism';
 
-type Feature={cell:number;name:string;kind:'town'|'shaft'|'passage';link?:RealmLink};
+type Feature={cell:number;name:string;kind:'town'|'shaft'|'passage'|'landmark';link?:RealmLink};
 type CameraMove={center:number}|{anchor:WorldZoomAnchor};
 type Perspective='depth'|'overhead';
 const zoomLabel=(n:number)=>Math.round(n*100)+'%';
@@ -100,14 +101,19 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
   const skipClick=useRef(false);
   const drag=useRef<{pointer:number;x:number;y:number;scrollLeft:number;scrollTop:number;moving:boolean}|undefined>(undefined);
   const chart=world.descent?.realm?.chart;
+  const naturalSites=realmScenery(map).naturalSites;
   const features:Feature[]=[
     ...map.towns.map(town=>({cell:town.index,name:town.name,kind:'town' as const})),
     ...map.links.filter(link=>link.kind==='crater'||chart?.includes(link.surface))
       .map(link=>({cell:link.cell,name:realmLinkName(world,link),
         kind:link.kind==='crater'?'shaft' as const:'passage' as const,link})),
+    ...naturalSites.map(site=>({cell:site.cell,name:site.name,kind:'landmark' as const})),
   ];
   const town=map.towns.find(town=>town.index===selected);
   const link=features.find(feature=>feature.cell===selected)?.link;
+  const site=naturalSites.find(site=>site.cell===selected);
+  const name=town?.name??(link&&realmLinkName(world,link))??site?.name;
+  const pins=features.filter(feature=>feature.kind!=='landmark'||feature.cell===selected);
   const surface=link?.surface??(selected===undefined?undefined:projectWorldLayer(selected,map,world));
   const place=surface===undefined?undefined:seaPoint(world.width,surface);
   const biome=selected===undefined?undefined:UNDERWORLD_BIOMES[map.biomes[selected]];
@@ -130,7 +136,7 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
   const position=(cell:number)=>{
     const p=fraction(cell);return {left:p.x*100+'%',top:p.y*100+'%'};
   };
-  const labels=atlasLabelSides([...features].sort((a,b)=>Number(b.cell===selected)-Number(a.cell===selected))
+  const labels=atlasLabelSides(pins.sort((a,b)=>Number(b.cell===selected)-Number(a.cell===selected))
     .map(feature=>{
       const p=fraction(feature.cell);
       return {id:feature.cell,name:feature.name,x:p.x*size.x,y:p.y*size.y};
@@ -205,7 +211,7 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
       data-perspective={view}>
       <div className="evo-card-heading evo-map-heading">
         <div className="atlas-map-title" aria-live="polite">
-          <strong>{town?.name??(link&&realmLinkName(world,link))??'Underworld map'}</strong>
+          <strong>{name??'Underworld map'}</strong>
           <small>{link?'Passage to the Surface':biome?.name??(relief?'Raised terrain':'Underground world layer')}</small>
         </div>
         <div className="evo-map-actions">
@@ -275,12 +281,12 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
             <RealmFloor world={world} map={map} close={!overview} onInspect={setSelected}/>}
           {overview&&!relief&&regions.map(region=><span key={region.name} className="realm-region-label"
             style={position(region.cell)} aria-hidden="true">{region.name}</span>)}
-          {features.map(feature=><button key={feature.cell} type="button"
+          {pins.map(feature=><button key={feature.cell} type="button"
             className="realm-atlas-pin" data-kind={feature.kind}
             data-selected={feature.cell===selected||undefined}
             aria-label={'Locate '+feature.name} title={feature.name}
             style={position(feature.cell)} onClick={()=>locate(feature.cell)}>
-            <span className="realm-pin-mark" aria-hidden="true">{feature.kind==='shaft'?'▴':feature.kind==='town'?'▪':'↥'}</span>
+            <span className="realm-pin-mark" aria-hidden="true">{feature.kind==='shaft'?'▴':feature.kind==='town'?'▪':feature.kind==='landmark'?'◆':'↥'}</span>
             {(overview||feature.cell===selected)&&labels.has(feature.cell)&&
               <span className="realm-pin-name" aria-hidden="true" data-side={labels.get(feature.cell)}>{feature.name}</span>}
           </button>)}
@@ -299,10 +305,11 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
     </section>
     <aside className="realm-atlas-info">
       <section className="evo-section-card" aria-label="Underworld place details">
-        <div className="evo-card-heading"><strong>{town?.name??(link&&realmLinkName(world,link))??biome?.name??'Underworld'}</strong></div>
+        <div className="evo-card-heading"><strong>{name??biome?.name??'Underworld'}</strong></div>
         {(town||selected===undefined)&&census&&<p>{census.demons} demons · {census.ashBorne} Ash Borne</p>}
         {place&&<p className="realm-atlas-coordinates">World position · X {place.x} · Y {place.y}</p>}
         {town?.berth!==undefined&&<p>Port on the Buried Sea</p>}
+        {site&&<p>{site.description}</p>}
         {surface!==undefined&&onSurface&&<button type="button" className="atlas-terrain-cell-zoom"
           onClick={()=>onSurface(surface)}>Show on Surface</button>}
         {link&&onMark&&<button type="button" className="atlas-terrain-cell-zoom"

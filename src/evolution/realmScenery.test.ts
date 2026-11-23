@@ -14,6 +14,12 @@ describe('Underworld scenery',()=>{
       new Set(['fungus','crystal','spire','vent','calcite']));
     const occupied=new Set([...map.roads,...map.houses.keys(),
       ...map.links.map(link=>link.cell),...map.towns.map(town=>town.index)]);
+    expect(art.naturalSites.map(site=>site.name)).toEqual(['Glowroot Canopy','Prism Gallery','Mineral Terraces']);
+    expect(new Set(art.naturalSites.map(site=>site.cell)).size).toBe(art.naturalSites.length);
+    for(const site of art.naturalSites){
+      expect(art.formations.has(site.cell)).toBe(true);
+      expect(occupied.has(site.cell)).toBe(false);
+    }
     for(const [cell,form] of art.formations){
       expect(occupied.has(cell)).toBe(false);
       expect(map.biomes[cell]).not.toBe(RealmBiome.lava);

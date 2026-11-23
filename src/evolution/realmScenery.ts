@@ -7,6 +7,7 @@ export type RealmFormationKind='fungus'|'crystal'|'spire'|'vent'|'calcite';
 export type RealmFormation={kind:RealmFormationKind;variant:number;size:number;dx:number;dy:number};
 export type RealmEffectKind='spore'|'spark'|'foam'|'steam'|'gleam'|'bat';
 export type RealmEffect={cell:number;kind:RealmEffectKind;phase:number};
+export type RealmNaturalSite={cell:number;name:string;description:string};
 export type RealmScenery={
   formations:Map<number,RealmFormation>;
   landmarks:Set<number>;
@@ -14,9 +15,15 @@ export type RealmScenery={
   gates:Map<number,RealmLink['kind']>;
   coast:Uint8Array;
   effects:RealmEffect[];
+  naturalSites:RealmNaturalSite[];
 };
 const scenes=new WeakMap<RealmMap,RealmScenery>();
 const {basalt,ember,lava,steam,glowroot,crystal,chalk,sea}=RealmBiome;
+const sites=[
+  {kind:'fungus',name:'Glowroot Canopy',description:'Tall fungi gather where moisture seeps through the rock above.'},
+  {kind:'crystal',name:'Prism Gallery',description:'Bright mineral spires rise among smaller shards.'},
+  {kind:'vent',name:'Mineral Terraces',description:'Warm spring water fills shallow pools on the stone steps.'},
+] as const;
 
 function coastalDepth({width,height,biomes}:RealmMap){
   const coast=new Uint8Array(biomes.length);
@@ -78,7 +85,18 @@ export function realmScenery(map:RealmMap):RealmScenery{
     if(form==='crystal'&&phase>.2)effects.push({cell:i,kind:'gleam',phase});
     if(form==='spire'&&kind===basalt&&phase>.6)effects.push({cell:i,kind:'bat',phase});
   }
-  const scene={formations,landmarks,docks,gates,coast,effects};
+  const naturalSites=sites.flatMap(({kind,name,description})=>{
+    let cell=-1,best=-Infinity;
+    for(const [i,form] of formations){
+      if(form.kind!==kind)continue;
+      const neighbors=seaNeighbors(i,w,biomes.length);
+      const cluster=neighbors.filter(j=>formations.get(j)?.kind===kind).length;
+      const score=form.size*3+cluster*1.6+terrainHash(i,271,seed);
+      if(score>best){cell=i;best=score;}
+    }
+    return cell<0?[]:[{cell,name,description}];
+  });
+  const scene={formations,landmarks,docks,gates,coast,effects,naturalSites};
   scenes.set(map,scene);
   return scene;
 }

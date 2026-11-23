@@ -2,14 +2,14 @@ import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ATLAS_TOWN_ZOOM,atlasScrollGeometry} from './atlasMap';
 import {BIOME_INFO,type Brush,type World} from './engine';
 import {DepthCanvas} from './DepthCanvas';
-import {terrainHash} from './biomeGeneration';
 import type {DepthCamera} from './depthProjection';
 import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {seaPoint} from './shipSave';
-import {STACKED_CAMERA,STACKED_RELIEF,stackedProjection} from './stackedProjection';
+import {STACKED_CAMERA,STACKED_RELIEF,STACKED_SEA,stackedProjection} from './stackedProjection';
+import {exposedRock,hangingVines,paintCutRock,paintHangingVines,rockColor} from './strataRock';
 import {topographyForWorld} from './topography';
 import {projectWorldLayer,realmLinkName,type RealmLink,type RealmMap} from './underworld';
 import {UNDERWORLD_BIOMES} from './underworldArt';
@@ -27,37 +27,23 @@ function poly(ctx:CanvasRenderingContext2D,points:readonly Point[],ink:string){
   ctx.closePath();ctx.fillStyle=ink;ctx.fill();
 }
 
-function StackedRock({projection,links,active}:{projection:Projection;
+function StackedRock({projection,world,links,active}:{projection:Projection;world:World;
   links:readonly {surface:Point;underworld:Point;link:RealmLink}[];active?:number}){
   const ref=useRef<HTMLCanvasElement>(null);
-  const {size,surface,footprint,upperCrust}=projection;
+  const {size,surface,upperCrust,lowerTop}=projection;
+  const seed=world.settings.seed;
+  const rock=useMemo(()=>exposedRock(world,surface.frontX,surface.frontY,upperCrust,seed,
+    'surface',(x,y)=>surface.projectSmooth(x,y,STACKED_SEA)),
+    [world.width,world.height,surface,upperCrust,seed]);
+  const vines=useMemo(()=>hangingVines(rock,lowerTop,seed),[rock,lowerTop,seed]);
   const scale=Math.min(1,Math.sqrt(1_900_000/(size.width*size.height)));
   useEffect(()=>{
     const canvas=ref.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx)return;
     ctx.setTransform(canvas.width/size.width,0,0,canvas.height/size.height,0,0);
     ctx.clearRect(0,0,size.width,size.height);
-    const edges:number[]=[];
-    if(surface.frontX)edges.push(surface.frontX>0?1:3);
-    if(surface.frontY)edges.push(surface.frontY>0?2:0);
-    for(const edge of edges){
-      const a=footprint[edge],b=footprint[(edge+1)%4];
-      const colors=edge%2?['#786153','#554651','#3d414e']:['#ae8b70','#785d56','#544b55'];
-      for(const [n,ink] of colors.entries()){
-        const top=-1+upperCrust*n/3,bottom=upperCrust*(n+1)/3;
-        poly(ctx,[{x:a.x,y:a.y+top},{x:b.x,y:b.y+top},
-          {x:b.x,y:b.y+bottom},{x:a.x,y:a.y+bottom}],ink);
-      }
-      const columns=Math.ceil(Math.abs(b.x-a.x)/8);
-      for(let i=0;i<columns;i++){
-        const noise=terrainHash(i,edge,832),shift=upperCrust*(.22+noise*.63);
-        const start=i/columns,end=(i+.4+noise*.55)/columns;
-        const left={x:a.x+(b.x-a.x)*start,y:a.y+(b.y-a.y)*start+shift};
-        const right={x:a.x+(b.x-a.x)*end,y:a.y+(b.y-a.y)*end+shift};
-        poly(ctx,[left,right,{x:right.x,y:right.y+2},{x:left.x,y:left.y+2}],
-          noise>.64?'#dcbba42c':'#20263638');
-      }
-    }
+    paintCutRock(rock,'surface',(points,ink)=>poly(ctx,points,rockColor(ink)));
+    paintHangingVines(ctx,vines);
     for(const shaft of links){
       const a=shaft.surface,b=shaft.underworld,on=shaft.link.surface===active;
       const bend={x:a.x,y:a.y+(b.y-a.y)*.74};
@@ -69,8 +55,8 @@ function StackedRock({projection,links,active}:{projection:Projection;
       ctx.strokeStyle=on?'#fff0b8':'#e1b589';ctx.lineWidth=1;
       ctx.setLineDash([4,4]);path();ctx.setLineDash([]);
     }
-  },[projection,links,active]);
-  return <canvas ref={ref} className="strata-rock" aria-hidden="true"
+  },[size,rock,vines,links,active]);
+  return <canvas ref={ref} className="strata-rock" aria-hidden="true" data-vines={vines.length}
     width={Math.ceil(size.width*scale)} height={Math.ceil(size.height*scale)}/>;
 }
 
@@ -202,7 +188,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
         <div className="atlas-sheet strata-sheet" ref={sheet}
           style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*size.width/size.height+'))',
             aspectRatio:size.width+'/'+size.height}}>
-          <StackedRock projection={projection} links={links} active={corresponding?.link.surface}/>
+          <StackedRock projection={projection} world={world} links={links} active={corresponding?.link.surface}/>
           <div className="strata-level strata-upper" style={{height:surface.size.height/size.height*100+'%'}}>
             <DepthCanvas world={world} overlay="terrain" brush={inspect}
               selected={selected?.layer==='surface'?chosen??null:null}
