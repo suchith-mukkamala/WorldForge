@@ -1,34 +1,24 @@
-import type {Biome,World} from './engine';
+import type {World} from './engine';
 import type {Building} from './construction';
 import {blockProp,type BlockModel} from './blockModels';
 import {blockSceneryArt,DESCENT_BLOCK_VIEW,paintBlockContact,paintBlockScenery} from './blockScenery';
 import {biomeTreeAt,isTreeKind,type TreeKind} from './biomeTrees';
 import {terrainDetailAt} from './terrainDetails';
 import {topographyForWorld} from './topography';
-import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
-import {firstTerrainSquare,shoreColor} from './terrainCellArt';
+import {paintTerrainMosaic} from './terrainCellArt';
+import {highlandColor,overheadTerrainColor} from './atlasTerrain';
+import {coastalLife} from './coastalLife';
+import {woodlandCover,woodlandHabitat} from './woodland';
 import {springFlood} from './riverSeasons';
 import {boardwalkSite} from './riverArchitecture';
 import type {VisualSeason} from './sceneAtmosphere';
-import {pixelTerrainHash} from './depthWorldArt';
+import {pixelTerrainHash,surfaceColor} from './depthWorldArt';
 import {adventureDistance,type AdventureLandscape,type AdventureRegion} from './adventureMap';
 import type {Point} from './motion';
 
 export const ADVENTURE_TILE=24;
 const T=ADVENTURE_TILE;
 
-const ground:Record<Biome,readonly [string,string,string]> = {
-  plains:['#779d62','#628651','#9ab674'],
-  forest:['#4b825d','#386c53','#67956b'],
-  mountain:['#8a9486','#737e77','#b0b2a0'],
-  cave:['#707e76','#596761','#929f8d'],
-  wasteland:['#a6836e','#926f65','#ba977e'],
-  volcanic:['#855e62','#6b4d59','#aa7772'],
-  water:['#408c97','#347b8d','#64b6b5'],
-  taiga:['#63867b','#4d766f','#86a297'],
-  wetland:['#6e9273','#537661','#91af81'],
-  savanna:['#b19c6a','#928257','#c4b278'],
-};
 const paving:Record<AdventureLandscape,readonly [string,string,string]> = {
   meadow:['#917551','#c0a471','#d3b984'],
   woodland:['#5f6948','#a69861','#c6ad76'],
@@ -80,57 +70,22 @@ type ArtMap={
 export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
   region:AdventureRegion,map:ArtMap,origin:Point,columns:number,rows:number){
   const {width,height}=world;
-  const surface=surfaceGrid(world),square=T/VISUAL_TERRAIN_SIDE;
-  rect(ctx,'#142624',0,0,ctx.canvas.width,ctx.canvas.height);
+  const depths=coastalLife(world).depths,heights=topographyForWorld(world).heights;
+  ctx.imageSmoothingEnabled=false;
+  paintTerrainMosaic(ctx,world,T,i=>{
+    const biome=world.tiles[i].biome,grain=pixelTerrainHash(i%width,Math.floor(i/width),world.settings.seed);
+    const cover=woodlandHabitat(biome)?woodlandCover(world.woodland,i):undefined;
+    const high=world.settings.landforms?highlandColor(biome,heights[i],grain):undefined;
+    const color=biome==='water'?overheadTerrainColor(biome,depths[i]):
+      high??surfaceColor(biome,i%width,Math.floor(i/width),world.settings.seed,cover);
+    return {color,grain,water:biome==='water'};
+  },'#142624',{origin,width:columns,height:rows});
   const pathAt=(i:number)=>region.trail.has(i)||map.roads.has(i)||map.bridges.has(i);
   for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){
     const x=origin.x+col,y=origin.y+row,px=col*T,py=row*T;
     if(x<0||y<0||x>=width||y>=height)continue;
     const i=y*width+x,biome=world.tiles[i].biome;
-    const [base,dark,light]=ground[biome];
     const noise=pixelTerrainHash(x,y,world.settings.seed);
-    rect(ctx,base,px,py,T,T);
-    if(noise%3===0)rect(ctx,biome==='water'?'#4b99a3':'#fff2a00b',px,py,T,T);
-    if(biome==='water'){
-      rect(ctx,dark,px+2+noise%8,py+14,9,2);
-      rect(ctx,light,px+4+noise%6,py+5+noise%5,8,1);
-      rect(ctx,'#adccc77a',px+9+noise%7,py+17,4,1);
-    }else{
-      for(let k=0;k<4;k++){
-        const nx=px+2+(noise>>>((k+1)*4))%18;
-        const ny=py+2+(noise>>>(k*5))%18;
-        rect(ctx,k%2?dark:light,nx,ny,2+k%2,1);
-        if(biome==='forest'&&k%2)rect(ctx,dark,nx+1,ny-2,1,2);
-      }
-      // Sand and foam trace the true shore, including irregular coves.
-      const edges:[[number,number,number,number],number,boolean][]=[
-        [[px,py+T-3,T,3],i+width,y<height-1],[[px,py,T,3],i-width,y>0],
-        [[px+T-3,py,3,T],i+1,x<width-1],[[px,py,3,T],i-1,x>0],
-      ];
-      for(const [shape,neighbor,exists] of edges){
-        if(exists&&world.tiles[neighbor].biome!=='water'&&biome!==world.tiles[neighbor].biome){
-          const [nx,ny,w]=shape;
-          const tint=ground[world.tiles[neighbor].biome][0]+'99';
-          const ripple=4+noise%7;
-          if(w===3){
-            rect(ctx,tint,nx,ny+3,3,ripple);
-            rect(ctx,tint,nx,ny+16,2,5);
-          }else{
-            rect(ctx,tint,nx+3,ny,ripple,3);
-            rect(ctx,tint,nx+16,ny,5,2);
-          }
-        }
-      }
-    }
-    const first=firstTerrainSquare(width,surface.columns,i);
-    for(let sy=0;sy<VISUAL_TERRAIN_SIDE;sy++)for(let sx=0;sx<VISUAL_TERRAIN_SIDE;sx++){
-      const cell=first+sy*surface.columns+sx;
-      const color=shoreColor(surface.shore[cell]);
-      if(color)rect(ctx,color,px+sx*square,py+sy*square,square,square);
-      const shade=surface.shadow?.[cell];
-      if(shade)rect(ctx,shade===3?'#18283019':shade===1?'#18283032':'#18283059',
-        px+sx*square,py+sy*square,square,square);
-    }
     const bridge=map.bridges.has(i)||map.roads.has(i)&&boardwalkSite(world,i);
     if(pathAt(i)&&(!springFlood(world,i)||map.roads.has(i)||bridge)){
       const [edge,fill,edgeLight]=paving[region.landscape];
@@ -141,9 +96,30 @@ export function paintAdventureGround(ctx:CanvasRenderingContext2D,world:World,
       rect(ctx,edge,px+5,py+yy,14,ey-yy);
       rect(ctx,bridge?'#a88154':fill,px+xx,py+7,ex-xx,10);
       rect(ctx,bridge?'#a88154':fill,px+7,py+yy,10,ey-yy);
-      for(let k=0;k<3;k++){
-        if(bridge)rect(ctx,'#ddaf74',px+6,py+7+k*4,12,1);
-        else rect(ctx,edgeLight,px+8+(noise+k*3)%6,py+8+k*3,3,1);
+      if(bridge){
+        const alongX=(east||west)&&!(north||south);
+        for(let k=0;k<4;k++){
+          const offset=5+k*4;
+          if(alongX){
+            rect(ctx,'#72583e',px+offset,py+7,1,10);
+            rect(ctx,'#d1a77a',px+offset+1,py+7,1,9);
+          }else{
+            rect(ctx,'#72583e',px+7,py+offset,10,1);
+            rect(ctx,'#d1a77a',px+7,py+offset+1,9,1);
+          }
+        }
+      }else{
+        const stone=(dx:number,dy:number)=>{
+          const n=(Math.imul(dx+px,11)^Math.imul(dy+py,19)^noise)>>>0;
+          if(n%9>=6)return;
+          rect(ctx,n%3===0?edge:edgeLight,px+dx,py+dy,2+(n&1),1);
+        };
+        for(let dy=8;dy<16;dy+=3)for(let dx=xx+2+(dy%2);dx<ex-2;dx+=5)stone(dx,dy);
+        for(let dy=yy+2;dy<ey-2;dy+=3)if(dy<7||dy>=17){
+          stone(9+(dy%3),dy);stone(14,dy);
+        }
+        rect(ctx,edgeLight,px+xx+1,py+6,Math.max(1,ex-xx-2),1);
+        rect(ctx,edgeLight,px+6,py+yy+1,1,Math.max(1,ey-yy-2));
       }
     }
     const distance=adventureDistance({x,y},region.focus);

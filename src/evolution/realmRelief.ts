@@ -60,10 +60,15 @@ function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint
 function paintCliff(hit:DepthPicking,pixels:Uint32Array,face:readonly Point[],tile:number,
   drop:number,ink:number,banded:boolean){
   pickTerrainFace(hit,face,tile,pixels,ink);
-  if(!banded||drop<9)return;
-  const [a,b]=face,upper=drop*.60,lower=upper+Math.min(3,drop*.11);
-  pickTerrainFace(hit,[{x:a.x,y:a.y+upper},{x:b.x,y:b.y+upper},
-    {x:b.x,y:b.y+lower},{x:a.x,y:a.y+lower}],tile,pixels,shadeTerrainPixel(ink,.78));
+  if(!banded||drop<7)return;
+  const [a,b]=face;
+  const seam=(at:number,thickness:number,tone:number)=>{
+    const upper=drop*at,lower=upper+thickness;
+    pickTerrainFace(hit,[{x:a.x,y:a.y+upper},{x:b.x,y:b.y+upper},
+      {x:b.x,y:b.y+lower},{x:a.x,y:a.y+lower}],tile,pixels,shadeTerrainPixel(ink,tone));
+  };
+  seam(.57,Math.min(3,drop*.12),.73);
+  if(drop>13)seam(.24,Math.min(2,drop*.08),1.17);
 }
 
 /** Project the same square heightfield into both atlas views. The floor

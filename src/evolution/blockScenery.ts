@@ -28,8 +28,11 @@ function faceColor(color:string,light:number,tone:number):number{
   const cached=colorCache.get(key);
   if(cached)return cached;
   const base=parseInt(color.slice(1),16),factor=light*(.94+.04*tone);
-  const channel=(shift:number)=>Math.min(255,Math.round((base>>shift&255)*factor));
-  const result=(255<<24|channel(0)<<16|channel(8)<<8|channel(16))>>>0;
+  const cool=Math.max(0,1-light);
+  const warm=Math.max(0,light-1);
+  const channel=(shift:number,grade:number)=>Math.min(255,Math.round((base>>shift&255)*(factor+grade)));
+  const result=(255<<24|channel(0,cool*.19-warm*.095)<<16|
+    channel(8,cool*.05)<<8|channel(16,warm*.11-cool*.11))>>>0;
   colorCache.set(key,result);
   return result;
 }

@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {opaqueArtAt,paintAtlasBuilding} from './atlasBuildingArt';
 import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {AdventureDirections} from './AdventureDirections';
 import {adventureDistance} from './adventureMap';
@@ -22,7 +23,7 @@ import {seaNeighbors,seaPoint} from './shipSave';
 import {UnderworldAtlas} from './UnderworldAtlas';
 import {realmLinkName,realmPeopleName,realmResidents,RealmBiome,
   type RealmResident} from './underworld';
-import {paintRealmResident,paintRealmTerrain,REALM_TILE,UNDERWORLD_BIOMES} from './underworldArt';
+import {paintRealmResident,paintRealmTerrain,REALM_TILE,UNDERWORLD_BIOMES,type RealmForeground} from './underworldArt';
 import {VISUAL_TERRAIN_SIDE} from './terrainCells';
 import {useAdventureControls} from './useAdventureControls';
 import {volcanicDay} from './volcanism';
@@ -45,6 +46,7 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame=0,previous:Scene|undefined,frameSize={width:312,height:184},density=3;
     let painted:Point|undefined,cols=0,rows=0,glimmers:RealmGlimmer[]=[],tracks:RealmTrack[]=[],paintedEffects=-Infinity;
+    let foreground:RealmForeground[]=[];
     const startPoint=seaPoint(width,start.visit.at);
     let motion:Motion={from:startPoint,to:startPoint,start:0,duration:1,facing:'north'};
     let moving=false;
@@ -100,14 +102,43 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
       }
       if(movedView||previous?.day!==day){
         ground.setTransform(density,0,0,density,0,0);
-        paintRealmTerrain(ground,texture,map,day,origin,cols,rows);painted=origin;
+        foreground=paintRealmTerrain(ground,texture,map,day,origin,cols,rows);painted=origin;
       }
       ctx.setTransform(density,0,0,density,0,0);ctx.imageSmoothingEnabled=false;
       ctx.drawImage(stamp,origin.x*TILE-camera.x,origin.y*TILE-camera.y,cols*TILE,rows*TILE);
       ctx.save();ctx.translate(-camera.x,-camera.y);
       const time=reduced.matches?1600:now;
-      paintRealmAmbient(ctx,glimmers,time,1.15);
       paintRealmWildlife(ctx,tracks,time,1.15);
+      const actors:{depth:number;paint:()=>void}[]=[];
+      const boatAt=ship?.at??map.towns.find(town=>town.berth!==undefined)?.berth;
+      if(boatAt!==undefined&&!atSea){
+        const dock=seaPoint(width,boatAt),at={x:(dock.x+.5)*TILE,y:(dock.y+.57)*TILE};
+        actors.push({depth:at.y,paint:()=>paintBlockScenery(ctx,
+          blockSailboat(ship?.heading??'south',false),at,DESCENT_BLOCK_VIEW,1.25)});
+      }
+      for(const resident of residents){
+        const {x,y}=seaPoint(width,resident.index);
+        if(x<origin.x||y<origin.y||x>=origin.x+cols||y>=origin.y+rows)continue;
+        const depth=y*TILE+18;
+        actors.push({depth,paint:()=>paintRealmResident(ctx,resident,x*TILE+12,depth)});
+      }
+      actors.push({depth:p.y,paint:()=>{
+        if(atSea)paintBlockScenery(ctx,blockSailboat(ship.heading,true),
+          {x:p.x,y:p.y-4},DESCENT_BLOCK_VIEW,1.45);
+        else paintPerson(ctx,actor,Math.round(p.x-8),Math.round(p.y-20),facing,
+          position.stride,position.walking?'walk':'idle');
+      }});
+      actors.sort((a,b)=>a.depth-b.depth);
+      let next=0;
+      for(const {depth,sprite} of foreground){
+        while(next<actors.length&&actors[next].depth<=depth)actors[next++].paint();
+        if(depth>p.y&&(opaqueArtAt(sprite,p.x,p.y-9)||opaqueArtAt(sprite,p.x,p.y-14)))
+          ctx.globalAlpha=.34;
+        paintAtlasBuilding(ctx,sprite);
+        ctx.globalAlpha=1;
+      }
+      while(next<actors.length)actors[next++].paint();
+      paintRealmAmbient(ctx,glimmers,time,1.15);
       paintedEffects=now;
       if(marked!==undefined){
         const {x,y}=seaPoint(width,marked),px=x*TILE,py=y*TILE;
@@ -118,20 +149,6 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
           ctx.fillRect(px+xx,py+yy+(yy===2?1:-1),1,1);
         }
       }
-      const boatAt=ship?.at??map.towns.find(town=>town.berth!==undefined)?.berth;
-      if(boatAt!==undefined&&!atSea){
-        const dock=seaPoint(width,boatAt);
-        paintBlockScenery(ctx,blockSailboat(ship?.heading??'south',false),
-          {x:(dock.x+.5)*TILE,y:(dock.y+.57)*TILE},DESCENT_BLOCK_VIEW,1.25);
-      }
-      for(const resident of residents){
-        const {x,y}=seaPoint(width,resident.index);
-        if(x<origin.x||y<origin.y||x>=origin.x+cols||y>=origin.y+rows)continue;
-        paintRealmResident(ctx,resident,x*TILE+12,y*TILE+18);
-      }
-      if(atSea)paintBlockScenery(ctx,blockSailboat(ship.heading,true),{x:p.x,y:p.y-4},DESCENT_BLOCK_VIEW,1.45);
-      else paintPerson(ctx,actor,Math.round(p.x-8),Math.round(p.y-20),facing,
-        position.stride,position.walking?'walk':'idle');
       ctx.restore();
       previous=view;moving=position.walking;
     };

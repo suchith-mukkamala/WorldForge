@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.36.0 — Light & Materials** adds terrain-cast shadows, banded cliffs, and moving square wave crests to the Surface. Lava, crystals, and glowroot groves light nearby cave floors and water. Descend shares the atlas terrain textures, adds richer street and character detail, and fades scenery when it hides your explorer.
+
 - **v2.35.0 — Caldera Lakes & Drifting Clouds** adds translucent square clouds to the Surface in both perspectives and in **Stacked 3D**. Find **Caldera Lake** under **Places** in a new volcanic world. When spring runoff opens its rim, a channel reaches the coast and the receding lake exposes terraces you can explore on foot.
 
 - **v2.34.1 — Volcanic Island Variety** gives each seed distinct volcanic coastlines, slopes, summits, and coral lagoons.

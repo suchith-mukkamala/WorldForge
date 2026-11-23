@@ -21,7 +21,7 @@ import {coastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {paintTerrainMosaic} from './terrainCellArt';
 import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
-import {AtlasFish} from './AtlasFish';
+import {AtlasWater} from './AtlasWater';
 import {springFlood,waterSeason} from './riverSeasons';
 import {boardwalkSite} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
@@ -641,8 +641,8 @@ export function WorldCanvas({
     {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds seed={world.settings.seed}
       columns={world.width} rows={world.height} width={mapWidth}
       unit={CELL/(Math.SQRT2*VISUAL_TERRAIN_SIDE)} view={cloudView} project={overheadCloud}/>}
-    {fillWidth&&overlay==='terrain'&&atlasLevel(zoom)!=='world'&&
-      <AtlasFish world={world} width={mapWidth} height={mapHeight} square={1.1} project={p=>{
+    {fillWidth&&overlay==='terrain'&&
+      <AtlasWater world={world} width={mapWidth} height={mapHeight} square={1.1} showFish={atlasLevel(zoom)!=='world'} project={p=>{
         if(skylands&&overheadSkylandHit(skylands,p.x,p.y)!==undefined)return;
         if(!isMultiIslandLayout(world.settings.layout)&&!visibleCoastTile(Math.floor(p.x),
           Math.floor(p.y),world.width,world.height,'water',world.settings.seed))return;

@@ -13,11 +13,11 @@ import type {RealmFormationKind} from './realmScenery';
 import type {RealmLink} from './underworld';
 
 export const BLOCK_FACES=[
-  {dx:0,dy:0,dz:1,quad:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],light:1.18},
-  {dx:1,dy:0,dz:0,quad:[[1,0,0],[1,1,0],[1,1,1],[1,0,1]],light:.76},
+  {dx:0,dy:0,dz:1,quad:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],light:1.16},
+  {dx:1,dy:0,dz:0,quad:[[1,0,0],[1,1,0],[1,1,1],[1,0,1]],light:.71},
   {dx:-1,dy:0,dz:0,quad:[[0,0,0],[0,1,0],[0,1,1],[0,0,1]],light:.94},
-  {dx:0,dy:1,dz:0,quad:[[0,1,0],[1,1,0],[1,1,1],[0,1,1]],light:.89},
-  {dx:0,dy:-1,dz:0,quad:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],light:.71},
+  {dx:0,dy:1,dz:0,quad:[[0,1,0],[1,1,0],[1,1,1],[0,1,1]],light:.81},
+  {dx:0,dy:-1,dz:0,quad:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],light:.95},
 ] as const;
 type Face={x:number;y:number;z:number;direction:number;color:string};
 export type BlockModel={key:string;faces:readonly Face[];feet:readonly Point[];footing:'stone'|'timber';sculpted?:boolean};
@@ -313,6 +313,15 @@ function steppedRoof(grid:BlockGrid,left:number,back:number,z:number,width:numbe
       grid.box(x,y,z,w,1,1,tint(roof,BEAM,.3));
       grid.box(x,y+d-1,z,w,1,1,tint(roof,BEAM,.3));
     }
+    if(step<steps-1){
+      for(let u=1;u<d-1;u++){
+        const tone=(u+step)%4;
+        if(tone===0)grid.box(x,y+u,z+step,1,1,1,tint(roof,BEAM,.22));
+        if(tone===2)grid.box(x+w-1,y+u,z+step,1,1,1,tint(roof,accent,.36));
+      }
+      if(flat&&d>2)for(let u=1;u<w-1;u+=3)
+        grid.box(x+u,y+d-1,z+step,1,1,1,tint(roof,BEAM,.23));
+    }
     if(snow&&step>=1&&step<steps-1&&w>1&&d>2){
       grid.box(x,y+1,z+step,1,d-2,1,'#c0cdd0');
       grid.box(x+w-1,y+2,z+step,1,Math.max(1,d-4),1,'#a9b9bc');
@@ -514,11 +523,19 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
     grid.box(0,y+depth-1,2,1,1,1,'#997757');
     grid.box(x,y+depth-1,1,width,1,1,stone);
     grid.box(-1,y+depth,0,2,2,1,course);
-    const light=stage==='finishing'?'#756c63':'#dfbb79';
+    const light=stage==='finishing'?'#756c63':'#e8c284';
+    const sill=tint(style.trim,stone,.30);
+    for(let u=x+1;u<x+width-1;u+=2){
+      grid.box(u,y,1,1,1,1,course);
+      grid.box(u,y+depth-1,Math.max(5,h-1),1,1,1,tint(wall,stone,.22));
+    }
     for(const u of [x+1,x+width-3]){
       grid.box(u,y+depth-1,3,2,1,2,type==='storage'?wood:light);
-      grid.box(u,y+depth,2,2,1,1,style.trim);
-      if(type!=='storage')grid.box(u,y+depth-1,4,2,1,1,tint(light,BEAM,.32));
+      grid.box(u,y+depth,2,2,1,1,sill);
+      if(type!=='storage'){
+        grid.box(u,y+depth-1,4,1,1,1,tint(light,'#fff1bb',.49));
+        grid.box(u+1,y+depth-1,4,1,1,1,tint(light,BEAM,.34));
+      }
     }
     grid.box(x,-2,3,1,2,2,light);
     grid.box(x+width-1,0,3,1,2,2,light);

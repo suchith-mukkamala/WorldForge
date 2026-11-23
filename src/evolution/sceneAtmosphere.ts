@@ -15,17 +15,17 @@ export type Atmosphere={
 };
 function seasonPalette(season:VisualSeason):Atmosphere{
   switch(season){
-    case 'Bloom':return {season,wash:'rgba(111,157,132,.075)',
-      highlight:'rgba(250,229,171,.14)',
+    case 'Bloom':return {season,wash:'rgba(111,157,132,.040)',
+      highlight:'rgba(250,229,171,.096)',
       particle:'#deebac',density:50};
-    case 'Highsun':return {season,wash:'rgba(236,180,106,.075)',
-      highlight:'rgba(255,222,148,.19)',
+    case 'Highsun':return {season,wash:'rgba(236,180,106,.041)',
+      highlight:'rgba(255,222,148,.105)',
       particle:'#f9d590',density:34};
-    case 'Harvest':return {season,wash:'rgba(183,109,93,.105)',
-      highlight:'rgba(249,179,116,.16)',
+    case 'Harvest':return {season,wash:'rgba(183,109,93,.062)',
+      highlight:'rgba(249,179,116,.092)',
       particle:'#f3a66f',density:58};
-    case 'Frost':return {season,wash:'rgba(117,162,206,.15)',
-      highlight:'rgba(213,235,255,.12)',
+    case 'Frost':return {season,wash:'rgba(117,162,206,.072)',
+      highlight:'rgba(213,235,255,.082)',
       particle:'#e7f3ff',density:74};
   }
 }
@@ -82,7 +82,7 @@ export function paintSceneAtmosphere(ctx:CanvasRenderingContext2D,
   const sunlight=ctx.createLinearGradient(0,0,width*.9,height*.9);
   sunlight.addColorStop(0,atmosphere.highlight);
   sunlight.addColorStop(.43,'rgba(255,239,205,.025)');
-  sunlight.addColorStop(1,'rgba(7,18,40,.15)');
+  sunlight.addColorStop(1,'rgba(7,18,40,.10)');
   ctx.fillStyle=sunlight;ctx.fillRect(0,0,width,height);
   // Distinct seasonal particles at fixed positions. Frost snowfall, harvest
   // leaves, spring pollen and highsummer fireflies are artistic accents only.
