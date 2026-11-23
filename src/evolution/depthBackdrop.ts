@@ -16,7 +16,7 @@ export type BackdropWorld=SurfaceWorld&Pick<World,'woodland'>;
 type Projector=ReturnType<typeof createDepthProjector>;
 export type BackdropPaint=Pick<BuildingPlots,'squares'|'decoratedTiles'>;
 export type DepthRasterRequest={id:number;world:BackdropWorld;plots?:BackdropPaint;
-  relief:number;camera:DepthCamera;density:number;cutaway?:boolean};
+  relief:number;camera:DepthCamera;density:number;cutaway?:boolean;showSkylands?:boolean};
 export type DepthRasterResult={id:number;bitmap:ImageBitmap;hit:DepthPicking};
 
 export function orderedDepthTiles(w:BackdropWorld,projector:Projector,cutaway=false){

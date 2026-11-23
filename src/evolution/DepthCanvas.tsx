@@ -2,7 +2,7 @@ import {paintRaisedVolcanism} from './volcanicArt';
 import {WORLD_TREE_BLOCK,worldTreeClearings} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
 import {clipBehindTree,treeCovers} from './worldTreeOcclusion';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Biome,type Brush,type World} from './engine';
 import type {MapOverlay} from './WorldCanvas';
@@ -355,7 +355,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,orbiting=false,
-  followId=null,personId=null,fillWidth=false,onFollowPosition,showSkylands=true,onSkyland,cutaway=false}:{
+  followId=null,personId=null,fillWidth=false,onFollowPosition,showSkylands=false,onSkyland,cutaway=false}:{
   world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
@@ -387,7 +387,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   const structureCacheRef=useRef<{signature:string;
     topography:World['topography'];seed:number;relief:number;
     ground:SurfaceGrid|undefined;season:string;roadKey:number;focusedIndex:number;
-    yaw:number;pitch:number;detail:DepthArtDetail;
+    yaw:number;pitch:number;frameTop:number;detail:DepthArtDetail;
     structures:ReturnType<typeof prepareDepthStructures>}|null>(null);
   const stampRef=useRef<{tiles:World['tiles'];topography:World['topography'];
     woodland:World['woodland'];skylands:World['skylands'];worldTree:World['worldTree'];rootClearings:string;
@@ -400,7 +400,11 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     positions:Map<number,Point>}|null>(null);
   const motionsRef=useRef<Map<number,Motion>>(new Map());
   const facingRef=useRef<Map<number,Facing>>(new Map());
-  const projector=createDepthProjector(world,relief,camera);
+  const topography=topographyForWorld(world);
+  const skylands=overlay==='terrain'&&showSkylands&&!cutaway?world.skylands:undefined;
+  const projector=useMemo(()=>createDepthProjector({width:world.width,height:world.height,
+    skylands,worldTree:world.worldTree},relief,camera,topography.heights),
+    [world.width,world.height,skylands,world.worldTree,relief,camera.yaw,camera.pitch,topography]);
   const size=projector.size;
   // Pinch changes the canvas CSS scale continuously. Rebuilding the terrain
   // and NPC layers on every fractional zoom would cause trackpad stutter.
@@ -467,8 +471,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     plotCacheRef.current=ground&&plots?{ground,key:plotKey,plots}:null;
     const worker=tiled?rasterWorker.current:null;
     const rootClearings=worldTreeClearings(world),rootKey=rootClearings.join(',');
-    const geometry=[world.settings,world.width,world.height,topographyForWorld(world),terrainCells,
-      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands,world.worldTree,rootKey,cutaway];
+    const geometry=[world.settings,world.width,world.height,topography,terrainCells,
+      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands,skylands,world.worldTree,rootKey,cutaway];
     let job=rasterJob.current;
     if(!worker||landChanged||!job||geometry.some((part,i)=>part!==job?.geometry[i])){
       if(job?.result!==displayedRaster.current?.result)job?.result?.bitmap.close();
@@ -477,14 +481,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     }
     if(worker&&job&&!job.result&&!orbiting&&!rasterBusy.current){
       rasterBusy.current=true;
-      const {width,height,settings,tiles,topography,terrainCells,dayOfYear,woodland,skylands,worldTree}=world;
+      const {width,height,settings,tiles,terrainCells,dayOfYear,woodland,worldTree}=world;
       const message:DepthRasterRequest={id:job.id,world:{width,height,settings,tiles,topography,
-        terrainCells,dayOfYear,woodland,skylands,worldTree,rootClearings},relief,camera,density:sceneryDensity,
-        plots:plots&&{squares:plots.squares,decoratedTiles:plots.decoratedTiles},cutaway};
+        terrainCells,dayOfYear,woodland,skylands:world.skylands,worldTree,rootClearings},relief,camera,density:sceneryDensity,
+        plots:plots&&{squares:plots.squares,decoratedTiles:plots.decoratedTiles},cutaway,showSkylands:!!skylands};
       try{worker.postMessage(message);}catch{setRasterFailed(true);}
     }
     const viewKey=[world.settings.seed,world.width,world.height,camera.yaw,camera.pitch,
-      relief,sceneryDensity,size.height,cutaway].join(':');
+      relief,sceneryDensity,size.height,projector.skyBand,cutaway].join(':');
     if(job?.result&&job.result!==displayedRaster.current?.result){
       displayedRaster.current?.result.bitmap.close();
       displayedRaster.current={view:viewKey,result:job.result};
@@ -583,13 +587,13 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       structureCache.topography===world.topography&&
       structureCache.seed===world.settings.seed&&
       structureCache.relief===relief&&structureCache.yaw===camera.yaw&&
-      structureCache.pitch===camera.pitch&&
+      structureCache.pitch===camera.pitch&&structureCache.frameTop===projector.skyBand&&
       structureCache.detail===zoomDetailTier?structureCache.structures:
       prepareDepthStructures(world,projector,blockView,buildingSpritesRef.current,
         zoomDetailTier,ground,plots,focusedIndex);
     structureCacheRef.current=structures?{signature:structureKey,
       topography:world.topography,seed:world.settings.seed,
-      relief,yaw:camera.yaw,pitch:camera.pitch,detail:zoomDetailTier,
+      relief,yaw:camera.yaw,pitch:camera.pitch,frameTop:projector.skyBand,detail:zoomDetailTier,
       ground,season,roadKey,focusedIndex,structures}:null;
     const tree=sceneryActors.current.find(actor=>actor.landmark);
     const ships=vessels.flatMap(vessel=>{
@@ -621,7 +625,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       if(actor.canopy&&actor.order>=focus.order&&overlappingArt(actor.sprite,focus.sprite))faded.add(actor);
     }
     inspectActors.current={actors:tree?[tree,...actors]:actors,faded};
-    const sites=overlay==='terrain'&&showSkylands?world.skylands:undefined;
+    const sites=skylands;
     if(sites?.length){
       const previous=skyArtRef.current,grid=ground??surfaceGrid(world);
       const skyView=viewKey+':'+(preview||orbiting)+':'+displayScale;

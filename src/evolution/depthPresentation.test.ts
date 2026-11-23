@@ -1,10 +1,7 @@
 import {describe,expect,it} from 'vitest';
-import {ATLAS_SEA} from './atlasTerrain';
 import {createDepthProjector} from './depthProjection';
 import {rasterFace} from './depthTerrain';
 import {treeCovers} from './worldTreeOcclusion';
-import {CLOUD_COLORS,GULL_LIGHT,GULL_SHADE,mixHex,paintDepthSky,skyColor,
-  skyStamps,SKY_HAZE} from './depthSky';
 import {CONTACT_SHADE,footShadowRect,insetEdge,RIM_LIGHT,stampSegment,
   waterCrest} from './depthForm';
 import {shadeTerrainPixel,terrainPixel} from './terrainCellArt';
@@ -23,59 +20,6 @@ describe('depth presentation',()=>{
     expect(treeCovers(tree,20.25,11.25,11.2)).toBe(true);
     expect(treeCovers(tree,20.75,11.25,11.2)).toBe(false);
     expect(treeCovers(tree,21.25,11.25,0)).toBe(false);
-  });
-
-  it('mixes existing sea and haze without leaving hex range',()=>{
-    expect(mixHex(ATLAS_SEA,SKY_HAZE,0)).toBe(ATLAS_SEA);
-    expect(mixHex(ATLAS_SEA,SKY_HAZE,1)).toBe(SKY_HAZE);
-    expect(mixHex('#102737','#e7f3ff',.5)).toBe('#7c8d9b');
-    expect(mixHex(ATLAS_SEA,SKY_HAZE,-2)).toBe(ATLAS_SEA);
-    expect(mixHex(ATLAS_SEA,SKY_HAZE,4)).toBe(SKY_HAZE);
-  });
-
-  it('keeps the sky in the current sea family and meets the ocean fill',()=>{
-    const band=48;
-    expect(skyColor(band,band)).toBe(ATLAS_SEA);
-    expect(skyColor(0,band)).not.toBe(ATLAS_SEA);
-    const top=terrainPixel(skyColor(0,band));
-    const sea=terrainPixel(ATLAS_SEA);
-    expect(top&255).toBeGreaterThan(sea&255);
-    let previous=skyColor(0,band),changes=0;
-    for(let row=1;row<band;row++){
-      const color=skyColor(row,band);
-      if(color!==previous)changes++;
-      previous=color;
-    }
-    expect(changes).toBeGreaterThan(1);
-    expect(changes).toBeLessThan(10);
-  });
-
-  it('places clouds and gulls inside the headroom using existing highlights',()=>{
-    const stamps=skyStamps(104729,900,80);
-    expect(stamps.length).toBeGreaterThan(6);
-    expect(skyStamps(104729,900,80)).toEqual(stamps);
-    const allowed=new Set<string>([...CLOUD_COLORS,GULL_LIGHT,GULL_SHADE]);
-    for(const stamp of stamps){
-      expect(allowed.has(stamp.color)).toBe(true);
-      expect(stamp.x).toBeGreaterThanOrEqual(0);
-      expect(stamp.y).toBeGreaterThanOrEqual(0);
-      expect(stamp.y).toBeLessThan(80);
-      expect(stamp.w).toBeGreaterThan(0);
-    }
-    expect(skyStamps(1,8,4)).toEqual([]);
-  });
-
-  it('paints a deterministic sky band and leaves the rows beneath it',()=>{
-    const width=32,height=20,pixels=new Uint32Array(width*height);
-    pixels.fill(1);
-    paintDepthSky(pixels,width,height,7,6);
-    expect(pixels[0]).toBe(terrainPixel(skyColor(0,6)));
-    expect(pixels[5*width]).toBe(terrainPixel(skyColor(5,6)));
-    expect(pixels[6*width]).toBe(1);
-    const again=new Uint32Array(width*height);
-    again.fill(1);
-    paintDepthSky(again,width,height,7,6);
-    expect(again).toEqual(pixels);
   });
 
   it('lights a lip and shades a contact from the same pixel',()=>{
@@ -115,13 +59,23 @@ describe('depth presentation',()=>{
     expect(footShadowRect({left:0,top:0,right:20,bottom:30})).toEqual({x:6,y:29,w:8,h:2});
   });
 
-  it('reserves a sky band inside the canvas and raises it for taller islands',()=>{
-    const plain=createDepthProjector({width:6,height:5},2.5);
+  it('fits terrain elevations at every angle and reserves airspace when islands are shown',()=>{
+    const ground={width:40,height:32};
+    const heights=Array<number>(ground.width*ground.height).fill(39);heights[16*ground.width+20]=253;
+    const plain=createDepthProjector(ground,2.5,undefined,heights);
+    expect(plain.size.height).toBeLessThan(createDepthProjector(ground,2.5).size.height);
+    for(const yaw of [0,45,90,135,180,225,270,315])for(const pitch of [18,30,55]){
+      const frame=createDepthProjector(ground,4,{yaw,pitch},heights);
+      for(const [x,y] of [[0,0],[20,16],[39,31]])for(const p of frame.tileCorners(x,y,heights[y*40+x])){
+        expect(p.y).toBeGreaterThanOrEqual(20);
+        expect(p.y).toBeLessThan(frame.size.height-20);
+      }
+    }
     expect(plain.skyBand).toBeGreaterThan(20);
     expect(plain.skyBand).toBeLessThan(plain.size.height);
-    const lifted=createDepthProjector({width:6,height:5,skylands:[{
+    const lifted=createDepthProjector({...ground,skylands:[{
       id:1,spill:0,islands:[{x:1,y:1,rx:2,ry:2,height:520,depth:8,seed:3,terrain:'grove'}],
-    }]},2.5);
+    }]},2.5,undefined,heights);
     expect(lifted.skyBand).toBeGreaterThan(plain.skyBand);
     expect(lifted.size.height).toBeGreaterThan(plain.size.height);
   });

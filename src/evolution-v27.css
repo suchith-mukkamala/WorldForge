@@ -532,6 +532,7 @@
   --atlas-height: min(72vh, 820px);
   min-height: 0; max-height: var(--atlas-height); background: #102531;
 }
+.world-atlas .surface-atlas-viewport { background: #102737; }
 .atlas-sheet { position: relative; margin-inline: auto; overflow: hidden; }
 .atlas-sheet .evo-world-canvas,
 .adventure-canvas,
