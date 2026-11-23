@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {advanceWorldDays} from './calendar';
 import {createMortal,setDescentMode} from './divineDescent';
-import {createWorld,type World} from './engine';
+import {createWorld,type Biome,type World} from './engine';
 import {walkMortal} from './mortalGameplay';
 import {boardRealmBoat,enterUnderworld,landRealmBoat,leaveUnderworld,moveUnderworld,
   occupiedUnderworld,realmLandings} from './mortalUnderworld';
@@ -10,7 +10,7 @@ import {compactWorld,readSavedWorld} from './storage';
 import {TERRAIN_CELL_SIDE,TERRAIN_ELEVATION_UNITS} from './terrainCells';
 import {SEA_LEVEL} from './topography';
 import {initializeUnderworld,realmResidents,RealmBiome,realmWalkable,underworldMap} from './underworld';
-import {enableVolcanicWorld,ventHasGround} from './volcanicGeography';
+import {enableVolcanicWorld,sculptVolcanicIslands,ventHasGround} from './volcanicGeography';
 import {advanceVolcanism,lavaField,volcanicDay,volcanoPhase} from './volcanism';
 
 const starting={human:0,elf:0,dwarf:0,demon:0};
@@ -61,6 +61,26 @@ describe('Volcanic island chains',()=>{
     expect(tiles[lagoon].biome).toBe('water');
     const water=reachable(lagoon,width,tiles.length,i=>tiles[i].biome==='water');
     expect([...water.keys()].some(i=>i<width||i>=tiles.length-width)).toBe(true);
+  });
+
+  it('varies island silhouettes even when the starting ocean is identical',()=>{
+    const width=96,height=64;
+    const generate=(seed:number)=>{
+      const biomes:Biome[]=Array(width*height).fill('water');
+      const heights=Array(width*height).fill(SEA_LEVEL-12);
+      const islands=sculptVolcanicIslands(width,height,seed,biomes,heights);
+      return islands.map(({index,radius})=>{
+        const side=radius*2+1;
+        return Array.from({length:side},(_,row)=>biomes.slice(
+          index+(row-radius)*width-radius,index+(row-radius)*width+radius+1)
+          .map(biome=>biome==='water'?'0':'1').join('')).join('/');
+      });
+    };
+    const first=generate(41),second=generate(203);
+    expect(first).toHaveLength(3);
+    expect(first).toEqual(generate(41));
+    expect(second).toHaveLength(3);
+    expect(second.every((shape,i)=>shape!==first[i])).toBe(true);
   });
 
   it('runs downhill over multiple squares, fills the seabed and saves emerged land',()=>{

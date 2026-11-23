@@ -82,18 +82,25 @@ function sculptIsland(width:number,height:number,seed:number,biomes:Biome[],heig
   const wind=terrainHash(9,33,seed+6911)*Math.PI*2;
   const inlet=terrainHash(x,y,seed+7851)*Math.PI*2;
   const variation=terrainHash(x,y,seed+7469)*Math.PI*2;
+  const elongation=.10+terrainHash(x,y,seed+2879)*.24;
+  const headlands=2+Math.floor(terrainHash(x,y,seed+8129)*4);
+  const steepness=.85+terrainHash(x,y,seed+4439)*.65;
+  const summit=.84+terrainHash(x,y,seed+5041)*.32;
+  const lagoon=.38+terrainHash(x,y,seed+3893)*.23;
   for(let dy=-r-1;dy<=r+1;dy++)for(let dx=-r-1;dx<=r+1;dx++){
     const nx=x+dx,ny=y+dy,i=ny*width+nx;
     const angle=Math.atan2(dy,dx),length=Math.hypot(dx,dy);
     const grain=terrainNoise(nx,ny,2.4,seed+3069);
-    const radial=length/(r*(1+.10*Math.sin(angle*3+variation)+grain*.12));
+    const outline=1-elongation*Math.sin(angle-variation)**2+
+      .13*Math.sin(angle*headlands+variation)+grain*.12;
+    const radial=length/(r*outline);
     if(radial>1.09)continue;
     if(island.age==='atoll'){
       // Submerged reef shelves extend through the inlet so boats can pass.
       const opening=dx*Math.cos(inlet)+dy*Math.sin(inlet)>0&&
         Math.abs(dx*Math.sin(inlet)-dy*Math.cos(inlet))<1.3;
-      heights[i]=SEA_LEVEL-(radial<.50?6:radial<1?2:4);
-      if(radial<.49||radial>.99||opening)continue;
+      heights[i]=SEA_LEVEL-(radial<lagoon?6:radial<1?2:4);
+      if(radial<lagoon||radial>.99||opening)continue;
       heights[i]=SEA_LEVEL+Math.max(2,Math.round((.55+grain)*5));
       biomes[i]=radial>.84||grain<-.25?'wasteland':'plains';
       continue;
@@ -105,14 +112,14 @@ function sculptIsland(width:number,height:number,seed:number,biomes:Biome[],heig
       // The lip rises around the crater. A low spillway gives lava a
       // downhill route, while the other side has a stable approach.
       const downhill=Math.max(0,Math.cos(angle-inlet))**5;
-      const peak=shoulder**1.21*(123+grain*16)-
+      const peak=shoulder**steepness*(123*summit+grain*16)-
         downhill*Math.max(0,.83-radial)*35-channels*radial*shoulder*20;
       heights[i]=SEA_LEVEL+2+Math.round(Math.max(0,peak-Math.max(0,1-length)*37));
       biomes[i]=radial>.80?'wasteland':'volcanic';
       continue;
     }
     const valley=(.5+.5*Math.sin(angle*3+variation))**5;
-    const ridge=Math.max(0,1-radial)**1.1*(87+grain*23)-valley*(1-radial)*37;
+    const ridge=Math.max(0,1-radial)**steepness*(87*summit+grain*23)-valley*(1-radial)*37;
     const exposure=(dx*Math.cos(wind)+dy*Math.sin(wind))/Math.max(1,length);
     const rain=exposure*.68+valley*.37+terrainHumidity(nx,ny,r*3,seed)*.43+grain*.26;
     heights[i]=SEA_LEVEL+4+Math.round(Math.max(0,ridge));

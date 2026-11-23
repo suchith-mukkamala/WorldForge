@@ -5,6 +5,7 @@
 Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.com/suchith-mukkamala/CircuitBuilder) and became an independent project at the v0.7.1 milestone. It is now developed as a standalone application—not an electronics laboratory.
 
 ## What you can do
+- **v2.34.1 — Volcanic Island Variety** gives each seed distinct volcanic coastlines, slopes, summits, and coral lagoons.
 
 - **v2.34.0 — Connected Waters** links a Surface river to a waterfall in the Underworld. The lake rises in Bloom, then Highsun exposes the same shoreline for walking. Where lava dams the feeder and a spillway is available, the river fills a second pool. Follow it from **Surface → Rivers → Cavern feeder**, or look for **Seep Lake** under **Underworld → Places**.
 
