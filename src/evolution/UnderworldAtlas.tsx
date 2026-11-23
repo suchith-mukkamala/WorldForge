@@ -132,7 +132,7 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
   const residents=useMemo(()=>level==='street'?realmResidents(world,map):[],[level,world,map]);
   const maxHeight=useMemo(()=>map.heights.reduce((max,value)=>Math.max(max,value),0),[map]);
   const relief=useMemo(()=>view==='depth'?stackedProjection(world,map,camera,maxHeight).lower:undefined,
-    [view,world.width,world.height,world.skylands,world.worldTree,map,camera,maxHeight]);
+    [view,world.width,world.height,world.worldTree,map,camera,maxHeight]);
   const bounds=relief??world;
   const fraction=(cell:number)=>{
     const {x,y}=seaPoint(map.width,cell);

@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.33.3 — Surface Framing** fits the Surface atlas and the upper deck of **Stacked 3D** around the terrain and the World Tree. The map opens with a plain background and floating islands hidden. Open one from **Places** to see it.
+
 - **v2.33.2 — Atlas Close-ups** raises the zoom limit to 24× across the Surface, Underworld, and Stacked 3D maps. Jump closer by finding a person or settlement. Larger Surface sprites and Underworld townsfolk appear in street views, while the world overview keeps settlement markers easy to scan.
 
 - **v2.33.1 — Cave Roof Cutaway** opens **Stacked 3D** with both layers in clear view. Turn on **Cave roof** to see stepped rock shelves and small stalactites below the Surface. **Natural openings** and cavern headroom are available in either view.

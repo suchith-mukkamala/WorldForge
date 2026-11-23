@@ -1,9 +1,11 @@
 import {orderedDepthTiles,paintDepthBackdrop,type DepthRasterRequest,type DepthRasterResult} from './depthBackdrop';
 import {createDepthProjector} from './depthProjection';
+import {topographyForWorld} from './topography';
 
 self.onmessage=({data}:MessageEvent<DepthRasterRequest>)=>{
-  const {id,world,relief,camera,density,plots,cutaway}=data;
-  const projector=createDepthProjector(world,relief,camera);
+  const {id,world,relief,camera,density,plots,cutaway,showSkylands}=data;
+  const projector=createDepthProjector({...world,skylands:showSkylands?world.skylands:undefined},
+    relief,camera,topographyForWorld(world).heights);
   const width=projector.size.width*density,height=projector.size.height*density;
   const canvas=new OffscreenCanvas(width,height),ctx=canvas.getContext('2d');
   if(!ctx)throw Error('Terrain canvas is unavailable.');

@@ -18,8 +18,9 @@ export const realmDepthPoint=(p:RealmProjection,x:number,y:number,height:number)
 });
 
 export function stackedProjection(world:Bounds,realm:Grid,camera:DepthCamera,
-  maxRealmHeight:number,relief=STACKED_RELIEF){
-  const surface=createDepthProjector(world,relief,camera);
+  maxRealmHeight:number,relief=STACKED_RELIEF,surfaceHeights?:readonly number[]){
+  const {width,height,worldTree}=world;
+  const surface=createDepthProjector({width,height,worldTree},relief,camera,surfaceHeights);
   const corners=[[-.5,-.5],[world.width-.5,-.5],
     [world.width-.5,world.height-.5],[-.5,world.height-.5]] as const;
   const footprint=corners.map(([x,y])=>surface.projectSmooth(x,y,STACKED_SEA));

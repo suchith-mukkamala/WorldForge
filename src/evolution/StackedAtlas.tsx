@@ -73,12 +73,12 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
   const [zoom,setZoom]=useState(1),[selected,setSelected]=useState<Selection>();
   const [roof,setRoof]=useState(false);
   const maxHeight=useMemo(()=>map.heights.reduce((max,value)=>Math.max(max,value),0),[map]);
-  const projection=useMemo(()=>stackedProjection(world,map,camera,maxHeight),
-    [world.width,world.height,world.skylands,world.worldTree,map,camera,maxHeight]);
+  const elevations=topographyForWorld(world).heights;
+  const projection=useMemo(()=>stackedProjection(world,map,camera,maxHeight,STACKED_RELIEF,elevations),
+    [world.width,world.height,world.worldTree,map,camera,maxHeight,elevations]);
   const {surface,size,lowerTop,lowerHeight,underneath}=projection;
   const street=atlasLevel(zoom)==='street';
   const residents=useMemo(()=>street?realmResidents(world,map):[],[street,world,map]);
-  const elevations=topographyForWorld(world).heights;
   const caverns=realmCaverns(map);
   const connections=useMemo(()=>caveConnections(world,map,caverns),[map,caverns,elevations]);
   const openings=connections.filter(site=>site.kind!=='fault');

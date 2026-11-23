@@ -40,7 +40,7 @@ export function interpolatedGroundHeight(heights:ArrayLike<number>,
 /** Project actual square geometry; this projector is shared by terrain,
  * sprites, waterways, highlights and the color-picking surface. */
 export function createDepthProjector(w:WorldSize,relief=1,
-  camera:DepthCamera=DEFAULT_DEPTH_CAMERA){
+  camera:DepthCamera=DEFAULT_DEPTH_CAMERA,heights?:readonly number[]){
   const theta=((camera.yaw%360)+360)%360*RAD;
   const pitch=Math.max(12,Math.min(70,camera.pitch))*RAD;
   const c=Math.cos(theta),s=Math.sin(theta);
@@ -60,12 +60,32 @@ export function createDepthProjector(w:WorldSize,relief=1,
   const xs=corners.map(p=>p.x*ux+p.y*vx);
   const ys=corners.map(p=>p.x*uy+p.y*vy);
   const minX=Math.min(...xs),maxX=Math.max(...xs);
-  const minY=Math.min(...ys),maxY=Math.max(...ys);
-  const topMargin=Math.ceil((skylandCeiling(w.skylands)-SEA_LEVEL)/DEPTH_RISE*relief*vertical)+20+(w.worldTree?Math.ceil(horizontal*WORLD_TREE_BLOCK*WORLD_TREE_HEIGHT*Math.SQRT2*Math.cos(pitch)):0);
+  const minY=Math.min(...ys),maxY=Math.max(...ys),rise=relief*vertical/DEPTH_RISE;
+  const treeRise=horizontal*WORLD_TREE_BLOCK*WORLD_TREE_HEIGHT*Math.SQRT2*Math.cos(pitch);
+  let topMargin=Math.ceil((skylandCeiling(w.skylands)-SEA_LEVEL)*rise)+20+(w.worldTree?Math.ceil(treeRise):0);
+  let bottom=maxY+MARGIN_BOTTOM+SKIRT+SEA_LEVEL*rise;
+  if(heights){
+    // Frame the actual terrain silhouette, with space for scenery above tiles
+    // and for stepped edges below them. Sea datum alone cannot bound a peak.
+    const step=(Math.abs(uy)+Math.abs(vy))/2;
+    let top=minY;
+    bottom=maxY+MARGIN_BOTTOM+9*rise;
+    for(let y=0,i=0;y<w.height;y++)for(let x=0;x<w.width;x++,i++){
+      const p=x*uy+y*vy-(heights[i]-SEA_LEVEL)*rise;
+      top=Math.min(top,p-step);
+      bottom=Math.max(bottom,p+step+MARGIN_BOTTOM);
+    }
+    if(w.worldTree){
+      const {x,y}=w.worldTree;
+      const ground=x*uy+y*vy-(heights[y*w.width+x]-SEA_LEVEL)*rise;
+      top=Math.min(top,ground-treeRise-WORLD_TREE_CROWN_RADIUS*step*2);
+    }
+    if(w.skylands?.length)top=Math.min(top,minY-(skylandCeiling(w.skylands)-SEA_LEVEL)*rise);
+    topMargin=Math.ceil(minY-top)+36;
+  }
   const offsetX=MARGIN_X-minX,offsetY=topMargin-minY;
   const size={width:Math.ceil(maxX-minX+MARGIN_X*2),
-    height:Math.ceil(maxY-minY+topMargin+MARGIN_BOTTOM+SKIRT+
-      SEA_LEVEL/DEPTH_RISE*relief*vertical)};
+    height:Math.ceil(bottom+offsetY)};
   const project=(x:number,y:number,elevation:number):Pt=>({
     x:x*ux+y*vx+offsetX,
     y:x*uy+y*vy+offsetY-

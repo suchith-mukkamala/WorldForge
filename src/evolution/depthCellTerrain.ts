@@ -7,7 +7,6 @@ import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE,type SurfaceWorld} from './surface
 import {cellPixel,firstTerrainSquare,shadeTerrainPixel,terrainPixel,
   terrainSwatches} from './terrainCellArt';
 import {CONTACT_SHADE,insetEdge,RIM_LIGHT,stampSegment,waterCrest} from './depthForm';
-import {paintDepthSky} from './depthSky';
 import {SEA_LEVEL} from './topography';
 
 type Projector=ReturnType<typeof createDepthProjector>;
@@ -40,10 +39,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   plots?:Pick<BuildingPlots,'squares'|'decoratedTiles'>,sample=1,cutaway=false):void{
   const {width,height}=hit,image=ctx.createImageData(width,height);
   const pixels=new Uint32Array(image.data.buffer);
-  if(!cutaway){
-    pixels.fill(terrainPixel(sea));
-    paintDepthSky(pixels,width,height,w.settings.seed,projector.skyBand*density);
-  }
+  if(!cutaway)pixels.fill(terrainPixel(sea));
   const grid=surfaceGrid(w),{columns,rows,ground,water,shore,rootRise}=grid;
   const decks=plots&&new Uint8Array(ground.length);
   if(decks)for(const [i,plot] of plots.squares){

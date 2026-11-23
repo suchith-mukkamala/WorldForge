@@ -230,7 +230,7 @@ export function WorldforgeApp(){
   },[mapView]);
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [skySelection,setSkySelection]=useState<Skyland|null>(null);
-  const [showSkylands,setShowSkylands]=useState(true);
+  const [showSkylands,setShowSkylands]=useState(false);
   const visibleSkylands=overlay==='terrain'&&showSkylands&&brush.kind==='inspect';
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
@@ -272,10 +272,12 @@ export function WorldforgeApp(){
   currentWorld.current=world;
   const tabRef=useRef(tab);
   tabRef.current=tab;
+  const surfaceHeights=topographyForWorld(world).heights;
+  const skylandsInFrame=visibleSkylands?world.skylands:undefined;
   const projection=useMemo(()=>createDepthProjector({
-    width:world.width,height:world.height,skylands:world.skylands,worldTree:world.worldTree},
-    RELIEF_LEVELS[reliefLevel],{yaw:orbitYaw,pitch:activeCameraPitch}),
-  [world.width,world.height,world.skylands,world.worldTree,reliefLevel,orbitYaw,activeCameraPitch]);
+    width:world.width,height:world.height,skylands:skylandsInFrame,worldTree:world.worldTree},
+    RELIEF_LEVELS[reliefLevel],{yaw:orbitYaw,pitch:activeCameraPitch},surfaceHeights),
+  [world.width,world.height,skylandsInFrame,world.worldTree,reliefLevel,orbitYaw,activeCameraPitch,surfaceHeights]);
   const cameraPosition=useCallback((x:number,y:number,at?:number)=>{
     const viewport=mapScrollRef.current,sheet=mapSheetRef.current;
     if(!viewport||!sheet)return null;
@@ -457,8 +459,9 @@ export function WorldforgeApp(){
       // Pivot around the actual viewport center, rather than snapping to the
       // world's center every time a player orbits a nearby settlement.
       const w=currentWorld.current;
-      const projector=createDepthProjector(w,RELIEF_LEVELS[reliefLevel],
-        {yaw:orbitYawRef.current,pitch:activeCameraPitch});
+      const projector=createDepthProjector({width:w.width,height:w.height,worldTree:w.worldTree,
+        skylands:visibleSkylands?w.skylands:undefined},RELIEF_LEVELS[reliefLevel],
+        {yaw:orbitYawRef.current,pitch:activeCameraPitch},topographyForWorld(w).heights);
       const sheet=mapSheetRef.current;
       if(!sheet)return;
       const geometry=atlasScrollGeometry(viewport,sheet);
@@ -894,7 +897,7 @@ export function WorldforgeApp(){
   const fitAtlas=()=>{
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
     setFollowId(null);setSelectedAgentId(null);setZoom(1);
-    setSkySelection(null);
+    setSkySelection(null);setShowSkylands(false);
     setMapFocus({x:world.width/2-.5,y:world.height/2-.5});
   };
   const changePerspective=(next:'overhead'|'depth')=>{
@@ -979,7 +982,7 @@ export function WorldforgeApp(){
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);setBrush({kind:'inspect'});
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
-    surfaceScroll.current=null;setZoom(1);
+    surfaceScroll.current=null;setZoom(1);setShowSkylands(false);
     setNotice('New world created with seed '+settings.seed+'.');
   };
   const reset=()=>{
@@ -997,7 +1000,7 @@ export function WorldforgeApp(){
     setFollowId(null);
     setSelected(null);setSelectedAgentId(null);
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;
-    surfaceScroll.current=null;setZoom(1);
+    surfaceScroll.current=null;setZoom(1);setShowSkylands(false);
     setNotice('World replayed from the same starting seed.');
   };
   const importWorld=async(event:ChangeEvent<HTMLInputElement>)=>{
@@ -1017,7 +1020,7 @@ export function WorldforgeApp(){
       setFollowId(null);
       setSelected(null);setSelectedAgentId(null);
       pendingZoomAnchor.current=null;orbitFocusRef.current=null;
-      surfaceScroll.current=null;setZoom(1);
+      surfaceScroll.current=null;setZoom(1);setShowSkylands(false);
       setBrush({kind:'inspect'});
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
@@ -1460,7 +1463,7 @@ export function WorldforgeApp(){
           {showRivers&&<RiverGuide world={world} course={chartedRiver} onCourse={setRiverMouth}
             onLocate={index=>locateAtlasPoint({x:index%world.width,y:Math.floor(index/world.width)},ATLAS_TOWN_ZOOM)}
             onStart={mouth=>{navigate('descent');setDescentRiver(mouth);}}/>}
-          <div className="evo-map-scroll atlas-viewport" ref={mapScrollRef}>
+          <div className="evo-map-scroll atlas-viewport surface-atlas-viewport" ref={mapScrollRef}>
             <div className="atlas-sheet" ref={mapSheetRef}
               style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*mapAspect+'))'}}>
               {mapView==='overhead'?<WorldCanvas world={world} brush={brush}

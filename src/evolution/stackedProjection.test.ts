@@ -37,14 +37,16 @@ describe('Stacked world projection',()=>{
     }
   });
 
-  it('keeps the lower render coordinates when the Surface gains skyland headroom',()=>{
+  it('fits the stacked Surface to its terrain and leaves the lower projection registered',()=>{
     const world={width:96,height:64},realm={width:60,height:40};
     const camera={yaw:45,pitch:42};
     const before=stackedProjection(world,realm,camera,20);
+    const heights=Array<number>(world.width*world.height).fill(39);
     const skylands=[{id:0,spill:0,islands:[{x:12,y:12,rx:4,ry:3,height:484,depth:40,seed:1,terrain:'grove' as const}]}];
-    const after=stackedProjection({...world,skylands},realm,camera,20);
-    expect(after.lowerTop).toBeGreaterThan(before.lowerTop);
-    expect(after.lower).toEqual(before.lower);
+    const fitted=stackedProjection({...world,skylands},realm,camera,20,2.5,heights);
+    expect(fitted).toEqual(expect.objectContaining({lower:before.lower}));
+    expect(fitted.surface.size.height).toBeLessThan(before.surface.size.height);
+    expect(fitted.lowerTop).toBe(stackedProjection(world,realm,camera,20,2.5,heights).lowerTop);
   });
 
   it('draws uneven walls and leaves a gap below the hanging vines at each orbit angle',()=>{
