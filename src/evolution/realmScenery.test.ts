@@ -29,6 +29,13 @@ describe('Underworld scenery',()=>{
     }
     const port=map.towns.find(town=>town.berth!==undefined)!;
     expect(art.docks.has(port.berth!)).toBe(true);
+    expect(art.falls.size).toBeGreaterThan(0);
+    for(const [cell,{outlet,dx,dy}] of art.falls){
+      expect(occupied.has(cell)).toBe(false);
+      expect(outlet).toBe(cell+dx+dy*map.width);
+      expect(map.biomes[outlet]).toBe(RealmBiome.sea);
+      expect(art.spray.has(outlet)).toBe(true);
+    }
     expect(art.effects.some(effect=>effect.kind==='spore')).toBe(true);
     for(const effect of art.effects.filter(effect=>effect.kind==='spark')){
       expect(map.biomes[effect.cell]).toBe(RealmBiome.lava);

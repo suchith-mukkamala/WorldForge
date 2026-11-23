@@ -917,7 +917,10 @@ export function blockRealmDock(bank:Facing):BlockModel{
   const turn={south:0,west:1,north:2,east:3}[bank];
   return model('realm-dock:'+bank,g=>{
     for(const x of [-3,2])for(const y of [-5,2,8])g.box(x,y,0,1,1,7,'#3b444f');
-    for(let y=-6;y<10;y++)g.box(-3,y,3,6,1,1,y%3===0?'#a18265':'#766658');
+    for(let y=-6;y<10;y++){
+      const ramp=y>=8?2:y>=6?1:0;
+      g.box(-3,y,3,6,1,1+ramp,y%3===0?'#a18265':'#766658');
+    }
     for(let y=-5;y<=8;y+=3)g.box(-3,y,4,1,1,2,'#5c5956');
     g.box(-3,4,6,1,1,1,'#92e5c9');g.box(2,-5,6,1,1,1,'#f5b87e');
   },turn,'timber');

@@ -1,22 +1,22 @@
 import {tidalApproach} from './tidalCaves';
 import {terrainHash,terrainNoise} from './biomeGeneration';
 import type {World} from './engine';
+import {generateRealmGeography,RealmBiome,type RealmLayout} from './realmGeography';
 import {seaNeighbors,seaPoint,validMortalShip,type MortalShip} from './shipSave';
 import {skylandMesh} from './skylands';
 import {volcanicDay} from './volcanism';
 import {type Volcano,volcanoName} from './volcanicGeography';
 
-export const RealmBiome={basalt:0,ember:1,lava:2,steam:3,glowroot:4,crystal:5,chalk:6,sea:7} as const;
-export type RealmBiome=typeof RealmBiome[keyof typeof RealmBiome];
+export {RealmBiome} from './realmGeography';
 export type RealmPeople='demon'|'ash-borne';
 export type RealmLink={surface:number;cell:number;kind:'crater'|'roots'|'falls'};
 type Population={demons:number;ashBorne:number};
-export type Underworld={links:RealmLink[];population:Population[];outpost?:number;terraces?:number[]};
+export type Underworld={links:RealmLink[];population:Population[];outpost?:number;terraces?:number[];geography?:1};
 export type RealmVisit={at:number;origin:number;ship?:MortalShip};
 export type RealmExploration={chart:number[];visit?:RealmVisit};
 export type RealmTown={id:number;index:number;berth?:number;home:RealmPeople;name:string};
 export type RealmMap={
-  width:number;height:number;seed:number;biomes:Uint8Array;heights:Uint8Array;
+  width:number;height:number;seed:number;biomes:Uint8Array;heights:Uint8Array;layout?:RealmLayout;
   towns:RealmTown[];roads:Set<number>;bridges:Set<number>;fords:Set<number>;
   houses:Map<number,RealmTown>;links:RealmLink[];
 };
@@ -47,7 +47,7 @@ const distance=(a:number,b:number,w:number)=>
   Math.hypot(a%w-b%w,Math.floor(a/w)-Math.floor(b/w));
 const neighbors=(i:number,w:number,n:number)=>seaNeighbors(i,w,n).filter(j=>j>=0);
 const faceNames={roots:'World Tree root stair',falls:'Waterfall shaft'};
-const maps=new WeakMap<RealmLink[],{terraces:Underworld['terraces'];map:RealmMap}>();
+const maps=new WeakMap<RealmLink[],{terraces:Underworld['terraces'];geography:Underworld['geography'];map:RealmMap}>();
 export const realmPeopleName=(people:RealmPeople)=>people==='ash-borne'?'Ash Borne':'Demon';
 
 export function realmLinkName(world:World,link:RealmLink){
@@ -71,15 +71,19 @@ function anchors(world:World){
   return links;
 }
 
-function baseRealm(world:World,links:readonly Omit<RealmLink,'cell'>[]){
+function baseRealm(world:World,links:readonly Omit<RealmLink,'cell'>[],geography:Underworld['geography']){
   const {width:w,height:h}=dimensions(world.width,world.height),seed=world.settings.seed+72291;
-  const flip=terrainHash(14,79,seed)<.5,reverse=terrainHash(311,21,seed)<.5;
-  const cells=new Uint8Array(w*h),heights=new Uint8Array(cells.length);
   const project=(surface:number)=>{
     const {x,y}=seaPoint(w,projectWorldLayer(surface,world,{width:w,height:h}));
     return Math.min(h-2,Math.max(1,y))*w+Math.min(w-2,Math.max(1,x));
   };
   const wet=links.filter(link=>link.kind!=='crater').map(link=>project(link.surface));
+  if(geography===1)return {w,h,project,...generateRealmGeography(w,h,seed,wet)};
+
+  // Saves without a geography version use the original floor. Their
+  // passages, moored boats and walking positions refer to these cells.
+  const flip=terrainHash(14,79,seed)<.5,reverse=terrainHash(311,21,seed)<.5;
+  const cells=new Uint8Array(w*h),heights=new Uint8Array(cells.length);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const i=y*w+x,u=flip?1-x/(w-1):x/(w-1),v=reverse?1-y/(h-1):y/(h-1);
     const grain=terrainNoise(x,y,6,seed),rock=terrainNoise(x,y,12,seed+9113);
@@ -105,27 +109,27 @@ function baseRealm(world:World,links:readonly Omit<RealmLink,'cell'>[]){
     heights[i]=type===sea?0:type===lava?2:type===chalk?4:
       Math.max(3,Math.round(7+rock*5+grain*4+(type===ember?2:0)));
   }
-  return {w,h,cells,heights,project};
+  return {w,h,cells,heights,project,layout:undefined};
 }
 
-function mainlandOf(cells:Uint8Array,width:number):Set<number>{
+function largestRegion(cells:Uint8Array,width:number,water=false):Set<number>{
   const marked=new Uint8Array(cells.length);
-  let mainland:number[]=[];
+  let largest:number[]=[];
   for(let i=0;i<cells.length;i++){
-    if(marked[i]||cells[i]===sea)continue;
-    const land=[i];marked[i]=1;
-    for(const at of land)for(const j of neighbors(at,width,cells.length)){
-      if(marked[j]||cells[j]===sea)continue;
-      marked[j]=1;land.push(j);
+    if(marked[i]||(cells[i]===sea)!==water)continue;
+    const region=[i];marked[i]=1;
+    for(const at of region)for(const j of neighbors(at,width,cells.length)){
+      if(marked[j]||(cells[j]===sea)!==water)continue;
+      marked[j]=1;region.push(j);
     }
-    if(land.length>mainland.length)mainland=land;
+    if(region.length>largest.length)largest=region;
   }
-  return new Set(mainland);
+  return new Set(largest);
 }
 
-function placeLinks(world:World,origins:Omit<RealmLink,'cell'>[]):RealmLink[]{
-  const {w,h,cells,project}=baseRealm(world,origins);
-  const links:RealmLink[]=[],mainland=mainlandOf(cells,w);
+function placeLinks(world:World,origins:Omit<RealmLink,'cell'>[],geography:Underworld['geography']):RealmLink[]{
+  const {w,h,cells,project}=baseRealm(world,origins,geography);
+  const links:RealmLink[]=[],mainland=largestRegion(cells,w);
   for(const origin of origins){
     const target=project(origin.surface);
     let cell=-1,best=Infinity;
@@ -145,7 +149,7 @@ function placeLinks(world:World,origins:Omit<RealmLink,'cell'>[]):RealmLink[]{
 
 export function initializeUnderworld(world:World):World{
   if(world.underworld||!world.volcanicLayout?.vents.length)return world;
-  const links=placeLinks(world,anchors(world)),seed=world.settings.seed;
+  const geography=1,links=placeLinks(world,anchors(world),geography),seed=world.settings.seed;
   const older=world.volcanicLayout.islands.find(island=>island.age==='weathered');
   const outpost=older&&world.tiles.findIndex((tile,i)=>tile.biome!=='water'&&
     distance(i,older.index,world.width)<older.radius+.4&&
@@ -156,7 +160,7 @@ export function initializeUnderworld(world:World):World{
     demons:demons+Math.floor(terrainHash(id,19,seed)*7),
     ashBorne:ashBorne+Math.floor(terrainHash(id,37,seed)*6),
   }));
-  return {...world,underworld:{links,population,...(outpost!==undefined&&outpost>=0?{outpost}:{})}};
+  return {...world,underworld:{links,population,geography,...(outpost!==undefined&&outpost>=0?{outpost}:{})}};
 }
 
 function nearSurfaceRoots(world:World,i:number){
@@ -170,14 +174,15 @@ export function underworldMap(world:World):RealmMap|undefined{
   const state=world.underworld;
   if(!state)return;
   const previous=maps.get(state.links);
-  if(previous&&previous.terraces===state.terraces)return previous.map;
-  const {w,h,cells,heights}=baseRealm(world,state.links),seed=world.settings.seed+72291;
+  if(previous&&previous.terraces===state.terraces&&previous.geography===state.geography)return previous.map;
+  const {w,h,cells,heights,layout}=baseRealm(world,state.links,state.geography),seed=world.settings.seed+72291;
   for(const link of state.links){
     if(link.kind!=='crater'||cells[link.cell]!==chalk)continue;
     cells[link.cell]=basalt;
     for(const i of neighbors(link.cell,w,cells.length))if(cells[i]===chalk)cells[i]=basalt;
   }
-  const size=cells.length,mainland=mainlandOf(cells,w),queue:number[]=[];
+  const size=cells.length,mainland=largestRegion(cells,w),queue:number[]=[];
+  const harbor=layout?largestRegion(cells,w,true):undefined;
   const preference:number[][]=[[ember,steam,basalt],[glowroot,steam,basalt],[chalk],[crystal,steam,ember]];
   const positions:number[]=state.links.map(link=>link.cell),towns:RealmTown[]=[];
   for(const [id,town] of TOWNS.entries()){
@@ -185,15 +190,20 @@ export function underworldMap(world:World):RealmMap|undefined{
     for(const i of mainland){
       const x=i%w,y=Math.floor(i/w),kind=preference[id].indexOf(cells[i]);
       if(cells[i]===lava||x<2||y<2||x>=w-2||y>=h-2)continue;
-      const bank=id===2?neighbors(i,w,size).find(j=>cells[j]===sea):undefined;
+      const bank=id===2?neighbors(i,w,size).find(j=>cells[j]===sea&&(!harbor||harbor.has(j))):undefined;
       if(id===2&&bank===undefined)continue;
       const gap=Math.min(w,...positions.map(at=>distance(i,at,w)));
       if(gap<3)continue;
       const open=neighbors(i,w,size).filter(j=>cells[j]!==sea&&cells[j]!==lava).length;
-      const score=(kind<0?0:3.4-kind*.8)+Math.min(12,gap)*.28+open*.28+terrainHash(x,y,seed+id*197);
+      const landing=layout&&bank!==undefined?Math.max(0,12-heights[i])*.16:0;
+      const score=(kind<0?0:3.4-kind*.8)+Math.min(12,gap)*.28+open*.28+landing+terrainHash(x,y,seed+id*197);
       if(score>best){site=i;best=score;berth=bank;}
     }
     if(site>=0){towns.push({id,name:town.name,home:town.home,index:site,berth});positions.push(site);}
+  }
+  if(layout){
+    const quay=towns.find(town=>town.berth!==undefined);
+    if(quay)heights[quay.index]=Math.min(heights[quay.index],3);
   }
   const roads=new Set<number>(),bridges=new Set<number>();
   const route=(from:number,to:number)=>{
@@ -242,8 +252,9 @@ export function underworldMap(world:World):RealmMap|undefined{
     if((dry(n)&&dry(s)||dry(e)&&dry(west)))fords.add(i);
   }
   for(const i of state.terraces??[])if(fords.delete(i)){bridges.add(i);roads.add(i);}
-  const map={width:w,height:h,seed,biomes:cells,heights,towns,roads,bridges,fords,houses,links:state.links};
-  maps.set(state.links,{terraces:state.terraces,map});
+  const map={width:w,height:h,seed,biomes:cells,heights,towns,roads,bridges,fords,houses,links:state.links,
+    ...(layout?{layout}:{})};
+  maps.set(state.links,{terraces:state.terraces,geography:state.geography,map});
   return map;
 }
 
@@ -311,9 +322,9 @@ export function realmResidents(world:World,map:RealmMap):RealmResident[]{
 
 export function validUnderworld(value:unknown,width:number,height:number):value is Underworld{
   if(!value||typeof value!=='object')return false;
-  const {links,population,outpost,terraces}=value as Underworld,realm=dimensions(width,height);
+  const {links,population,outpost,terraces,geography}=value as Underworld,realm=dimensions(width,height);
   const index=(i:number,n:number)=>Number.isInteger(i)&&i>=0&&i<n;
-  return Array.isArray(links)&&links.length>0&&links.length<=5&&
+  return (geography===undefined||geography===1)&&Array.isArray(links)&&links.length>0&&links.length<=5&&
     links.some(link=>link?.kind==='crater')&&links.every(link=>link&&index(link.surface,width*height)&&
       index(link.cell,realm.width*realm.height)&&['crater','roots','falls'].includes(link.kind))&&
     new Set(links.map(link=>link.surface)).size===links.length&&
