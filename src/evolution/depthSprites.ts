@@ -5,6 +5,7 @@ import {paintPerson,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH,
   spriteKey} from './pixelArt';
 import type {Facing} from './motion';
 import type {BuildingType} from './construction';
+import {ATLAS_PERSON_SIZE} from './personSpriteScale';
 
 type Point={x:number;y:number};
 type Painter=CanvasRenderingContext2D;
@@ -35,7 +36,7 @@ export const buildingVisualScale=(type:BuildingType):number=>
 export type PersonSpriteCache=Map<string,HTMLCanvasElement>;
 // Characters have a fixed footprint in world coordinates. Zoom magnifies the
 // entire canvas uniformly; crossing detail thresholds must not inflate people.
-export const DEPTH_PERSON_SIZE={width:2,height:3} as const;
+export const DEPTH_PERSON_SIZE=ATLAS_PERSON_SIZE;
 const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
   ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);
 };

@@ -26,9 +26,16 @@ export function gestureZoomFactor(deltaY:number,deltaMode:number):number{
   const normalized=deltaY*(deltaMode===1?14:deltaMode===2?400:1);
   return Math.exp(-Math.max(-120,Math.min(120,normalized))*.007);
 }
+export const MAX_ATLAS_ZOOM=24;
+
+export function stepAtlasZoom(zoom:number,direction:1|-1):number{
+  if(direction===1)return boundedMapZoom(zoom<4?zoom+.5:zoom*1.25);
+  return boundedMapZoom(zoom>4?Math.max(4,zoom/1.25):zoom-.5);
+}
+
 export function boundedMapZoom(value:number):number{
   if(!Number.isFinite(value))return 1;
-  return Math.max(1,Math.min(8,Math.round(value*1000)/1000));
+  return Math.max(1,Math.min(MAX_ATLAS_ZOOM,Math.round(value*1000)/1000));
 }
 /** A small pointer wobble is a click to inspect, not an attempt to move the
  * camera. Longer left-button drags pan the scroll viewport directly. */

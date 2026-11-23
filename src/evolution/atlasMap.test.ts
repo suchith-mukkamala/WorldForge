@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {atlasLabelSides,atlasLevel} from './atlasMap';
+import {atlasCloseupZoom,atlasLabelSides,atlasLevel} from './atlasMap';
 import {atlasBuildingAt,type AtlasBuilding} from './atlasBuildingArt';
 import type {Building} from './construction';
 
@@ -7,6 +7,13 @@ describe('atlas detail and picking',()=>{
   it('reveals buildings before residents',()=>{
     expect([1,2.49,2.5,3.5,4,8].map(atlasLevel))
       .toEqual(['world','world','town','town','street','street']);
+  });
+
+  it('chooses a readable close-up from the actual fitted map size',()=>{
+    expect(atlasCloseupZoom(1,900,1800,5)).toBe(8);
+    expect(atlasCloseupZoom(1,300,1800,5)).toBe(24);
+    expect(atlasCloseupZoom(8,2400,1800,5)).toBe(24);
+    expect(atlasCloseupZoom(20,10000,1800,5)).toBe(20);
   });
 
   it('leaves crowded pins available without putting text over other pins',()=>{

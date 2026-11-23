@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
+import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,MAX_ATLAS_ZOOM,stepAtlasZoom,
   isMapPanDrag,mapScrollForDrag,restoreWorldZoomAnchor} from './mapGestures';
 
 describe('v2.1.6 trackpad gestures',()=>{
@@ -25,11 +25,17 @@ describe('v2.1.6 trackpad gestures',()=>{
   });
   it('bounds extreme pinches without allowing NaN or broken canvas sizes',()=>{
     expect(boundedMapZoom(-50)).toBe(1);
-    expect(boundedMapZoom(99)).toBe(8);
+    expect(boundedMapZoom(99)).toBe(MAX_ATLAS_ZOOM);
     expect(boundedMapZoom(Infinity)).toBe(1);
     expect(boundedMapZoom(NaN)).toBe(1);
     expect(boundedMapZoom(2.12349)).toBe(2.123);
     expect(gestureZoomFactor(100000,0)).toBeGreaterThan(0);
+  });
+  it('steps quickly through high zoom and caps at 24×',()=>{
+    expect(stepAtlasZoom(1,1)).toBe(1.5);
+    expect(stepAtlasZoom(8,1)).toBe(10);
+    expect(stepAtlasZoom(10,-1)).toBe(8);
+    expect(stepAtlasZoom(23,1)).toBe(24);
   });
   it('treats small movements as inspection clicks and longer drags as panning',()=>{
     expect(isMapPanDrag(0,0)).toBe(false);

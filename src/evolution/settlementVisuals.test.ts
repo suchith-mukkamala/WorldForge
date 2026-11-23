@@ -64,7 +64,7 @@ describe('v2.4.4 — readable settlements and close-up mortals',()=>{
     expect(depthSceneryDensity(4,size)).toBe(5);
     expect(depthSceneryDensity(6,{width:2000,height:2000})).toBe(1);
     expect(depthSceneryDensity(4,{width:1000,height:1000})).toBe(3);
-    expect(DEPTH_PERSON_SIZE).toEqual({width:2,height:3});
+    expect(DEPTH_PERSON_SIZE).toEqual({width:3,height:5});
   });
 
   it('keeps fractional walking positions in the high-resolution sprite layer',()=>{
@@ -76,7 +76,7 @@ describe('v2.4.4 — readable settlements and close-up mortals',()=>{
       drawImage:(_image:HTMLCanvasElement,...coords:number[])=>args.push(coords),
     } as unknown as CanvasRenderingContext2D;
     paintDepthPerson(ctx,agent,{x:12.25,y:17.75},false,false,cached);
-    expect(args).toEqual([[11.25,15.75,2,3]]);
+    expect(args).toEqual([[10.75,13.75,3,5]]);
     expect(ctx.imageSmoothingEnabled).toBe(false);
   });
 });

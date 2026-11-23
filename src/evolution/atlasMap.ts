@@ -1,9 +1,16 @@
 import type {Point} from './motion';
-import type {MapScrollGeometry} from './mapGestures';
+import {boundedMapZoom,type MapScrollGeometry} from './mapGestures';
 
 export const ATLAS_TOWN_ZOOM=2.5;
 export const ATLAS_STREET_ZOOM=4;
 export const ATLAS_PLACE_ZOOM=3.5;
+export const ATLAS_PEOPLE_ZOOM=8;
+
+/** Choose zoom using the fitted sheet scale, including on narrow screens. */
+export function atlasCloseupZoom(zoom:number,sheetWidth:number,logicalWidth:number,spriteHeight:number){
+  const readable=sheetWidth>0?Math.ceil(20*logicalWidth*zoom/(sheetWidth*spriteHeight)):ATLAS_PEOPLE_ZOOM;
+  return boundedMapZoom(Math.max(zoom,ATLAS_PEOPLE_ZOOM,readable));
+}
 
 export function atlasLevel(zoom:number){
   if(zoom>=ATLAS_STREET_ZOOM)return 'street';

@@ -1,8 +1,8 @@
-/** Characters stay tiny at every zoom, including when selected. Detailed
- * portraits belong in the inspector, never stretched over nearby buildings.
- */
+// Keep a consistent footprint as the camera magnifies the map.
+export const ATLAS_PERSON_SIZE={width:3,height:5} as const;
+
 export function personSpriteSize(zoom:number,focused:boolean):
   {width:number;height:number;detailed:boolean}{
   void focused;
-  return {width:2,height:3,detailed:zoom>=5};
+  return {...ATLAS_PERSON_SIZE,detailed:zoom>=5};
 }
