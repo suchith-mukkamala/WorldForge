@@ -1,17 +1,17 @@
 import {terrainHash,terrainNoise} from './biomeGeneration';
 import type {Point} from './motion';
 import type {CaveConnection,Caverns} from './realmCaverns';
-import {realmScenery} from './realmScenery';
 import {seaPoint} from './shipSave';
 import {STACKED_SEA,type stackedProjection} from './stackedProjection';
-import {RealmBiome,type RealmMap} from './underworld';
+import {rockColor} from './strataRock';
+import {shadeTerrainPixel,terrainPixel} from './terrainCellArt';
+import type {RealmMap} from './underworld';
 
 type Projection=ReturnType<typeof stackedProjection>;
-type Face={cell:number;x:number;y:number;dx:number;dy:number;nx:number;ny:number};
-const rock=['#5e5052','#51434e','#494055','#3d3648','#343042'];
-const coldRock=['#574951','#4a404d','#414054','#383347','#302d40'];
-const stone=['#776169','#665267','#52465c','#3c354e'];
-const minerals=['#8a65727a','#88789e8c','#6a939088'];
+type Grid={width:number;height:number};
+type RoofLobe={x:number;y:number;rx:number;ry:number;weight:number};
+const roofInks=['#63535f','#514553','#42394e'].map(terrainPixel);
+const roofMinerals=['#a48b91','#867ca0','#779695'];
 
 function polygon(ctx:CanvasRenderingContext2D,ink:string,a:Point,b:Point,c:Point,d:Point){
   ctx.fillStyle=ink;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
@@ -21,128 +21,119 @@ function polygon(ctx:CanvasRenderingContext2D,ink:string,a:Point,b:Point,c:Point
 const drop=(p:Point,y:number):Point=>({x:p.x,y:p.y+y});
 const between=(a:Point,b:Point,t:number):Point=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});
 
-/** Place the rear cut where it shows a good section through the actual
- * vaults. For a cardinal view, there is only one visible cut face. */
-function section({lower}:Projection,{width,height}:RealmMap,plan:Caverns):Face[]{
-  const {frontX,frontY}=lower;
-  const slices=[.18,.27,.36,.45];
-  const candidates=(length:number,front:number)=>front?slices.map(r=>Math.round((front<0?1-r:r)*(length-1))):[0];
-  let backX=0,backY=0,best=-Infinity;
-  for(const x of candidates(width,frontX))for(const y of candidates(height,frontY)){
-    let east=0,south=0;
-    if(frontY)for(let i=0;i<width;i++){
-      if(frontX&&(i-x)*frontX<0)continue;
-      const gap=plan.clearance[y*width+i];east+=Math.max(0,gap-34)**1.3;
+function roofLobes({width,height}:Grid,seed:number):RoofLobe[]{
+  const lobes:RoofLobe[]=[];
+  for(let edge=0;edge<4;edge++){
+    const sideways=edge<2,length=sideways?width:height,depth=sideways?height:width;
+    const count=Math.min(5,Math.max(2,Math.round(length/20)));
+    for(let i=0;i<count;i++){
+      const grain=terrainHash(edge,i,seed+3759);
+      const along=(i+.24+grain*.52)*length/count-.5;
+      const across=1+terrainHash(edge,i,seed+243)*depth*.06;
+      const inset=edge%2?depth-1-across:across;
+      const radius=length/count*(.32+grain*.20);
+      const spread=depth*(.078+terrainHash(edge,i,seed+58)*.095);
+      lobes.push({x:sideways?along:inset,y:sideways?inset:along,
+        rx:sideways?radius:spread,ry:sideways?spread:radius,weight:.78+grain*.22});
     }
-    if(frontX)for(let i=0;i<height;i++){
-      if(frontY&&(i-y)*frontY<0)continue;
-      const gap=plan.clearance[i*width+x];south+=Math.max(0,gap-34)**1.3;
-    }
-    const score=(east/width+south/height)*.7+Math.min(east/width,south/height)*.3;
-    if(score>best){best=score;backX=x;backY=y;}
   }
-  const faces:Face[]=[];
-  if(frontY)for(let x=0;x<width;x++){
-    if(frontX&&(x-backX)*frontX<0)continue;
-    faces.push({cell:backY*width+x,x,y:backY,dx:1,dy:0,nx:0,ny:frontY});
-  }
-  if(frontX)for(let y=0;y<height;y++){
-    if(frontY&&(y-backY)*frontY<0)continue;
-    faces.push({cell:y*width+backX,x:backX,y,dx:0,dy:1,nx:frontX,ny:0});
-  }
-  const depth=({x,y}:Face)=>x*lower.east.y+y*lower.south.y;
-  return faces.sort((a,b)=>depth(a)-depth(b));
+  return lobes;
 }
 
-export function paintCaveCutaway(ctx:CanvasRenderingContext2D,projection:Projection,map:RealmMap,plan:Caverns,
-  worldSize:{width:number;height:number},connections:readonly CaveConnection[],elevations:readonly number[]){
-  const {surface,underneath,lowerTop,lower}=projection;
-  const scaleX=worldSize.width/map.width,scaleY=worldSize.height/map.height;
+/** Expose short shelves of bedrock under the upper crust. The cutaway
+ * opens below these overhangs, leaving the lower deck clear at every orbit. */
+export function paintCaveRoof(ctx:CanvasRenderingContext2D,projection:Projection,
+  map:Grid&{seed:number},plan:Pick<Caverns,'clearance'>,worldSize:Grid){
+  const {surface,upperCrust,lowerTop}=projection,{width,height,seed}=map;
+  const {frontX,frontY}=surface;
+  const scaleX=worldSize.width/width,scaleY=worldSize.height/height;
   const upper=(x:number,y:number)=>surface.projectSmooth((x+.5)*scaleX-.5,(y+.5)*scaleY-.5,STACKED_SEA);
-  const cave=(x:number,y:number,height:number)=>drop(underneath(x,y,height),lowerTop);
-  const faces=section(projection,map,plan),passages=new Set(plan.galleries.flat());
-  const formations=realmScenery(map).formations;
-  const supports:Face[]=[];
-  const {seed,heights,biomes}=map;
-  const pillarBudget=map.width<50?4:6;
-  for(const face of faces){
-    const {cell,x,y,dx,dy,nx,ny}=face;
-    const grain=terrainHash(x,y,seed+373),vein=terrainNoise(x,y,9.5,seed+925);
-    const headroom=plan.clearance[cell],top=heights[cell]+headroom;
-    const x1=x-dx*.508,y1=y-dy*.508,x2=x+dx*.508,y2=y+dy*.508;
-    const a=upper(x1,y1),b=upper(x2,y2),c=cave(x2,y2,top),d=cave(x1,y1,top);
-    const wall=(d.y-a.y),rim=Math.max(0,wall-21-lower.rise*2);
-    const course=[0,wall*.19+vein*35,wall*.40+vein*39,wall*.67+vein*54,rim,wall];
-    const back=dx?rock:coldRock;
-    polygon(ctx,rock[4],a,b,c,d);
-    for(let i=0;i<course.length-1;i++){
-      const low=course[i],high=course[i+1]+1;
-      polygon(ctx,back[i],drop(a,low),drop(b,low),drop(b,high),drop(a,high));
+  const point=(x:number,y:number,depth:number)=>drop(upper(x,y),depth);
+  const maxDepth=Math.min(upperCrust*1.56,95+Math.min(worldSize.width,worldSize.height)*.62);
+  const lobes=roofLobes(map,seed);
+  const depths=new Uint16Array(width*height),limits=new Float32Array(depths.length);
+  const tiles:{x:number;y:number;cell:number;order:number}[]=[];
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    let mass=0;
+    for(const lobe of lobes){
+      const u=(x-lobe.x)/lobe.rx,v=(y-lobe.y)/lobe.ry;
+      mass=Math.max(mass,(1-u*u-v*v)*lobe.weight);
     }
-    const panel=(ink:string,from:number,to:number,at:number,height:number)=>{
-      const left=drop(between(a,b,from),at),right=drop(between(a,b,to),at);
-      polygon(ctx,ink,left,right,drop(right,height),drop(left,height));
-    };
-    for(let ledge=1;ledge<9;ledge++){
-      const roll=terrainHash(cell,ledge+873,seed);
-      if(roll<.21)continue;
-      const at=(ledge+vein*.45+(roll-.5)*.6)*rim/9;
-      const from=roll>.6?0:roll*.56,to=roll>.6?.86:.7+roll*.3;
-      panel(roll>.52?'#1c203745':'#9b84922c',from,to,at,4+Math.round(roll*17));
-      if(roll>.72)panel('#b3a3a629',from+.07,to-.12,at-2,2);
-      if(roll>.82){
-        const ink=minerals[biomes[cell]===RealmBiome.glowroot?2:biomes[cell]===RealmBiome.crystal?1:0];
-        panel(ink,from+.22,to-.08,at+5,3+Math.round(grain*4));
+    if(mass<.12)continue;
+    const cell=y*width+x;
+    const noise=terrainNoise(x,y,3.4,seed+918);
+    const pocket=mass+noise*.24-plan.clearance[cell]*.002;
+    if(pocket<.17)continue;
+    const order=upper(x+frontX*.51,y+frontY*.51).y;
+    limits[cell]=Math.max(0,Math.min(maxDepth,lowerTop-14-order));
+    const depth=Math.floor(Math.min(limits[cell],maxDepth*(.14+Math.sqrt(pocket)*.82))/4)*4;
+    if(depth<8)continue;
+    depths[cell]=depth;
+    tiles.push({x,y,cell,order});
+  }
+  tiles.sort((a,b)=>a.order-b.order);
+  const at=(x:number,y:number)=>x>=0&&x<width&&y>=0&&y<height?depths[y*width+x]:0;
+  for(const {x,y,cell} of tiles){
+    const depth=depths[cell],grain=terrainHash(x,y,seed+39);
+    const tint=(face:number,light=1)=>rockColor(shadeTerrainPixel(roofInks[face],light*(.86+grain*.28)));
+    const base=[point(x-.508,y-.508,depth),point(x+.508,y-.508,depth),
+      point(x+.508,y+.508,depth),point(x-.508,y+.508,depth)] as const;
+    polygon(ctx,tint(2),...base);
+    const edge=(a:Point,b:Point,start:number,end:number,face:number)=>{
+      if(end<=start)return;
+      polygon(ctx,tint(face),drop(a,start),drop(b,start),drop(b,end),drop(a,end));
+      if(end-start<=10)return;
+      polygon(ctx,tint(2),drop(a,end-3),drop(b,end-3),drop(b,end),drop(a,end));
+      if(grain>.76){
+        const left=between(a,b,.19),right=between(a,b,.71),seam=start+Math.round((end-start)*.61);
+        polygon(ctx,roofMinerals[(cell+face)%roofMinerals.length],
+          drop(left,seam),drop(right,seam),drop(right,seam+2),drop(left,seam+2));
       }
+    };
+    if(frontX){
+      const a=upper(x+frontX*.5,y-.51),b=upper(x+frontX*.5,y+.51);
+      edge(a,b,at(x+frontX,y),depth,1);
     }
-    const lip=1.8+Math.round((grain+vein*.6)*1.8)*.55;
-    const lipA=cave(x1+nx*lip,y1+ny*lip,top+3),lipB=cave(x2+nx*lip,y2+ny*lip,top+3);
-    polygon(ctx,grain>.55?'#343147':'#2d293f',d,c,lipB,lipA);
-    polygon(ctx,grain>.54?'#66566f':'#50465e',drop(lipA,-11),drop(lipB,-11),lipB,lipA);
-    if(grain>.33){
-      const tooth=Math.min(headroom*.38,2+Math.round(grain*9))*lower.rise;
-      const from=between(lipA,lipB,.15),to=between(lipA,lipB,.44+grain*.35);
-      const step=between(from,to,.44),base=drop(step,tooth);
-      polygon(ctx,'#353047',from,to,drop(to,tooth*.39),base);
-      polygon(ctx,grain>.64?'#695570':'#4f4259',from,step,base,drop(from,tooth*.54));
+    if(frontY){
+      const a=upper(x-.51,y+frontY*.5),b=upper(x+.51,y+frontY*.5);
+      edge(a,b,at(x,y+frontY),depth,0);
     }
-    const dry=biomes[cell]!==RealmBiome.sea&&biomes[cell]!==RealmBiome.lava;
-    if(dry&&headroom>=27&&grain>.3&&supports.length<pillarBudget&&!map.roads.has(cell)&&
-      !map.houses.has(cell)&&!formations.has(cell)&&!map.towns.some(town=>town.index===cell)&&
-      !map.links.some(link=>link.cell===cell)&&!passages.has(cell)&&
-      supports.every(support=>Math.hypot(support.x-x,support.y-y)>5))supports.push(face);
-  }
-  for(const {cell,x,y,dx,dy,nx,ny} of supports){
-    const floor=heights[cell]-1,ceiling=heights[cell]+plan.clearance[cell]+1;
-    const column=(height:number,width:number)=>[
-      cave(x-dx*width,y-dy*width,height),cave(x+dx*width,y+dy*width,height),
-      cave(x+dx*width+nx*.63,y+dy*width+ny*.63,height),
-    ] as const;
-    const levels=[column(ceiling,.48),column(ceiling-(ceiling-floor)*.34,.23),
-      column(floor+(ceiling-floor)*.25,.32),column(floor,.51)];
-    for(let n=0;n<levels.length-1;n++){
-      const [a,b,c]=levels[n],[d,e,f]=levels[n+1];
-      polygon(ctx,stone[n+1],a,b,e,d);polygon(ctx,rock[n+1],b,c,f,e);
+    const length=Math.min(limits[cell]-depth,10+terrainHash(cell,415,seed)*31);
+    if(grain<.944||length<9||depth<maxDepth*.43)continue;
+    let start=depth-1;
+    for(const [radius,end] of [[.36,depth+length*.38],[.24,depth+length*.74],[.12,depth+length]]){
+      if(frontX)edge(upper(x+frontX*radius,y-radius),upper(x+frontX*radius,y+radius),start,end,1);
+      if(frontY)edge(upper(x-radius,y+frontY*radius),upper(x+radius,y+frontY*radius),start,end,0);
+      start=end;
     }
   }
+}
+
+export function paintCaveConnections(ctx:CanvasRenderingContext2D,projection:Projection,map:RealmMap,plan:Caverns,
+  worldSize:Grid,connections:readonly CaveConnection[],elevations:readonly number[]){
+  const {surface,underneath,lowerTop}=projection,{seed,heights}=map;
+  const cave=(x:number,y:number,height:number)=>drop(underneath(x,y,height),lowerTop);
   for(const site of connections){
     const at=seaPoint(worldSize.width,site.surface),end=seaPoint(map.width,site.cell);
     const a=surface.projectSmooth(at.x,at.y,elevations[site.surface]);
     const b=cave(end.x,end.y,heights[site.cell]);
     const opening=cave(end.x,end.y,heights[site.cell]+plan.clearance[site.cell]);
     if(site.kind==='skylight'){
-      polygon(ctx,'#f3bf8045',{x:a.x-5,y:a.y},{x:a.x+5,y:a.y},{x:b.x+23,y:b.y},{x:b.x-21,y:b.y});
-      polygon(ctx,'#ffe4a04f',{x:a.x-2,y:a.y},{x:a.x+2,y:a.y},{x:b.x+8,y:b.y},{x:b.x-5,y:b.y});
+      const light=ctx.createLinearGradient(a.x,a.y,b.x,b.y);
+      light.addColorStop(0,'#ffe4a045');light.addColorStop(.38,'#f6ce801d');light.addColorStop(1,'#f6ce800b');
+      ctx.fillStyle=light;
+      ctx.beginPath();ctx.moveTo(a.x-3,a.y);ctx.lineTo(a.x+3,a.y);
+      ctx.lineTo(b.x+13,b.y);ctx.lineTo(b.x-12,b.y);ctx.closePath();ctx.fill();
       continue;
     }
-    const wet=site.kind==='seep',width=wet?6:5;
+    const wet=site.kind==='seep',width=wet?3.4:2.6;
     const path=[a,between(a,opening,.26),between(a,opening,.62),opening,b];
     for(let n=1;n<path.length-2;n++)path[n].x+=(terrainHash(site.surface,n,seed)-.5)*27;
     for(let n=0;n<path.length-1;n++){
       const from=path[n],to=path[n+1],reach=width*(n===3?.65:1.15);
-      polygon(ctx,wet?'#253d50cc':'#3b293bcc',{x:from.x-reach,y:from.y},{x:from.x+reach,y:from.y},
+      polygon(ctx,wet?'#253d5077':'#3b293b77',{x:from.x-reach,y:from.y},{x:from.x+reach,y:from.y},
         {x:to.x+reach,y:to.y},{x:to.x-reach,y:to.y});
-      polygon(ctx,wet?'#6bb4bbbd':'#b35439a3',{x:from.x-1,y:from.y},{x:from.x+reach*.64,y:from.y},
+      polygon(ctx,wet?'#6bb4bb9c':'#b3543982',{x:from.x-1,y:from.y},{x:from.x+reach*.64,y:from.y},
         {x:to.x+1,y:to.y},{x:to.x-1,y:to.y});
     }
   }

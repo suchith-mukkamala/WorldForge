@@ -53,10 +53,12 @@ function StackedRock({projection,world,links,active}:{projection:Projection;worl
       const path=()=>{
         ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(bend.x,bend.y);ctx.lineTo(b.x,b.y);ctx.stroke();
       };
-      ctx.strokeStyle='#2d252d';ctx.lineWidth=on?11:8;path();
-      ctx.strokeStyle=on?'#f4cf8b':'#bf986e';ctx.lineWidth=on?5:3;path();
-      ctx.strokeStyle=on?'#fff0b8':'#e1b589';ctx.lineWidth=1;
-      ctx.setLineDash([4,4]);path();ctx.setLineDash([]);
+      if(on){
+        ctx.strokeStyle='#2d252d';ctx.lineWidth=8;path();
+        ctx.strokeStyle='#f4cf8b';ctx.lineWidth=4;path();
+      }
+      ctx.strokeStyle=on?'#fff0b8':'#caa7778c';ctx.lineWidth=on?1:2;
+      ctx.setLineDash(on?[4,4]:[3,7]);path();ctx.setLineDash([]);
     }
   },[size,rock,vines,links,active]);
   return <canvas ref={ref} className="strata-rock" aria-hidden="true" data-vines={vines.length}
@@ -67,7 +69,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
   at?:number;onSurface:(cell:number)=>void;onUnderworld:(cell?:number)=>void}){
   const [camera,setCamera]=useState<DepthCamera>(STACKED_CAMERA);
   const [zoom,setZoom]=useState(1),[selected,setSelected]=useState<Selection>();
-  const [roof,setRoof]=useState(true);
+  const [roof,setRoof]=useState(false);
   const maxHeight=useMemo(()=>map.heights.reduce((max,value)=>Math.max(max,value),0),[map]);
   const projection=useMemo(()=>stackedProjection(world,map,camera,maxHeight),
     [world.width,world.height,world.skylands,world.worldTree,map,camera,maxHeight]);
@@ -76,8 +78,9 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
   const caverns=realmCaverns(map);
   const connections=useMemo(()=>caveConnections(world,map,caverns),[map,caverns,elevations]);
   const openings=connections.filter(site=>site.kind!=='fault');
-  const feature=roof&&selected?connections.find(site=>
+  const feature=selected?connections.find(site=>
     (selected.layer==='surface'?site.surface:site.cell)===selected.cell):undefined;
+  const visibleConnections=useMemo(()=>roof?connections:feature?[feature]:[],[roof,connections,feature]);
   const links=useMemo(()=>map.links.filter(link=>link.kind==='crater'||
     world.descent?.realm?.chart.includes(link.surface)).map(link=>{
     const a=seaPoint(world.width,link.surface),b=seaPoint(map.width,link.cell);
@@ -199,13 +202,8 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
         <div className="atlas-sheet strata-sheet" ref={sheet}
           style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+zoom*size.width/size.height+'))',
             aspectRatio:size.width+'/'+size.height}}>
-          <div className="strata-level strata-lower" style={{top:lowerTop/size.height*100+'%',height:lowerHeight/size.height*100+'%'}}>
-            <RealmReliefCanvas map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}
-              selected={selected?.layer==='underworld'?selected.cell:undefined}
-              onSelect={cell=>setSelected({layer:'underworld',cell})}/>
-          </div>
-          {roof&&<CaveCutaway projection={projection} map={map} plan={caverns} worldSize={world}
-            connections={connections} elevations={elevations}/>}
+          {(roof||feature)&&<CaveCutaway projection={projection} map={map} plan={caverns} worldSize={world}
+            roof={roof} connections={visibleConnections} elevations={elevations}/>}
           <StackedRock projection={projection} world={world} links={links} active={corresponding?.link.surface}/>
           <div className="strata-level strata-upper" style={{height:surface.size.height/size.height*100+'%'}}>
             <DepthCanvas world={world} overlay="terrain" brush={inspect}
@@ -213,7 +211,12 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
               onSelect={(x,y)=>setSelected({layer:'surface',cell:y*world.width+x})}
               onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway/>
           </div>
-          {roof&&openings.map(site=><span key={site.kind} className="strata-geology" data-kind={site.kind}
+          <div className="strata-level strata-lower" style={{top:lowerTop/size.height*100+'%',height:lowerHeight/size.height*100+'%'}}>
+            <RealmReliefCanvas map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}
+              selected={selected?.layer==='underworld'?selected.cell:undefined}
+              onSelect={cell=>setSelected({layer:'underworld',cell})}/>
+          </div>
+          {openings.map(site=><span key={site.kind} className="strata-geology" data-kind={site.kind}
             data-active={feature===site||undefined} style={spot(surfacePoint(site.surface))} aria-hidden="true"/>)}
           <span className="strata-label strata-label-surface">Surface</span>
           <span className="strata-label strata-label-realm" style={{top:lowerTop/size.height*100+'%'}}>Underworld</span>
@@ -239,7 +242,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           {selected&&chosen?<p>{selected.layer==='surface'?'Surface':'Underworld'} · X {chosen.x} · Y {chosen.y}</p>:
             <p>Select a crater shaft to trace the passage between layers.</p>}
           {vent&&<p>{volcanoPhase(world,vent)} · Volcano</p>}
-          {roof&&selected?.layer==='underworld'&&<p>{caveRoomName(caverns,selected.cell)}
+          {selected?.layer==='underworld'&&<p>{caveRoomName(caverns,selected.cell)}
             {' · '}{caverns.clearance[selected.cell]} blocks of headroom</p>}
           {feature&&<p>{geology[feature.kind]}</p>}
           {feature&&feature.kind!=='fault'&&<button className="atlas-terrain-cell-zoom" type="button" onClick={()=>{
@@ -258,7 +261,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           {selected?.layer==='underworld'&&<button type="button" className="atlas-terrain-cell-zoom"
             onClick={()=>onUnderworld(corresponding?.link.surface??projectWorldLayer(selected.cell,map,world))}>
             Open Underworld atlas</button>}
-          {roof&&openings.length>0&&<details className="strata-openings">
+          {openings.length>0&&<details className="strata-openings">
             <summary>Natural openings</summary>
             {openings.map(site=><button key={site.kind} type="button" className="atlas-terrain-cell-zoom"
               onClick={event=>{

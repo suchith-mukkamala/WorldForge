@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.33.1 — Cave Roof Cutaway** opens **Stacked 3D** with both layers in clear view. Turn on **Cave roof** to see stepped rock shelves and small stalactites below the Surface. **Natural openings** and cavern headroom are available in either view.
+
 - **v2.33.0 — Living Depths** shapes the rock under the Surface into seeded vaults, low galleries, and stone columns. Open **Stacked 3D** to see the cave roof, with volcanic fractures, river seeps, and skylights where the terrain lines up. Toggle **Cave roof** for an open view of the floor. Crystal fish follow the shores, glowflies drift through damp groves, and bats travel through the passages. Existing worlds keep their floor plans and gain the new scenery.
 
 - **v2.32.0 — Buried Frontiers** gives newly generated Underworlds their own seeded geography. Explore a winding **Rift Sea**, separate **Twin Basins**, or a **Flooded Archipelago**. Islands, lava channels, and ridges vary within each layout. The atlas and Descend show mineral reefs, brighter shallows, waterfall pools, and shore landings. Existing caves keep their maps and gain the new artwork.
