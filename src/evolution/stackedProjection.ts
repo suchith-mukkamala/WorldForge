@@ -29,8 +29,8 @@ export function stackedProjection(world:Bounds,realm:Grid,camera:DepthCamera,
   const rise=REALM_RISE*surface.riseScale/DEPTH_RISE,underRise=maxRealmHeight*rise;
   const dx=world.width/realm.width,dy=world.height/realm.height,blockScale=Math.min(dx,dy);
   const headroom=Math.ceil(18+blockScale*24);
-  const upperCrust=Math.max(28,Math.round(groundSpan*.08));
-  const lowerCrust=Math.max(22,Math.round(groundSpan*.055));
+  const upperCrust=Math.max(83,Math.round(groundSpan*.142));
+  const lowerCrust=Math.max(52,Math.round(groundSpan*.086));
   const lowerTop=Math.ceil(Math.max(surface.size.height,furthest+upperCrust)+34);
   // Separate the plates vertically to expose both faces. X and Y always
   // refer to the same world footprint, regardless of camera orientation.

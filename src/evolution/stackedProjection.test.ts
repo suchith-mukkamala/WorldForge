@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {REALM_RISE,stackedProjection,STACKED_SEA} from './stackedProjection';
 import {DEPTH_RISE} from './depthProjection';
+import {exposedRock,hangingVines} from './strataRock';
 
 describe('Stacked world projection',()=>{
   it('puts both grids on the same footprint with a negative Underworld elevation',()=>{
@@ -44,5 +45,28 @@ describe('Stacked world projection',()=>{
     const after=stackedProjection({...world,skylands},realm,camera,20);
     expect(after.lowerTop).toBeGreaterThan(before.lowerTop);
     expect(after.lower).toEqual(before.lower);
+  });
+
+  it('draws uneven walls and leaves a gap below the hanging vines at each orbit angle',()=>{
+    const world={width:96,height:64},realm={width:60,height:40};
+    for(const pitch of [24,42])for(let yaw=0;yaw<360;yaw+=45){
+      const p=stackedProjection(world,realm,{yaw,pitch},20);
+      const upper=exposedRock(world,p.surface.frontX,p.surface.frontY,p.upperCrust,41,'surface',
+        (x,y)=>p.surface.projectSmooth(x,y,STACKED_SEA));
+      const lower=exposedRock(realm,p.lower.frontX,p.lower.frontY,p.lowerCrust,72332,'underworld',
+        (x,y)=>p.underneath(x,y,0));
+      for(const edges of [upper,lower]){
+        const depths=edges.flatMap(edge=>edge.columns.map(col=>col.depth));
+        expect(new Set(depths).size).toBeGreaterThan(3);
+        expect(Math.max(...depths)-Math.min(...depths)).toBeGreaterThanOrEqual(12);
+      }
+      const vines=hangingVines(upper,p.lowerTop,41);
+      expect(vines.length).toBeGreaterThan(2);
+      expect(hangingVines(upper,p.lowerTop,41)).toEqual(vines);
+      for(const vine of vines){
+        expect(vine.tip-vine.root.y).toBeGreaterThanOrEqual(13);
+        expect(vine.tip).toBeLessThanOrEqual(p.lowerTop-13);
+      }
+    }
   });
 });

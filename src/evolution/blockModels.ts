@@ -817,15 +817,15 @@ function caveCrystal(g:BlockGrid,x:number,y:number,width:number,height:number,va
   }
 }
 
-export function blockRealmFormation(kind:RealmFormationKind,variant:number):BlockModel{
-  return model('realm-formation:'+kind+':'+variant,g=>{
+export function blockRealmFormation(kind:RealmFormationKind,variant:number,landmark=false):BlockModel{
+  return model('realm-formation:'+kind+':'+variant+':'+Number(landmark),g=>{
     if(kind==='fungus'){
-      caveMushroom(g,-1,-1,19+variant*2,6,variant);
+      caveMushroom(g,-1,-1,(landmark?23:19)+variant*2,landmark?8:6,variant);
       caveMushroom(g,4,3,8+variant,3,(variant+1)%3);
       caveMushroom(g,-5,2,6+variant*2,2,variant);
     }else if(kind==='crystal'){
       g.box(-5,-4,0,11,8,2,'#464059');
-      caveCrystal(g,-2,-2,5,22+variant*2,variant);
+      caveCrystal(g,-2,-2,landmark?6:5,(landmark?26:22)+variant*2,variant);
       caveCrystal(g,-6,1,3,10+variant,variant);
       caveCrystal(g,3,2,4,14-variant,variant);
       caveCrystal(g,0,4,3,7+variant,variant);
@@ -847,6 +847,12 @@ export function blockRealmFormation(kind:RealmFormationKind,variant:number):Bloc
       g.box(-3,-2,4,6,4,1,'#78a8a0');
       g.box(-2,-1,5,4,2,1,'#9de2ca');
       g.box(-5,2,3,2,2,2,'#e5ce98');g.box(4,-3,2,2,3,3,'#bfac7b');
+      if(landmark){
+        g.box(-4,4,0,9,4,2,'#908373');
+        g.box(-3,5,2,7,3,1,'#dbc597');
+        g.box(-2,6,3,5,2,1,'#97c8ad');
+        g.box(-1,3,4,2,2,1,'#83b9ae');
+      }
     }else{
       g.box(-5,-4,0,10,8,2,'#8b8076');
       g.box(-3,-3,2,7,6,1,'#c2b397');
