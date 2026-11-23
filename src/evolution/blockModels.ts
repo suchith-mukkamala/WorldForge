@@ -8,6 +8,8 @@ import type {VisualSeason} from './sceneAtmosphere';
 import type {RegionalBuildingStyle} from './riverArchitecture';
 import type {StructureSite} from './structureGround';
 import type {CaveStone} from './tidalCaves';
+import type {RealmFormationKind} from './realmScenery';
+import type {RealmLink} from './underworld';
 
 export const BLOCK_FACES=[
   {dx:0,dy:0,dz:1,quad:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],light:1.18},
@@ -777,24 +779,164 @@ export function blockRealmFord(eastWest:boolean):BlockModel{
   },Number(eastWest));
 }
 
-export function blockRealmGrowth(crystal:boolean,variant:number):BlockModel{
-  return model('realm-growth:'+Number(crystal)+':'+variant,g=>{
-    if(crystal){
-      for(const [x,y,w,h] of [[-4,-1,3,5],[0,-2,4,9],[3,1,3,6]]){
-        const z=h+(x+variant+7)%3;
-        g.box(x-1,y,0,w+1,w,1,'#675971');
-        g.box(x,y,1,w,w,z-1,'#78649a');
-        g.box(x+1,y,2,1,w,z-2,'#a88ac6');
-        g.box(x+1,y+1,z,w-2,w-2,2,'#dcc1e5');
+const fungusPalettes=[
+  ['#3a6260','#63c0ab','#388b97','#65cbc4','#c6ffe1'],
+  ['#5f4f72','#bca4e4','#7e539d','#b87ecc','#f3bcf4'],
+  ['#566c50','#aacf83','#559764','#9ac97d','#e4f5a7'],
+] as const;
+const gemPalettes=[
+  ['#493c6e','#7252a0','#ae83d5','#eacffa'],
+  ['#325c7a','#4689a9','#79c9d9','#c5f2ef'],
+  ['#7b453c','#b66d45','#ecad65','#fff0a4'],
+] as const;
+
+function caveMushroom(g:BlockGrid,x:number,y:number,height:number,radius:number,variant:number){
+  const [stalk,gills,cap,capLit,spots]=fungusPalettes[variant];
+  const canopy=height+Math.floor(radius*.66);
+  g.box(x-1,y-1,0,3,3,4,stalk);
+  g.box(x,y,3,2,2,canopy-3,gills);
+  g.box(x-3,y,0,7,1,1,stalk);
+  g.box(x,y-2,0,1,5,1,stalk);
+  for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
+    const r=Math.hypot(dx/radius,dy/(radius*.86));
+    const grain=(Math.imul(dx+20,67)^Math.imul(dy+20,97)^variant)&15;
+    if(r>1+(grain%3)*.018)continue;
+    const rim=r>.72,lift=Math.floor((1-r)*radius*.66);
+    g.box(x+dx,y+dy,height+lift-1,1,1,1,rim||grain%3===0?gills:stalk);
+    g.box(x+dx,y+dy,height+lift,1,1,rim?1:2,grain<2?spots:grain<5?capLit:cap);
+  }
+}
+
+function caveCrystal(g:BlockGrid,x:number,y:number,width:number,height:number,variant:number){
+  const [stone,body,facet,tip]=gemPalettes[variant];
+  for(let z=0;z<height;z++){
+    const shift=Math.floor(z*2/height),edge=z>height-5?Math.min(width-2,Math.floor((z-height+5)/2)):0;
+    const w=width-edge;
+    g.box(x+shift,y+edge,z,w,w,1,z<2?stone:z>=height-3?tip:body);
+    g.box(x+shift+w-1,y+edge,z,1,Math.max(1,w-1),1,z>=height-4?tip:facet);
+  }
+}
+
+export function blockRealmFormation(kind:RealmFormationKind,variant:number):BlockModel{
+  return model('realm-formation:'+kind+':'+variant,g=>{
+    if(kind==='fungus'){
+      caveMushroom(g,-1,-1,19+variant*2,6,variant);
+      caveMushroom(g,4,3,8+variant,3,(variant+1)%3);
+      caveMushroom(g,-5,2,6+variant*2,2,variant);
+    }else if(kind==='crystal'){
+      g.box(-5,-4,0,11,8,2,'#464059');
+      caveCrystal(g,-2,-2,5,22+variant*2,variant);
+      caveCrystal(g,-6,1,3,10+variant,variant);
+      caveCrystal(g,3,2,4,14-variant,variant);
+      caveCrystal(g,0,4,3,7+variant,variant);
+    }else if(kind==='spire'){
+      const [shadow,rock,edge]=variant===2?['#302737','#58424a','#825b58']:
+        ['#26263a','#453c55','#75637a'];
+      for(const [x,y,r,h] of [[-3,-2,3,18+variant*4],[2,0,2,13],[0,3,2,8]]){
+        g.box(x-r,y-r,0,2*r+1,2*r+1,2,shadow);
+        g.box(x-r+1,y-r+1,2,2*r,2*r,h-6,rock);
+        g.box(x-r+1,y-r+1,h-4,2*r-1,2*r-1,3,edge);
+        g.box(x-r+1,y-r+2,h-1,2*r-2,2*r-2,2,rock);
+        g.box(x-r+1,y+r,2,1,1,h-5,shadow);
       }
+      g.box(-6,2,0,3,2,2,edge);g.box(3,-3,0,4,2,3,rock);
+    }else if(kind==='vent'){
+      g.box(-6,-5,0,12,10,2,'#696262');
+      g.box(-5,-4,2,10,8,1,'#aaa47e');
+      g.box(-4,-3,3,8,6,1,'#d6bf88');
+      g.box(-3,-2,4,6,4,1,'#78a8a0');
+      g.box(-2,-1,5,4,2,1,'#9de2ca');
+      g.box(-5,2,3,2,2,2,'#e5ce98');g.box(4,-3,2,2,3,3,'#bfac7b');
     }else{
-      g.box(-1,-1,0,2,2,7,'#6c8274');
-      g.box(-3,-2,6,6,5,2,'#4c766c');
-      g.box(-4,-3,8,8,7,2,'#739a83');
-      g.box(-3,-2,10,6,5,1,'#a6c29b');
-      g.box(-2,-2,11,2,2,1,'#d6d7ac');
-      g.box(3,1,0,1,2,4,'#8b9d8d');
-      g.box(2,0,4,4,4,2,'#7eac92');
+      g.box(-5,-4,0,10,8,2,'#8b8076');
+      g.box(-3,-3,2,7,6,1,'#c2b397');
+      g.box(-2,-2,3,4,4,2,'#e0cea6');
+      g.box(-1,-1,5,2,2,1,'#f1dca8');
+      g.box(3,3,0,3,2,2,'#a89c92');
+    }
+  },variant);
+}
+
+const realmStonework=[
+  ['#492f37','#9d624e','#d68b5d','#75464b','#ffc779'],
+  ['#29424e','#397b75','#63b19b','#315859','#cbf6b5'],
+  ['#303749','#567b8d','#6b9fa0','#415c70','#a5eedb'],
+  ['#483953','#827aa0','#b29bc9','#615780','#f3d4ee'],
+] as const;
+
+export function blockRealmDwelling(town:number,variant:number,hall:boolean):BlockModel{
+  return model('realm-dwelling:'+town+':'+variant+':'+Number(hall),g=>{
+    const [foot,wall,roof,trim,light]=realmStonework[town];
+    const radius=hall?6:4;
+    const z=7+variant%2+(hall?3:0);
+    g.box(-radius-1,-radius,0,2*radius+2,2*radius+2,1,foot);
+    g.box(-radius-1,-radius,1,2*radius+2,2*radius+1,1,trim);
+    g.box(-radius,-radius+1,2,2*radius,2*radius,z-2,wall);
+    g.box(-radius,-radius+1,z-2,2*radius,2*radius,1,trim);
+    g.box(-radius-1,-radius,z,2*radius+2,2*radius+1,1,roof);
+    for(const x of [-radius+1,radius-2]){
+      g.box(x,radius+1,3,1,1,3,trim);
+      g.box(x,radius+1,4,1,1,2,light);
+      g.box(radius,x+1,4,1,2,2,light);
+    }
+    g.box(-1,radius+1,2,2,1,4,foot);
+    g.box(-2,radius+1,6,4,1,1,roof);
+    g.box(-2,radius+2,0,4,2,1,trim);
+    if(town===0){
+      g.box(-radius,-radius,z+1,2*radius,2*radius-1,2,trim);
+      g.box(-radius+1,-radius+1,z+3,2*radius-2,2*radius-3,1,roof);
+      g.box(radius-3,-radius+1,z+2,3,3,hall?10:5,wall);
+      g.box(radius-3,-radius+1,z+(hall?12:7),3,3,1,foot);
+      g.box(-radius+1,-radius,z+1,2,2,3,light);
+    }else if(town===1){
+      g.lift=z-3;
+      caveMushroom(g,-1,-1,hall?12:9,hall?7:5,variant%2===0?0:2);
+    }else if(town===2){
+      g.box(-radius,-radius+1,z+1,2*radius,2*radius-1,2,trim);
+      const tower=hall?8:4;
+      g.box(-2,-2,z+2,4,4,tower,foot);
+      g.box(-2,-2,z+tower+2,4,4,2,light);
+      g.box(-3,-3,z+tower+4,6,6,1,roof);
+      g.box(-2,-2,z+tower+5,4,4,1,trim);
+    }else{
+      g.box(-radius,-radius+1,z+1,2*radius,2*radius-1,2,trim);
+      g.lift=z+3;
+      caveCrystal(g,-2,-2,5,hall?12:7,variant%2);
+      caveCrystal(g,-radius+1,1,3,hall?8:4,0);
+    }
+  },variant);
+}
+
+export function blockRealmDock(bank:Facing):BlockModel{
+  const turn={south:0,west:1,north:2,east:3}[bank];
+  return model('realm-dock:'+bank,g=>{
+    for(const x of [-3,2])for(const y of [-5,2,8])g.box(x,y,0,1,1,7,'#3b444f');
+    for(let y=-6;y<10;y++)g.box(-3,y,3,6,1,1,y%3===0?'#a18265':'#766658');
+    for(let y=-5;y<=8;y+=3)g.box(-3,y,4,1,1,2,'#5c5956');
+    g.box(-3,4,6,1,1,1,'#92e5c9');g.box(2,-5,6,1,1,1,'#f5b87e');
+  },turn,'timber');
+}
+
+export function blockRealmGate(kind:RealmLink['kind']):BlockModel{
+  return model('realm-gate:'+kind,g=>{
+    const stone=kind==='roots'?'#506357':'#5e5263',trim=kind==='falls'?'#4693a0':'#998373';
+    g.box(-6,-5,0,12,10,1,stone);
+    g.box(-3,-3,1,6,7,1,'#292736');
+    for(const x of [-5,3]){
+      g.box(x,-4,1,2,5,6,stone);
+      g.box(x,-4,5,2,5,1,trim);
+      g.box(x,1,1,2,3,3,stone);
+      g.box(x,1,4,2,3,1,kind==='crater'?'#e8a762':'#8ac4ae');
+    }
+    g.box(-5,-4,7,10,2,2,stone);
+    g.box(-3,-4,9,6,2,1,trim);
+    if(kind==='falls'){
+      g.box(-2,-2,1,4,1,11,'#69b2b5');
+      for(let z=3;z<11;z+=3)g.box(-1,-1,z,2,1,1,'#b9ded2');
+    }else if(kind==='roots'){
+      g.box(-4,-4,8,3,3,8,'#616852');
+      g.box(-3,-4,12,2,2,8,'#7e8161');
+      g.box(2,-4,7,3,2,4,'#798166');
     }
   });
 }

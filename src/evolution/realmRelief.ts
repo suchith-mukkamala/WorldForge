@@ -11,7 +11,7 @@ export type RealmRasterRequest={id:number;projection:RealmProjection;map?:RealmM
 export type RealmRasterResult={id:number;pixels:Uint32Array<ArrayBuffer>;hit:DepthPicking};
 type PreparedRealm={map:RealmMap;palette:Uint32Array;columns:number;rows:number;elevations:Float32Array};
 const SIDE=VISUAL_TERRAIN_SIDE;
-const rock=[['#625666','#4d455c','#36374d'],['#4d4355','#393749','#2e3144']]
+const rock=[['#625666','#503f58','#342c43'],['#4d4355','#3d324b','#292b41']]
   .map(course=>course.map(terrainPixel));
 
 export function realmRasterSize(width:number,height:number){
@@ -58,6 +58,13 @@ function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint
         rasterFace(hit,[{x:a.x*sx,y:a.y*sy+top},{x:b.x*sx,y:b.y*sy+top},
           {x:b.x*sx,y:b.y*sy+bottom},{x:a.x*sx,y:a.y*sy+bottom}],pixels,
         shadeTerrainPixel(ink,.87+grain*.23));
+        if(n===1&&grain>.34){
+          const line=top+(bottom-top)*(.28+grain*.25);
+          const end={x:a.x+(b.x-a.x)*.68,y:a.y+(b.y-a.y)*.68};
+          rasterFace(hit,[{x:a.x*sx,y:a.y*sy+line},{x:end.x*sx,y:end.y*sy+line},
+            {x:end.x*sx,y:end.y*sy+line+sy},{x:a.x*sx,y:a.y*sy+line+sy}],pixels,
+          shadeTerrainPixel(ink,grain>.67?1.25:.75));
+        }
       }
     }
   };

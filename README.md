@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.30.0 — Living Caverns** adds towering glowroot groves, crystal clusters, basalt spires, and steaming mineral pools to the Underworld. Ashgate, Belowleaf, Lantern Quay, and Glassbank have distinct stonework and lighting. Small bats, spores, lava sparks, and water glints bring movement to the 3D atlas and the view on foot. Existing worlds gain the new scenery.
+
 - **v2.29.0 — Underworld Relief** opens a full-size, orbitable 3D map under **Underworld**. Use **Overhead** for a flat view, or **Places** to zoom to a town or shaft. Lava lights nearby rock, the Buried Sea has shallows, and underground towns have more detailed stonework. Temporary lava crossings update as time passes without redrawing the terrain.
 
 - **v2.28.0 — Stacked World** opens the Surface and the Underworld together in **Stacked 3D**. Orbit both layers with one camera, zoom in on the Underworld’s block-built terrain and towns, or select a crater shaft to see where it connects the two elevations. The layer selector also opens either atlas on its own. To travel between layers as a mortal, descend at a volcano and jump through its dormant crater.
@@ -149,7 +151,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current** — v2.29.0 offers a raised Underworld atlas and a stacked view of both layers. Saved worlds keep their terrain and histories. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
+- **Current** — v2.30.0 brings new cavern scenery, town models, and ambient motion to the Underworld. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
 - **Play:** observe from the atlas, intervene in God Mode, or Descend as a mortal and walk the same world. Press **P** on the atlas to pause or resume time, and **?** for that hint. Mortal exploration keeps its own keys.
 - **Future visual direction** — Keep the pixel-art atlas and Descend view. Later, explore procedurally generated planets, additional realms, and interplanetary travel. Inhabiting an existing resident remains a future option.
 
