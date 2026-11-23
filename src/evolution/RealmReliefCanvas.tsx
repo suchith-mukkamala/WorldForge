@@ -5,10 +5,11 @@ import {interpolatedGroundHeight,type DepthCamera} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
 import type {Point} from './motion';
 import {RealmAmbientCanvas} from './RealmAmbientCanvas';
-import {realmEffectLift,type RealmGlimmer} from './realmAmbient';
+import {realmEffectLift,type RealmGlimmer,type RealmTrack} from './realmAmbient';
 import {prepareRealmRelief,rasterizeRealm,type RealmRasterResult} from './realmRelief';
 import {realmFormationUnit,realmScenery} from './realmScenery';
 import {realmPropAt} from './realmSceneryArt';
+import {realmWildlife} from './realmWildlife';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {realmDepthPoint,type RealmProjection} from './stackedProjection';
 import {RealmBiome,realmFordOpen,type RealmMap} from './underworld';
@@ -151,6 +152,17 @@ function reliefGlimmers(map:RealmMap,projection:RealmProjection,camera:DepthCame
   return projected;
 }
 
+function reliefWildlife(map:RealmMap,projection:RealmProjection,hit:DepthPicking):RealmTrack[]{
+  const sx=hit.width/projection.width,sy=hit.height/projection.height;
+  return realmWildlife(map).flatMap(({cells,kind,phase})=>{
+    const points=cells.map(cell=>{
+      const point=realmPropPoint(map,projection,cell);
+      return visibleGround(point,cell,hit,sx,sy)?point:null;
+    });
+    return points.some((point,i)=>point&&points[i+1])?[{kind,phase,points}]:[];
+  });
+}
+
 function paintFords(canvas:HTMLCanvasElement,projection:RealmProjection,camera:DepthCamera,
   map:RealmMap,hit:DepthPicking,open:number[]){
   if(canvas.width!==hit.width)canvas.width=hit.width;
@@ -185,6 +197,7 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
   const shown=!!displayed;
   const glimmers=useMemo(()=>current&&displayed?reliefGlimmers(map,projection,camera,displayed.hit):[],
     [current,displayed]);
+  const tracks=useMemo(()=>current&&displayed?reliefWildlife(map,projection,displayed.hit):[],[current,displayed]);
 
   useEffect(()=>{
     const active=createRenderer((job,result)=>{
@@ -233,7 +246,7 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
       }}/>
     {map.fords.size>0&&<canvas ref={fords} className="strata-fords" aria-hidden="true"
       hidden={!current} data-crossings={fordKey}/>}
-    <RealmAmbientCanvas points={glimmers} width={projection.width} height={projection.height}
+    <RealmAmbientCanvas points={glimmers} tracks={tracks} width={projection.width} height={projection.height}
       unit={projection.blockScale} hidden={!current}/>
     {showSelection&&pin&&<span className="strata-selection" aria-hidden="true"
       style={{left:pin.x/projection.width*100+'%',top:pin.y/projection.height*100+'%'}}/>}
