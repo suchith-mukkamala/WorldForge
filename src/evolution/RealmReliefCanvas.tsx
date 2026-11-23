@@ -1,11 +1,14 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {terrainHash} from './biomeGeneration';
-import {blockRealmFord,blockRealmGrowth,blockRealmHouse} from './blockModels';
-import {depthBlockView,paintBlockScenery} from './blockScenery';
-import type {DepthCamera} from './depthProjection';
+import {blockRealmFord} from './blockModels';
+import {depthBlockView,paintBlockContact,paintBlockScenery} from './blockScenery';
+import {interpolatedGroundHeight,type DepthCamera} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
 import type {Point} from './motion';
+import {RealmAmbientCanvas} from './RealmAmbientCanvas';
+import {realmEffectLift,type RealmGlimmer} from './realmAmbient';
 import {prepareRealmRelief,rasterizeRealm,type RealmRasterResult} from './realmRelief';
+import {realmFormationUnit,realmScenery} from './realmScenery';
+import {realmPropAt} from './realmSceneryArt';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {realmDepthPoint,type RealmProjection} from './stackedProjection';
 import {RealmBiome,realmFordOpen,type RealmMap} from './underworld';
@@ -96,23 +99,17 @@ function createRenderer(show:(job:Job,result:RealmRasterResult)=>void){
   };
 }
 
-const decorations=new WeakMap<RealmMap,number[]>();
-function realmDecorations(map:RealmMap){
-  const cached=decorations.get(map);
-  if(cached)return cached;
-  const places=[...map.houses.keys()];
-  for(let i=0;i<map.biomes.length;i++){
-    const biome=map.biomes[i];
-    if(biome!==RealmBiome.glowroot&&biome!==RealmBiome.crystal||map.roads.has(i)||map.houses.has(i))continue;
-    if(terrainHash(i,87,map.seed)>.91)places.push(i);
-  }
-  decorations.set(map,places);
-  return places;
-}
-
 function visibleGround(point:Point,index:number,hit:DepthPicking,sx:number,sy:number){
   const x=Math.floor(point.x*sx),y=Math.floor(point.y*sy);
   return x>=0&&x<hit.width&&y>=0&&y<hit.height&&hit.ids[y*hit.width+x]===index+1;
+}
+
+function realmPropPoint(map:RealmMap,projection:RealmProjection,cell:number,dx=0,dy=0){
+  const {x,y}=seaPoint(map.width,cell),kind=map.biomes[cell];
+  const height=map.heights[cell];
+  const at=kind===RealmBiome.sea||kind===RealmBiome.lava?height:
+    height*.54+interpolatedGroundHeight(map.heights,map.width,map.height,x+dx,y+dy)*.46;
+  return realmDepthPoint(projection,x+dx,y+dy,at);
 }
 
 function paintScenery(ctx:CanvasRenderingContext2D,{map,projection,camera}:Job,hit:DepthPicking){
@@ -120,15 +117,38 @@ function paintScenery(ctx:CanvasRenderingContext2D,{map,projection,camera}:Job,h
   const view=depthBlockView(camera),scale=projection.blockScale;
   const order=(index:number)=>index%map.width*projection.east.y+
     Math.floor(index/map.width)*projection.south.y;
-  const sites=[...realmDecorations(map)].sort((a,b)=>order(a)-order(b));
+  const scene=realmScenery(map);
+  const sites=[...scene.formations.keys(),...map.houses.keys(),...scene.gates.keys(),...scene.docks.keys()];
+  sites.sort((a,b)=>order(a)-order(b));
   ctx.setTransform(sx,0,0,sy,0,0);
+  ctx.imageSmoothingEnabled=false;
   for(const i of sites){
-    const {x,y}=seaPoint(map.width,i),p=realmDepthPoint(projection,x,y,map.heights[i]);
+    const prop=realmPropAt(map,scene,i);
+    if(!prop)continue;
+    const p=realmPropPoint(map,projection,i,prop.dx,prop.dy);
     if(!visibleGround(p,i,hit,sx,sy))continue;
-    const house=map.houses.get(i),crystal=map.biomes[i]===RealmBiome.crystal;
-    const model=house?blockRealmHouse(house.home==='ash-borne',i%7):blockRealmGrowth(crystal,i%4);
-    paintBlockScenery(ctx,model,p,view,scale*(house?.65:.52));
+    paintBlockContact(ctx,prop.model,p,view,scale*prop.unit);
+    paintBlockScenery(ctx,prop.model,p,view,scale*prop.unit);
   }
+}
+
+function reliefGlimmers(map:RealmMap,projection:RealmProjection,camera:DepthCamera,hit:DepthPicking):RealmGlimmer[]{
+  const scene=realmScenery(map),sx=hit.width/projection.width,sy=hit.height/projection.height;
+  const rise=depthBlockView(camera).rise*projection.blockScale;
+  const cap={spore:36,spark:34,foam:38,steam:24,gleam:32,bat:14};
+  const count={spore:0,spark:0,foam:0,steam:0,gleam:0,bat:0};
+  const total={...count};
+  for(const effect of scene.effects)total[effect.kind]++;
+  const projected:RealmGlimmer[]=[];
+  for(const {kind,cell,phase} of scene.effects){
+    const stride=Math.max(1,Math.ceil(total[kind]/cap[kind]));
+    if(count[kind]++%stride)continue;
+    const form=scene.formations.get(cell),at=realmPropPoint(map,projection,cell,form?.dx,form?.dy);
+    if(!visibleGround(at,cell,hit,sx,sy))continue;
+    const lift=form?realmEffectLift(kind)*realmFormationUnit(form.size)*rise:0;
+    projected.push({kind,phase,x:at.x+(phase-.5)*5,y:at.y-lift});
+  }
+  return projected;
 }
 
 function paintFords(canvas:HTMLCanvasElement,projection:RealmProjection,camera:DepthCamera,
@@ -163,6 +183,8 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
   const openFords=useMemo(()=>[...map.fords].filter(i=>realmFordOpen(map,i,day)),[map,day]);
   const fordKey=openFords.join(',');
   const shown=!!displayed;
+  const glimmers=useMemo(()=>current&&displayed?reliefGlimmers(map,projection,camera,displayed.hit):[],
+    [current,displayed]);
 
   useEffect(()=>{
     const active=createRenderer((job,result)=>{
@@ -211,6 +233,8 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
       }}/>
     {map.fords.size>0&&<canvas ref={fords} className="strata-fords" aria-hidden="true"
       hidden={!current} data-crossings={fordKey}/>}
+    <RealmAmbientCanvas points={glimmers} width={projection.width} height={projection.height}
+      unit={projection.blockScale} hidden={!current}/>
     {showSelection&&pin&&<span className="strata-selection" aria-hidden="true"
       style={{left:pin.x/projection.width*100+'%',top:pin.y/projection.height*100+'%'}}/>}
     {waiting&&!shown&&<span className="strata-drawing" role="status">Drawing the Underworld relief…</span>}

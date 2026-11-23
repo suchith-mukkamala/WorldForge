@@ -27,22 +27,23 @@ export function stackedProjection(world:Bounds,realm:Grid,camera:DepthCamera,
   const nearest=Math.min(...footprint.map(p=>p.y)),furthest=Math.max(...footprint.map(p=>p.y));
   const groundSpan=Math.max(...depths)-groundStart;
   const rise=REALM_RISE*surface.riseScale/DEPTH_RISE,underRise=maxRealmHeight*rise;
+  const dx=world.width/realm.width,dy=world.height/realm.height,blockScale=Math.min(dx,dy);
+  const headroom=Math.ceil(18+blockScale*24);
   const upperCrust=Math.max(28,Math.round(groundSpan*.08));
   const lowerCrust=Math.max(22,Math.round(groundSpan*.055));
   const lowerTop=Math.ceil(Math.max(surface.size.height,furthest+upperCrust)+34);
   // Separate the plates vertically to expose both faces. X and Y always
   // refer to the same world footprint, regardless of camera orientation.
-  const shift=lowerTop+underRise+16-nearest;
+  const shift=lowerTop+underRise+headroom-nearest;
   const datum=STACKED_SEA-shift*DEPTH_RISE/surface.riseScale;
-  const lowerHeight=Math.ceil(groundSpan+underRise+lowerCrust+32);
+  const lowerHeight=Math.ceil(groundSpan+underRise+lowerCrust+headroom+16);
   // Lower deck coordinates are local to its canvas, so changes in the
   // reserved space for Surface mountains and skylands do not invalidate it.
-  const dx=world.width/realm.width,dy=world.height/realm.height;
   const x=(dx-1)/2,y=(dy-1)/2;
   const offset=surface.projectSmooth(0,0,STACKED_SEA).x;
-  const lower:RealmProjection={width:surface.size.width,height:lowerHeight,crust:lowerCrust,blockScale:Math.min(dx,dy),
+  const lower:RealmProjection={width:surface.size.width,height:lowerHeight,crust:lowerCrust,blockScale,
     frontX:surface.frontX,frontY:surface.frontY,rise,
-    origin:{x:surface.projectSmooth(x,y,STACKED_SEA).x,y:surface.order(x,y)-groundStart+underRise+16},
+    origin:{x:surface.projectSmooth(x,y,STACKED_SEA).x,y:surface.order(x,y)-groundStart+underRise+headroom},
     east:{x:surface.projectSmooth(dx,0,STACKED_SEA).x-offset,y:surface.order(dx,0)},
     south:{x:surface.projectSmooth(0,dy,STACKED_SEA).x-offset,y:surface.order(0,dy)},
   };

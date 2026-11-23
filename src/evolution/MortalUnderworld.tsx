@@ -13,6 +13,8 @@ import {canAnimate,directionBetween,inFrontOf,motionFrame,samePoint,type Facing,
 import {mortalName} from './MortalHUD';
 import {paintPerson} from './pixelArt';
 import {PixelPortrait} from './PixelPortrait';
+import {paintRealmAmbient,REALM_AMBIENT_STEP,realmEffectLift,type RealmGlimmer} from './realmAmbient';
+import {realmFormationUnit,realmScenery} from './realmScenery';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {UnderworldAtlas} from './UnderworldAtlas';
 import {realmLinkName,realmPeopleName,realmResidents,RealmBiome,
@@ -39,7 +41,7 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
     const {width,height}=start.map,bounds={width:width*TILE,height:height*TILE};
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame=0,previous:Scene|undefined,frameSize={width:312,height:184},density=3;
-    let painted:Point|undefined,cols=0,rows=0;
+    let painted:Point|undefined,cols=0,rows=0,glimmers:RealmGlimmer[]=[],paintedEffects=-Infinity;
     const startPoint=seaPoint(width,start.visit.at);
     let motion:Motion={from:startPoint,to:startPoint,start:0,duration:1,facing:'north'};
     let moving=false;
@@ -58,7 +60,8 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
     const draw=(now:number)=>{
       frame=requestAnimationFrame(draw);
       const view=latest.current,{active:{map,visit,actor},day,facing,marked,residents}=view;
-      if(previous===view&&!moving)return;
+      const motionDue=!reduced.matches&&!document.hidden&&glimmers.length>0&&now-paintedEffects>=REALM_AMBIENT_STEP;
+      if(previous===view&&!moving&&!motionDue)return;
       const to=seaPoint(width,visit.at),ship=visit.ship,atSea=!!ship?.underway;
       if(!samePoint(to,motion.to)){
         const from=motionFrame(motion,now);
@@ -69,13 +72,26 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
       const camera=adventureCamera(p,frameSize,bounds);
       viewport.current={...camera,...frameSize};
       const origin={x:Math.floor(camera.x/TILE)-1,y:Math.floor(camera.y/TILE)-1};
-      if(!painted||!samePoint(painted,origin)||previous?.day!==day||previous?.active.map!==map){
+      const movedView=!painted||!samePoint(painted,origin)||previous?.active.map!==map;
+      if(movedView){
+        const scene=realmScenery(map);
+        glimmers=scene.effects.flatMap(({cell,kind,phase})=>{
+          const {x,y}=seaPoint(width,cell);
+          if(x<origin.x||y<origin.y||x>=origin.x+cols||y>=origin.y+rows)return [];
+          const form=scene.formations.get(cell);
+          const lift=form?realmEffectLift(kind)*realmFormationUnit(form.size)*1.95*DESCENT_BLOCK_VIEW.rise:0;
+          return [{kind,phase,x:(x+.5+(form?.dx??0))*TILE,y:(y+.69+(form?.dy??0))*TILE-lift}];
+        });
+      }
+      if(movedView||previous?.day!==day){
         ground.setTransform(density,0,0,density,0,0);
         paintRealmTerrain(ground,texture,map,day,origin,cols,rows);painted=origin;
       }
       ctx.setTransform(density,0,0,density,0,0);ctx.imageSmoothingEnabled=false;
       ctx.drawImage(stamp,origin.x*TILE-camera.x,origin.y*TILE-camera.y,cols*TILE,rows*TILE);
       ctx.save();ctx.translate(-camera.x,-camera.y);
+      paintRealmAmbient(ctx,glimmers,reduced.matches?1600:now,1.15);
+      paintedEffects=now;
       if(marked!==undefined){
         const {x,y}=seaPoint(width,marked),px=x*TILE,py=y*TILE;
         ctx.fillStyle='#f5db99';

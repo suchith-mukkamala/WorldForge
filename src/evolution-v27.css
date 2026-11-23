@@ -997,7 +997,7 @@
   background: transparent;
   image-rendering: pixelated;
 }
-.strata-fords {
+.strata-fords, .strata-life {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1005,7 +1005,7 @@
   pointer-events: none;
   image-rendering: pixelated;
 }
-.strata-fords[hidden] { display: none; }
+.strata-fords[hidden], .strata-life[hidden] { display: none; }
 .strata-label {
   position: absolute;
   left: 3%;
