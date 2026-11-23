@@ -1,19 +1,21 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {ATLAS_TOWN_ZOOM,atlasScrollGeometry} from './atlasMap';
+import {ATLAS_TOWN_ZOOM,atlasCloseupZoom,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {CaveCutaway} from './CaveCutaway';
 import {BIOME_INFO,type Brush,type World} from './engine';
 import {DepthCanvas} from './DepthCanvas';
 import type {DepthCamera} from './depthProjection';
-import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
+import {MAX_ATLAS_ZOOM,stepAtlasZoom,boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
+import {ATLAS_PERSON_SIZE} from './personSpriteScale';
 import type {Point} from './motion';
 import {caveConnections,caveRoomName,realmCaverns} from './realmCaverns';
+import {REALM_ATLAS_PERSON_HEIGHT} from './RealmAtlasResident';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {seaPoint} from './shipSave';
 import {STACKED_CAMERA,STACKED_RELIEF,STACKED_SEA,stackedProjection} from './stackedProjection';
 import {exposedRock,hangingVines,paintCutRock,paintHangingVines,rockColor} from './strataRock';
 import {topographyForWorld} from './topography';
-import {projectWorldLayer,realmLinkName,type RealmLink,type RealmMap} from './underworld';
+import {projectWorldLayer,realmLinkName,realmPeopleName,realmResidents,type RealmLink,type RealmMap} from './underworld';
 import {UNDERWORLD_BIOMES} from './underworldArt';
 import {volcanicDay,volcanoPhase} from './volcanism';
 
@@ -74,6 +76,8 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
   const projection=useMemo(()=>stackedProjection(world,map,camera,maxHeight),
     [world.width,world.height,world.skylands,world.worldTree,map,camera,maxHeight]);
   const {surface,size,lowerTop,lowerHeight,underneath}=projection;
+  const street=atlasLevel(zoom)==='street';
+  const residents=useMemo(()=>street?realmResidents(world,map):[],[street,world,map]);
   const elevations=topographyForWorld(world).heights;
   const caverns=realmCaverns(map);
   const connections=useMemo(()=>caveConnections(world,map,caverns),[map,caverns,elevations]);
@@ -137,9 +141,10 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
     return ()=>port.removeEventListener('wheel',wheel);
   },[]);
   const fit=()=>{pending.current=undefined;setZoom(1);viewport.current?.scrollTo(0,0);};
-  const focus=(p:Point)=>{
-    if(zoom>=ATLAS_TOWN_ZOOM){centered(p);return;}
-    pending.current={point:p};setZoom(ATLAS_TOWN_ZOOM);
+  const focus=(p:Point,spriteHeight?:number)=>{
+    const next=spriteHeight?atlasCloseupZoom(zoom,sheet.current?.offsetWidth??0,size.width,spriteHeight):ATLAS_TOWN_ZOOM;
+    if(zoom>=next){centered(p);return;}
+    pending.current={point:p};setZoom(next);
   };
   const visitLink=(layer:Selection['layer'],shaft:typeof links[number])=>{
     setSelected({layer,cell:layer==='surface'?shaft.link.surface:shaft.link.cell});
@@ -164,15 +169,15 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           <button type="button" className="strata-roof-toggle" aria-pressed={roof}
             onClick={()=>setRoof(value=>!value)}>Cave roof</button>
           <button type="button" onClick={fit}>Fit both</button>
-          <button type="button" aria-label="Zoom out" disabled={zoom<=1} onClick={()=>zoomTo(zoom-.5)}>−</button>
-          <button type="button" aria-label="Zoom in" disabled={zoom>=8} onClick={()=>zoomTo(zoom+.5)}>+</button>
+          <button type="button" aria-label="Zoom out" disabled={zoom<=1} onClick={()=>zoomTo(stepAtlasZoom(zoom,-1))}>−</button>
+          <button type="button" aria-label="Zoom in" disabled={zoom>=MAX_ATLAS_ZOOM} onClick={()=>zoomTo(stepAtlasZoom(zoom,1))}>+</button>
         </div>
       </div>
       <div className="evo-map-scroll atlas-viewport strata-viewport" ref={viewport} tabIndex={0}
         role="region" aria-label="Pan and zoom both world layers"
         onKeyDown={event=>{
           if(event.target!==event.currentTarget)return;
-          if(event.key==='+'||event.key==='-'){event.preventDefault();zoomTo(zoom+(event.key==='+'?.5:-.5));}
+          if(event.key==='+'||event.key==='-'){event.preventDefault();zoomTo(stepAtlasZoom(zoom,event.key==='+'?1:-1));}
           if(event.key==='Home'){event.preventDefault();fit();}
         }}
         onPointerDown={event=>{
@@ -213,7 +218,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           </div>
           <div className="strata-level strata-lower" style={{top:lowerTop/size.height*100+'%',height:lowerHeight/size.height*100+'%'}}>
             <RealmReliefCanvas map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}
-              selected={selected?.layer==='underworld'?selected.cell:undefined}
+              selected={selected?.layer==='underworld'?selected.cell:undefined} residents={residents}
               onSelect={cell=>setSelected({layer:'underworld',cell})}/>
           </div>
           {openings.map(site=><span key={site.kind} className="strata-geology" data-kind={site.kind}
@@ -229,7 +234,10 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           </div>)}
           {map.towns.map(town=><button type="button" className="strata-pin strata-town" key={town.id}
             aria-label={'Inspect '+town.name} title={town.name} style={spot(lowerPoint(town.index))}
-            onClick={()=>setSelected({layer:'underworld',cell:town.index})}>▪</button>)}
+            onClick={()=>{
+              setSelected({layer:'underworld',cell:town.index});
+              focus(lowerPoint(town.index),REALM_ATLAS_PERSON_HEIGHT*projection.lower.blockScale);
+            }}>▪</button>)}
           {at!==undefined&&<span className="strata-mortal" style={spot(lowerPoint(at))} title="Your mortal"/>}
         </div>
       </div>
@@ -250,6 +258,12 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
             const cell=layer==='surface'?feature.surface:feature.cell;
             setSelected({layer,cell});focus(layer==='surface'?surfacePoint(cell):lowerPoint(cell));
           }}>Inspect {selected?.layer==='surface'?'below':'above'}</button>}
+          {selected?.layer==='underworld'&&residents.filter(resident=>resident.index===selected.cell)
+            .map(resident=><p key={resident.id}>{resident.name} · {realmPeopleName(resident.people)}</p>)}
+          {selected&&zoom<MAX_ATLAS_ZOOM&&<button type="button" className="atlas-terrain-cell-zoom" onClick={()=>{
+            if(selected.layer==='surface')focus(surfacePoint(selected.cell),ATLAS_PERSON_SIZE.height);
+            else focus(lowerPoint(selected.cell),REALM_ATLAS_PERSON_HEIGHT*projection.lower.blockScale);
+          }}>Zoom to place</button>}
           {town&&world.underworld&&<p>{world.underworld.population[town.id].demons} demons
             {' · '}{world.underworld.population[town.id].ashBorne} Ash Borne</p>}
           {corresponding&&<button className="atlas-terrain-cell-zoom" type="button" onClick={()=>{

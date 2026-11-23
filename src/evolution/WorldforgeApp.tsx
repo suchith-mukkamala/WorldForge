@@ -1,3 +1,4 @@
+import {ATLAS_PERSON_SIZE} from './personSpriteScale';
 import {enableVolcanicWorld,ventHasGround,volcanicIslandName,volcanoName} from './volcanicGeography';
 import {initializeUnderworld,underworldMap} from './underworld';
 import {WorldLayerSwitch} from './WorldLayerSwitch';
@@ -6,7 +7,7 @@ import {lazy,Suspense,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useSt
 import type {ChangeEvent,SetStateAction} from 'react';
 import {receiveSimulationWorld,shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
-import {WorldCanvas,type MapOverlay} from './WorldCanvas';
+import {WORLD_CELL_SIZE,WorldCanvas,type MapOverlay} from './WorldCanvas';
 import {DepthCanvas} from './DepthCanvas';
 import {CAMERA_PITCHES,RELIEF_LEVELS,
   type CameraPitch,type ReliefLevel} from './depthProjection';
@@ -29,7 +30,7 @@ import {createDepthProjector,DEPTH_RISE,DEPTH_TILE_WIDTH,interpolatedGroundHeigh
 import {topographyForWorld} from './topography';
 import {readWorldPerspective,writeWorldPerspective} from './worldViewPreferences';
 import {godModeShortcut} from './appShortcuts';
-import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
+import {MAX_ATLAS_ZOOM,stepAtlasZoom,boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,
   isMapPanDrag,mapScrollForDrag,restoreWorldZoomAnchor,
   type WorldZoomAnchor} from './mapGestures';
 import {yawForRightDrag} from './orbitGestures';
@@ -40,7 +41,7 @@ import {hydrologyForWorld} from './hydrology';
 import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import type {Point} from './motion';
-import {ATLAS_PLACE_ZOOM,ATLAS_STREET_ZOOM,ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {ATLAS_PLACE_ZOOM,ATLAS_PEOPLE_ZOOM,ATLAS_STREET_ZOOM,ATLAS_TOWN_ZOOM,atlasCloseupZoom,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {AtlasPlacePicker,AtlasSettlementMarkers} from './AtlasPlaces';
 import {AtlasTownCard} from './AtlasTownCard';
 import {enableSkylands,skylandMesh,skylandName,type Skyland} from './skylands';
@@ -102,7 +103,7 @@ function initialWorld():World{
 }
 type Tab='world'|'creator'|'history'|'family'|'people'|'knowledge'|'codex'|'powers'|
   'settlements'|'culture'|'descent'|'underworld'|'stacked';
-type AtlasPoint=Point&{elevation?:number};
+type AtlasPoint=Point&{elevation?:number;closeup?:boolean};
 const format=(n:number)=>n.toLocaleString('en-US');
 const CAMERA_TILT_CHOICES:readonly (readonly [CameraPitch,string])[]=[
   ['low','LOW'],['classic','CLASSIC'],['high','HIGH'],
@@ -820,19 +821,19 @@ export function WorldforgeApp(){
   const favoriteSettlement=(id:number)=>setWorld(w=>toggleSettlementFavorite(w,id));
   const giveName=(id:number,name:string)=>setWorld(w=>renamePerson(w,id,name));
   const renamePlace=(id:number,name:string)=>setWorld(w=>renameSettlement(w,id,name));
-  const locateAtlasPoint=(point:AtlasPoint,minimumZoom:number)=>{
+  const locateAtlasPoint=(point:AtlasPoint,minimumZoom:number,closeup=false)=>{
     pendingZoomAnchor.current=null;orbitFocusRef.current=null;surfaceScroll.current=null;
     setSkySelection(null);
     setFollowId(null);setSelectedAgentId(null);setSelected(point);
     setBrush({kind:'inspect'});setZoom(value=>Math.max(minimumZoom,value));
-    setTab('world');setMapFocus(point);
+    setTab('world');setMapFocus(closeup?{...point,closeup}:point);
   };
   const focusMap=()=>mapSheetRef.current?.querySelector('canvas')?.focus({preventScroll:true});
   const findSettlement=(id:number)=>{
     const place=world.settlements.find(s=>s.id===id)??knownSettlements(world).find(s=>s.id===id);
     if(!place)return;
     if(tab!=='world')setPlaying(false);
-    locateAtlasPoint({x:place.x,y:place.y},ATLAS_PLACE_ZOOM);
+    locateAtlasPoint({x:place.x,y:place.y},ATLAS_PEOPLE_ZOOM,true);
     focusMap();
   };
   const openSettlement=(id:number)=>{
@@ -844,7 +845,7 @@ export function WorldforgeApp(){
     pendingZoomAnchor.current=null;
     setSkySelection(null);
     setSelectedAgentId(id);setSelected({x:target.x,y:target.y});
-    setZoom(v=>Math.max(2,v));setFollowId(id);
+    setZoom(v=>Math.max(ATLAS_PEOPLE_ZOOM,v));setFollowId(id);
     setTab('world');setMapFocus(id);
   };
   const treeFocus=(x:number,y:number):AtlasPoint=>({x,y,
@@ -906,12 +907,17 @@ export function WorldforgeApp(){
   };
   useLayoutEffect(()=>{
     if(tab!=='world'||mapFocus===null)return;
+    if(typeof mapFocus==='number'||mapFocus.closeup){
+      const targetZoom=atlasCloseupZoom(zoom,mapSheetRef.current?.offsetWidth??0,
+        mapView==='depth'?projection.size.width:world.width*WORLD_CELL_SIZE,ATLAS_PERSON_SIZE.height);
+      if(targetZoom>zoom){setZoom(targetZoom);return;}
+    }
     if(typeof mapFocus==='number'){
       const target=world.agents.find(a=>a.id===mapFocus);
       if(target)centerCamera(target.x,target.y);
     }else centerCamera(mapFocus.x,mapFocus.y,mapFocus.elevation);
     setMapFocus(null);
-  },[tab,mapFocus,zoom,centerCamera]);
+  },[tab,mapFocus,zoom,centerCamera,mapView,projection.size.width,world.width]);
   // The raised camera's full projected canvas may be much wider than the
   // viewport. Center it on entry; otherwise first-time users see only the
   // empty skyline at the top-left of a large panorama.
@@ -1261,10 +1267,10 @@ export function WorldforgeApp(){
                   setOverlay(overlay==='trade'?'terrain':'trade');
                   setBrush({kind:'inspect'});
                 }}>Trade</button>
-              <button type="button" onClick={()=>zoomAtlas(v=>v-.5)}
+              <button type="button" onClick={()=>zoomAtlas(v=>stepAtlasZoom(v,-1))}
                 disabled={zoom<=1} aria-label="Zoom out">−</button>
-              <button type="button" onClick={()=>zoomAtlas(v=>v+.5)}
-                disabled={zoom>=8} aria-label="Zoom in">+</button>
+              <button type="button" onClick={()=>zoomAtlas(v=>stepAtlasZoom(v,1))}
+                disabled={zoom>=MAX_ATLAS_ZOOM} aria-label="Zoom in">+</button>
             </div>
           </div>
           <details className="evo-map-settings">
@@ -1304,7 +1310,7 @@ export function WorldforgeApp(){
                   if(followId!==null){setFollowId(null);return;}
                   if(!agent)return;
                   pendingZoomAnchor.current=null;
-                  setFollowId(agent.id);setZoom(v=>Math.max(mapView==='depth'?2:3,v));
+                  setFollowId(agent.id);setZoom(v=>Math.max(ATLAS_PEOPLE_ZOOM,v));
                   setMapFocus(agent.id);
                 }}>{followId!==null?'◉ TRACKING':'⌖ FOLLOW'}</button>
               <button onClick={()=>setShowDiagnostics(v=>!v)}
@@ -1698,7 +1704,7 @@ export function WorldforgeApp(){
                   </div>
                 </div>}
                 {selectedTerrain&&displayed&&<TerrainCellPanel key={drainageIndex} cells={selectedTerrain}
-                  onZoom={detail==='street'?undefined:()=>locateAtlasPoint(displayed,ATLAS_STREET_ZOOM)}/>}
+                  onZoom={zoom>=ATLAS_PEOPLE_ZOOM?undefined:()=>locateAtlasPoint(displayed,ATLAS_PEOPLE_ZOOM,true)}/>}
                 {hasPhysicalTerrain(world)&&displayed&&<div className="evo-biome-info">
                   <span className="evo-biome-swatch" style={{background:'#c7a879'}}/>
                   <div><strong>PHYSICAL TERRAIN</strong>

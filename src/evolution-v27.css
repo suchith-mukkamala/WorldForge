@@ -857,6 +857,13 @@
   image-rendering: pixelated;
 }
 .realm-atlas-buildings { pointer-events: none; }
+canvas.realm-atlas-resident, .realm-atlas-sheet canvas.realm-atlas-resident {
+  position: absolute;
+  inset: auto;
+  height: auto;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
 .realm-atlas-pin, .realm-region-label, .realm-atlas-crosshair, .realm-atlas-player {
   position: absolute;
   transform: translate(-50%, -50%);

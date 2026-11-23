@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.33.2 — Atlas Close-ups** raises the zoom limit to 24× across the Surface, Underworld, and Stacked 3D maps. Jump closer by finding a person or settlement. Larger Surface sprites and Underworld townsfolk appear in street views, while the world overview keeps settlement markers easy to scan.
+
 - **v2.33.1 — Cave Roof Cutaway** opens **Stacked 3D** with both layers in clear view. Turn on **Cave roof** to see stepped rock shelves and small stalactites below the Surface. **Natural openings** and cavern headroom are available in either view.
 
 - **v2.33.0 — Living Depths** shapes the rock under the Surface into seeded vaults, low galleries, and stone columns. Open **Stacked 3D** to see the cave roof, with volcanic fractures, river seeps, and skylights where the terrain lines up. Toggle **Cave roof** for an open view of the floor. Crystal fish follow the shores, glowflies drift through damp groves, and bats travel through the passages. Existing worlds keep their floor plans and gain the new scenery.

@@ -5,6 +5,7 @@ import {interpolatedGroundHeight,type DepthCamera} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
 import type {Point} from './motion';
 import {RealmAmbientCanvas} from './RealmAmbientCanvas';
+import {RealmAtlasResident,REALM_ATLAS_PERSON_UNIT} from './RealmAtlasResident';
 import {realmEffectLift,type RealmGlimmer,type RealmTrack} from './realmAmbient';
 import {prepareRealmRelief,rasterizeRealm,type RealmRasterResult} from './realmRelief';
 import {realmFormationUnit,realmScenery} from './realmScenery';
@@ -12,7 +13,7 @@ import {realmPropAt} from './realmSceneryArt';
 import {realmWildlife} from './realmWildlife';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {realmDepthPoint,type RealmProjection} from './stackedProjection';
-import {RealmBiome,realmFordOpen,type RealmMap} from './underworld';
+import {RealmBiome,realmFordOpen,type RealmMap,type RealmResident} from './underworld';
 
 type Job={map:RealmMap;projection:RealmProjection;camera:DepthCamera;key:string};
 type Displayed={map:RealmMap;key:string;hit:DepthPicking};
@@ -183,9 +184,9 @@ function paintFords(canvas:HTMLCanvasElement,projection:RealmProjection,camera:D
   }
 }
 
-export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,showSelection=true}:{
+export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,showSelection=true,residents}:{
   map:RealmMap;projection:RealmProjection;camera:DepthCamera;day:number;
-  onSelect:(cell:number)=>void;selected?:number;showSelection?:boolean;
+  onSelect:(cell:number)=>void;selected?:number;showSelection?:boolean;residents?:readonly RealmResident[];
 }){
   const raster=useRef<HTMLCanvasElement>(null),fords=useRef<HTMLCanvasElement>(null);
   const renderer=useRef<ReturnType<typeof createRenderer>>(null);
@@ -248,6 +249,13 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
       hidden={!current} data-crossings={fordKey}/>}
     <RealmAmbientCanvas points={glimmers} tracks={tracks} width={projection.width} height={projection.height}
       unit={projection.blockScale} hidden={!current}/>
+    {current&&displayed&&residents?.map(resident=>{
+      const p=realmPropPoint(map,projection,resident.index),{hit}=displayed;
+      if(!visibleGround(p,resident.index,hit,hit.width/projection.width,hit.height/projection.height))return null;
+      return <RealmAtlasResident key={resident.id} resident={resident}
+        point={{x:p.x/projection.width,y:p.y/projection.height}}
+        scale={REALM_ATLAS_PERSON_UNIT*projection.blockScale/projection.width}/>;
+    })}
     {showSelection&&pin&&<span className="strata-selection" aria-hidden="true"
       style={{left:pin.x/projection.width*100+'%',top:pin.y/projection.height*100+'%'}}/>}
     {waiting&&!shown&&<span className="strata-drawing" role="status">Drawing the Underworld relief…</span>}

@@ -1,10 +1,11 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {ATLAS_PLACE_ZOOM,atlasLabelSides,atlasLevel,atlasScrollGeometry} from './atlasMap';
+import {ATLAS_PLACE_ZOOM,atlasCloseupZoom,atlasLabelSides,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import type {DepthCamera} from './depthProjection';
 import type {World} from './engine';
-import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
+import {MAX_ATLAS_ZOOM,stepAtlasZoom,boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
+import {REALM_ATLAS_PERSON_HEIGHT,REALM_ATLAS_PERSON_UNIT,RealmAtlasResident} from './RealmAtlasResident';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
 import {caveRoomName,realmCaverns} from './realmCaverns';
 import {REALM_LAYOUT_NAMES} from './realmGeography';
@@ -12,7 +13,7 @@ import {realmScenery} from './realmScenery';
 import {seaPoint} from './shipSave';
 import {realmDepthPoint,STACKED_CAMERA,stackedProjection} from './stackedProjection';
 import {VISUAL_TERRAIN_SIDE} from './terrainCells';
-import {projectWorldLayer,RealmBiome,realmFordOpen,realmLinkName,type RealmLink,type RealmMap} from './underworld';
+import {projectWorldLayer,RealmBiome,realmFordOpen,realmLinkName,realmPeopleName,realmResidents,type RealmLink,type RealmMap} from './underworld';
 import {paintRealmFloor,UNDERWORLD_BIOMES} from './underworldArt';
 import {volcanicDay} from './volcanism';
 
@@ -127,7 +128,8 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
     demons:sum.demons+group.demons,ashBorne:sum.ashBorne+group.ashBorne,
   }),{demons:0,ashBorne:0});
   const regions=useMemo(()=>regionCenters(map),[map]);
-  const overview=atlasLevel(zoom)==='world';
+  const level=atlasLevel(zoom),overview=level==='world';
+  const residents=useMemo(()=>level==='street'?realmResidents(world,map):[],[level,world,map]);
   const maxHeight=useMemo(()=>map.heights.reduce((max,value)=>Math.max(max,value),0),[map]);
   const relief=useMemo(()=>view==='depth'?stackedProjection(world,map,camera,maxHeight).lower:undefined,
     [view,world.width,world.height,world.skylands,world.worldTree,map,camera,maxHeight]);
@@ -191,11 +193,13 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
       at??{x:panel.clientWidth/2,y:panel.clientHeight/2})};
     setZoom(next);
   }
-  const locate=(cell:number)=>{
+  const locate=(cell:number,close=map.towns.some(town=>town.index===cell))=>{
     setSelected(cell);
-    if(zoom>=ATLAS_PLACE_ZOOM){center(cell);return;}
+    const next=close?atlasCloseupZoom(zoom,sheet.current?.offsetWidth??0,
+      relief?.width??map.width*12,REALM_ATLAS_PERSON_HEIGHT*(relief?.blockScale??1)):Math.max(zoom,ATLAS_PLACE_ZOOM);
+    if(zoom>=next){center(cell);return;}
     pending.current={center:cell};
-    setZoom(ATLAS_PLACE_ZOOM);
+    setZoom(next);
   };
   const fit=()=>{
     pending.current=undefined;setZoom(1);
@@ -240,15 +244,15 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
           </details>
           {at!==undefined&&<button type="button" onClick={()=>locate(at)}>Find me</button>}
           <button type="button" onClick={fit} aria-label="Fit Underworld view">Fit</button>
-          <button type="button" onClick={()=>zoomBy(zoom-.5)} disabled={zoom<=1} aria-label="Zoom out">−</button>
-          <button type="button" onClick={()=>zoomBy(zoom+.5)} disabled={zoom>=8} aria-label="Zoom in">+</button>
+          <button type="button" onClick={()=>zoomBy(stepAtlasZoom(zoom,-1))} disabled={zoom<=1} aria-label="Zoom out">−</button>
+          <button type="button" onClick={()=>zoomBy(stepAtlasZoom(zoom,1))} disabled={zoom>=MAX_ATLAS_ZOOM} aria-label="Zoom in">+</button>
         </div>
       </div>
       <div ref={viewport} className={'evo-map-scroll atlas-viewport realm-atlas-viewport'+(relief?' realm-relief-viewport':'')}
         tabIndex={0} role="region" aria-label="Pan and zoom the Underworld"
         onKeyDown={event=>{
           if(event.target!==event.currentTarget)return;
-          if(event.key==='+'||event.key==='-'){event.preventDefault();zoomBy(zoom+(event.key==='+'?.5:-.5));}
+          if(event.key==='+'||event.key==='-'){event.preventDefault();zoomBy(stepAtlasZoom(zoom,event.key==='+'?1:-1));}
           if(event.key==='Home'){event.preventDefault();fit();}
           const directions:Record<string,Point>={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},
             ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0}};
@@ -283,8 +287,10 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
           style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+
             zoom*bounds.width/bounds.height+'))',aspectRatio:bounds.width+'/'+bounds.height}}>
           {relief?<RealmReliefCanvas map={map} projection={relief} camera={camera} day={volcanicDay(world)}
-            onSelect={setSelected} selected={selected} showSelection={false}/>:
+            onSelect={setSelected} selected={selected} showSelection={false} residents={residents}/>:
             <RealmFloor world={world} map={map} close={!overview} onInspect={setSelected}/>}
+          {!relief&&residents.map(resident=><RealmAtlasResident key={resident.id} resident={resident}
+            point={fraction(resident.index)} scale={REALM_ATLAS_PERSON_UNIT/(12*map.width)}/>)}
           {overview&&!relief&&regions.map(region=><span key={region.name} className="realm-region-label"
             style={position(region.cell)} aria-hidden="true">{region.name}</span>)}
           {pins.map(feature=><button key={feature.cell} type="button"
@@ -316,6 +322,10 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
         {place&&<p className="realm-atlas-coordinates">World position · X {place.x} · Y {place.y}</p>}
         {selected!==undefined&&<p>{name!==caveRoomName(caverns,selected)&&caveRoomName(caverns,selected)+' · '}
           {caverns.clearance[selected]} blocks of headroom</p>}
+        {residents.filter(resident=>resident.index===selected).map(resident=><p key={resident.id}>
+          {resident.name} · {realmPeopleName(resident.people)}</p>)}
+        {selected!==undefined&&zoom<MAX_ATLAS_ZOOM&&<button type="button" className="atlas-terrain-cell-zoom"
+          onClick={()=>locate(selected,true)}>Zoom to place</button>}
         {town?.berth!==undefined&&<p>Port on the Buried Sea</p>}
         {site&&<p>{site.description}</p>}
         {surface!==undefined&&onSurface&&<button type="button" className="atlas-terrain-cell-zoom"
