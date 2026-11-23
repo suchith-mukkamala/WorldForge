@@ -88,9 +88,7 @@ export function paintDepthSurfaceDetail(ctx:CanvasRenderingContext2D,
  * A thin dark underlay and warm path surface make streets visible when towns
  * expand, while leaving buildings and terrain elevation legible.
  */
-export function paintDepthRoads(ctx:CanvasRenderingContext2D,
-  world:World,
-  heights:readonly number[],projector:Projector,access?:ReadonlySet<number>):number{
+export function depthRoadTiles(world:World,count:number,access?:ReadonlySet<number>){
   const roads=new Set<number>();
   const maintained=new Set<number>();
   const townStreets=new Set<number>();
@@ -101,21 +99,28 @@ export function paintDepthRoads(ctx:CanvasRenderingContext2D,
     for(const i of s.infrastructure?.roads??[]){
       // Old saves may contain pavement on every walked tile. Rendering only
       // the connected, worn spine cleans those saves without erasing roads.
-      if((worn.has(i)||access?.has(i))&&i>=0&&i<heights.length){
+      if((worn.has(i)||access?.has(i))&&i>=0&&i<count){
         roads.add(i);maintained.add(i);
         if(civic)townStreets.add(i);
       }
     }
   }
   for(const segment of world.transport?.roads??[])
-    if(segment.condition>25&&segment.index>=0&&segment.index<heights.length){
+    if(segment.condition>25&&segment.index>=0&&segment.index<count){
       roads.add(segment.index);maintained.add(segment.index);
     }
   for(const segment of world.transport?.bridges??[])
-    if(segment.condition>25&&segment.index>=0&&segment.index<heights.length){
+    if(segment.condition>25&&segment.index>=0&&segment.index<count){
       roads.add(segment.index);maintained.add(segment.index);bridges.add(segment.index);
     }
-  for(const index of worn)if(index<heights.length)roads.add(index);
+  for(const index of worn)if(index<count)roads.add(index);
+  return {roads,maintained,townStreets,bridges};
+}
+
+export function paintDepthRoads(ctx:CanvasRenderingContext2D,world:World,
+  heights:readonly number[],projector:Projector,access?:ReadonlySet<number>,
+  prepared=depthRoadTiles(world,heights.length,access)):number{
+  const {roads,maintained,townStreets,bridges}=prepared;
   for(const i of roads){
     const x=i%world.width,y=Math.floor(i/world.width);
     const p=projector.project(x,y,heights[i]);

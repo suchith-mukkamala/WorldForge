@@ -1,4 +1,4 @@
-import type {BuildingArt} from './atlasBuildingArt';
+import type {BuildingArt,PlacedArt} from './atlasBuildingArt';
 import {BLOCK_FACES,type BlockModel} from './blockModels';
 import type {DepthCamera} from './depthProjection';
 import {rasterFace} from './depthTerrain';
@@ -52,7 +52,8 @@ function projectBlock(model:BlockModel,view:BlockView,unit:number,trackDepth=fal
   const projected=faces.map(({f})=>{
     const {quad,light}=BLOCK_FACES[f.direction];
     const grain=(Math.imul(f.x,31)^Math.imul(f.y,17)^Math.imul(f.z,13))&3;
-    const color=model.sculpted?faceColor(f.color,.88+light*.12,1.5):faceColor(f.color,light,grain);
+    const local=light*(1-(f.occlusion??0)*.105);
+    const color=model.sculpted?faceColor(f.color,.88+light*.12,1.5):faceColor(f.color,local,grain);
     const points=quad.map(([u,v,w])=>{
       const x=f.x+u,y=f.y+v,z=f.z+w;
       const sx=(x*xx+y*yx)*unit,sy=(x*xy+y*yy-z*rise)*unit;
@@ -127,10 +128,14 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
 }
 
 export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
-  p:Point,view:BlockView,unit:number):void{
+  p:Point,view:BlockView,unit:number,waterAt?:(x:number,y:number)=>boolean):void{
   const sprite=blockSceneryArt(model,p,view,unit);
   if(!sprite)return;
-  const {art:{image},x,y,scale}=sprite;
+  if(waterAt)paintBlockReflection(ctx,sprite,p.y+2,waterAt);
+  paintPlacedBlock(ctx,sprite);
+}
+
+export function paintPlacedBlock(ctx:CanvasRenderingContext2D,{art:{image},x,y,scale}:PlacedArt){
   ctx.drawImage(image,x,y,image.width*scale,image.height*scale);
 }
 
@@ -169,3 +174,26 @@ export function paintBlockContact(ctx:CanvasRenderingContext2D,model:BlockModel,
 
 /** Art and alpha picking use the same source-pixel transform. */
 export const blockStampScale=(scale:number)=>scale/STAMP_DENSITY;
+
+/** Compress the hull and sails into broken square bands below the waterline. */
+function paintBlockReflection(ctx:CanvasRenderingContext2D,sprite:PlacedArt,line:number,
+  waterAt:(x:number,y:number)=>boolean):void{
+  const {art,x,y,scale}=sprite;
+  const squeeze=.49,reach=Math.floor(Math.min(17,(line-y)*squeeze));
+  const left=Math.floor(x),right=Math.ceil(x+art.image.width*scale),top=Math.round(line);
+  if(reach<=0)return;
+  ctx.save();ctx.beginPath();
+  for(let row=0;row<reach;row+=3){
+    const shift=row%6===0?-1:1;
+    for(let col=left;col<right;col+=3){
+      const x=col+shift,y=top+row;
+      if(waterAt(x,y)&&waterAt(x+2.99,y)&&waterAt(x,y+1.99)&&waterAt(x+2.99,y+1.99))
+        ctx.rect(x,y,3,2);
+    }
+  }
+  ctx.clip();
+  ctx.globalAlpha=.25;
+  ctx.transform(1,0,0,-squeeze,0,top*(1+squeeze));
+  ctx.drawImage(art.image,x,y,art.image.width*scale,art.image.height*scale);
+  ctx.restore();
+}

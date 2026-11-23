@@ -1,11 +1,15 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {atlasBuildingBounds} from './atlasBuildingArt';
+import {AtlasDetailCanvas,type AtlasDetailPatch} from './AtlasDetailCanvas';
+import type {AtlasDetailSource} from './atlasDetailTypes';
+import {cropTileAt,type RasterCrop} from './atlasRaster';
 import {blockRealmFord} from './blockModels';
-import {depthBlockView,paintBlockContact,paintBlockScenery} from './blockScenery';
+import {blockSceneryArt,depthBlockView,paintBlockContact,paintBlockScenery,paintPlacedBlock} from './blockScenery';
 import {interpolatedGroundHeight,type DepthCamera} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
 import type {Point} from './motion';
 import {RealmAmbientCanvas} from './RealmAmbientCanvas';
-import {RealmAtlasResident,REALM_ATLAS_PERSON_UNIT} from './RealmAtlasResident';
+import {RealmAtlasResident,REALM_ATLAS_PERSON_HEIGHT,REALM_ATLAS_PERSON_UNIT} from './RealmAtlasResident';
 import {realmEffectLift,type RealmGlimmer,type RealmTrack} from './realmAmbient';
 import {prepareRealmRelief,rasterizeRealm,type RealmRasterResult} from './realmRelief';
 import {realmFormationUnit,realmScenery} from './realmScenery';
@@ -16,7 +20,7 @@ import {realmDepthPoint,type RealmProjection} from './stackedProjection';
 import {RealmBiome,realmFordOpen,type RealmMap,type RealmResident} from './underworld';
 
 type Job={map:RealmMap;projection:RealmProjection;camera:DepthCamera;key:string};
-type Displayed={map:RealmMap;key:string;hit:DepthPicking};
+type Displayed={map:RealmMap;key:string;hit:DepthPicking;scenery:ReturnType<typeof prepareScenery>};
 const frames:{map:RealmMap;key:string;result:RealmRasterResult}[]=[];
 const maxCacheBytes=48*1024*1024;
 let cacheBytes=0;
@@ -114,23 +118,42 @@ function realmPropPoint(map:RealmMap,projection:RealmProjection,cell:number,dx=0
   return realmDepthPoint(projection,x+dx,y+dy,at);
 }
 
-function paintScenery(ctx:CanvasRenderingContext2D,{map,projection,camera}:Job,hit:DepthPicking){
+function realmDrawOrder(cell:number,width:number,projection:RealmProjection){
+  return cell%width*projection.east.y+Math.floor(cell/width)*projection.south.y;
+}
+
+function prepareScenery({map,projection,camera}:Job,hit:DepthPicking){
   const sx=hit.width/projection.width,sy=hit.height/projection.height;
   const view=depthBlockView(camera),scale=projection.blockScale;
-  const order=(index:number)=>index%map.width*projection.east.y+
-    Math.floor(index/map.width)*projection.south.y;
   const scene=realmScenery(map);
   const sites=[...scene.formations.keys(),...map.houses.keys(),...scene.gates.keys(),...scene.docks.keys()];
-  sites.sort((a,b)=>order(a)-order(b));
-  ctx.setTransform(sx,0,0,sy,0,0);
-  ctx.imageSmoothingEnabled=false;
-  for(const i of sites){
+  const scenery=sites.flatMap(i=>{
     const prop=realmPropAt(map,scene,i);
-    if(!prop)continue;
-    const p=realmPropPoint(map,projection,i,prop.dx,prop.dy);
-    if(!visibleGround(p,i,hit,sx,sy))continue;
-    paintBlockContact(ctx,prop.model,p,view,scale*prop.unit);
-    paintBlockScenery(ctx,prop.model,p,view,scale*prop.unit);
+    if(!prop)return [];
+    const at=realmPropPoint(map,projection,i,prop.dx,prop.dy);
+    if(!visibleGround(at,i,hit,sx,sy))return [];
+    const unit=scale*prop.unit,sprite=blockSceneryArt(prop.model,at,view,unit);
+    if(!sprite)return [];
+    return [{at,unit,model:prop.model,sprite,bounds:atlasBuildingBounds(sprite),
+      order:realmDrawOrder(i,map.width,projection)}];
+  });
+  return scenery.sort((a,b)=>a.order-b.order);
+}
+
+function paintScenery(ctx:CanvasRenderingContext2D,projection:RealmProjection,camera:DepthCamera,
+  hit:DepthPicking,scenery:Displayed['scenery'],crop?:RasterCrop){
+  const sx=crop?.density??hit.width/projection.width,sy=crop?.density??hit.height/projection.height;
+  const view=depthBlockView(camera);
+  ctx.setTransform(sx,0,0,sy,-(crop?.left??0),-(crop?.top??0));
+  ctx.imageSmoothingEnabled=false;
+  for(const {at,unit,model,sprite,bounds} of scenery){
+    if(crop){
+      const pad=unit*4,left=crop.left/sx,top=crop.top/sy;
+      if(bounds.right+pad<left||bounds.left-pad>left+crop.width/sx||
+        bounds.bottom+pad<top||bounds.top-pad>top+crop.height/sy)continue;
+    }
+    paintBlockContact(ctx,model,at,view,unit);
+    paintPlacedBlock(ctx,sprite);
   }
 }
 
@@ -196,15 +219,18 @@ function paintFords(canvas:HTMLCanvasElement,projection:RealmProjection,camera:D
   }
 }
 
-export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,showSelection=true,residents}:{
+export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,showSelection=true,residents,zoom=1}:{
   map:RealmMap;projection:RealmProjection;camera:DepthCamera;day:number;
-  onSelect:(cell:number)=>void;selected?:number;showSelection?:boolean;residents?:readonly RealmResident[];
+  onSelect:(cell:number)=>void;selected?:number;showSelection?:boolean;residents?:readonly RealmResident[];zoom?:number;
 }){
   const raster=useRef<HTMLCanvasElement>(null),fords=useRef<HTMLCanvasElement>(null);
+  const sharp=useRef<AtlasDetailPatch>(undefined);
   const renderer=useRef<ReturnType<typeof createRenderer>>(null);
   const [displayed,setDisplayed]=useState<Displayed>(),[waiting,setWaiting]=useState(false);
   const key=JSON.stringify([projection,camera]);
   const current=sameView(displayed,{map,key});
+  const source=useMemo<AtlasDetailSource|undefined>(()=>zoom>=7&&current?
+    {kind:'underworld',map,projection,camera}:undefined,[map,key,current,zoom>=7]);
   const openFords=useMemo(()=>[...map.fords].filter(i=>realmFordOpen(map,i,day)),[map,day]);
   const fordKey=openFords.join(',');
   const shown=!!displayed;
@@ -220,8 +246,9 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
       if(canvas.width!==hit.width)canvas.width=hit.width;
       if(canvas.height!==hit.height)canvas.height=hit.height;
       ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer),hit.width,hit.height),0,0);
-      paintScenery(ctx,job,hit);
-      setDisplayed({map:job.map,key:job.key,hit});
+      const scenery=prepareScenery(job,hit);
+      paintScenery(ctx,job.projection,job.camera,hit,scenery);
+      setDisplayed({map:job.map,key:job.key,hit,scenery});
     });
     renderer.current=active;
     return ()=>{active.dispose();renderer.current=null;};
@@ -247,7 +274,11 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
         const x=Math.floor((event.clientX-bounds.left)/bounds.width*hit.width);
         const y=Math.floor((event.clientY-bounds.top)/bounds.height*hit.height);
         if(x<0||y<0||x>=hit.width||y>=hit.height)return;
-        const i=hit.ids[y*hit.width+x]-1;
+        const detail=sharp.current;
+        const i=(detail&&detail.source===source?cropTileAt(detail.frame.crop,detail.frame.hit,{
+          x:(event.clientX-bounds.left)/bounds.width*projection.width,
+          y:(event.clientY-bounds.top)/bounds.height*projection.height,
+        }):undefined)??hit.ids[y*hit.width+x]-1;
         if(i>=0&&i<map.biomes.length)onSelect(i);
       }} onKeyDown={event=>{
         if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;
@@ -257,16 +288,31 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
         const y=Math.max(0,Math.min(map.height-1,p.y+Number(event.key==='ArrowDown')-Number(event.key==='ArrowUp')));
         onSelect(y*map.width+x);
       }}/>
+    <AtlasDetailCanvas width={projection.width} height={projection.height}
+      baseDensity={displayed?displayed.hit.width/projection.width:1.55} source={source} onPatch={patch=>{
+        sharp.current=patch;
+        if(!patch||!displayed)return;
+        const {ctx,frame:{bitmap,crop}}=patch;
+        ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(bitmap,0,0);
+        paintScenery(ctx,projection,camera,displayed.hit,displayed.scenery,crop);
+      }}/>
     {map.fords.size>0&&<canvas ref={fords} className="strata-fords" aria-hidden="true"
       hidden={!current} data-crossings={fordKey}/>}
     <RealmAmbientCanvas points={glimmers} tracks={tracks} width={projection.width} height={projection.height}
       unit={projection.blockScale} hidden={!current}/>
     {current&&displayed&&residents?.map(resident=>{
-      const p=realmPropPoint(map,projection,resident.index),{hit}=displayed;
+      const p=realmPropPoint(map,projection,resident.index),{hit,scenery}=displayed;
       if(!visibleGround(p,resident.index,hit,hit.width/projection.width,hit.height/projection.height))return null;
+      const unit=REALM_ATLAS_PERSON_UNIT*projection.blockScale;
+      const depth=realmDrawOrder(resident.index,map.width,projection);
+      const top=p.y-REALM_ATLAS_PERSON_HEIGHT*projection.blockScale;
+      const foreground=scenery.filter(({order,bounds})=>order>=depth&&
+        bounds.right>p.x-unit*6&&bounds.left<p.x+unit*6&&bounds.bottom>top&&bounds.top<p.y+unit*3)
+        .map(({sprite})=>sprite);
       return <RealmAtlasResident key={resident.id} resident={resident}
         point={{x:p.x/projection.width,y:p.y/projection.height}}
-        scale={REALM_ATLAS_PERSON_UNIT*projection.blockScale/projection.width}/>;
+        scale={unit/projection.width}
+        foreground={foreground.length?{at:p,unit,shapes:foreground}:undefined}/>;
     })}
     {showSelection&&pin&&<span className="strata-selection" aria-hidden="true"
       style={{left:pin.x/projection.width*100+'%',top:pin.y/projection.height*100+'%'}}/>}

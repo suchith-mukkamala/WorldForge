@@ -1,3 +1,4 @@
+import type {RasterCrop} from './atlasRaster';
 import {interpolatedGroundHeight} from './depthProjection';
 import {pickTerrainFace,rasterFace,type DepthPicking} from './depthTerrain';
 import type {Point} from './motion';
@@ -9,7 +10,7 @@ import {VISUAL_TERRAIN_SIDE} from './terrainCells';
 import {RealmBiome,type RealmMap} from './underworld';
 import {realmFloorPixels} from './underworldArt';
 
-export type RealmRasterRequest={id:number;projection:RealmProjection;map?:RealmMap};
+export type RealmRasterRequest={id:number;projection:RealmProjection;map?:RealmMap;crop?:RasterCrop};
 export type RealmRasterResult={id:number;pixels:Uint32Array<ArrayBuffer>;hit:DepthPicking};
 type PreparedRealm={map:RealmMap;palette:Uint32Array;columns:number;rows:number;
   elevations:Float32Array;falls:Int8Array;fallWidths:Uint8Array};
@@ -47,13 +48,14 @@ export function prepareRealmRelief(map:RealmMap):PreparedRealm{
   return {map,palette,columns,rows,elevations,falls,fallWidths};
 }
 
-function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint32Array,map:RealmMap){
-  const sx=hit.width/projection.width,sy=hit.height/projection.height;
+function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint32Array,map:RealmMap,crop?:RasterCrop){
+  const sx=crop?.density??hit.width/projection.width,sy=crop?.density??hit.height/projection.height;
+  const left=crop?.left??0,top=crop?.top??0;
   const {frontX,frontY,crust}=projection;
   const rock=exposedRock(map,frontX,frontY,crust,map.seed,'underworld',
     (x,y)=>realmDepthPoint(projection,x,y,0));
   paintCutRock(rock,'underworld',(points,ink)=>{
-    rasterFace(hit,points.map(p=>({x:p.x*sx,y:p.y*sy})),pixels,ink);
+    rasterFace(hit,points.map(p=>({x:p.x*sx-left,y:p.y*sy-top})),pixels,ink);
   });
 }
 
@@ -74,29 +76,30 @@ function paintCliff(hit:DepthPicking,pixels:Uint32Array,face:readonly Point[],ti
 /** Project the same square heightfield into both atlas views. The floor
  * palette stays valid as time advances, while temporary fords have their
  * own overlay. Each opaque terrain face writes its exact picking ID. */
-export function rasterizeRealm({id,projection}:RealmRasterRequest,
+export function rasterizeRealm({id,projection,crop}:RealmRasterRequest,
   {map,palette,columns,rows,elevations,falls,fallWidths}:PreparedRealm):RealmRasterResult{
-  const {width,height}=realmRasterSize(projection.width,projection.height);
-  const densityX=width/projection.width,densityY=height/projection.height;
+  const {width,height}=crop??realmRasterSize(projection.width,projection.height);
+  const densityX=crop?.density??width/projection.width,densityY=crop?.density??height/projection.height;
   const hit={width,height,ids:new Uint32Array(width*height)},pixels=new Uint32Array(width*height);
-  paintRealmCrust(projection,hit,pixels,map);
+  paintRealmCrust(projection,hit,pixels,map,crop);
   const a={x:0,y:0},b={x:0,y:0},c={x:0,y:0},d={x:0,y:0},e={x:0,y:0},f={x:0,y:0};
   const top=[a,b,c,d],{frontX,frontY,east,south}=projection;
   const faceX=frontX>0?[b,c,e,f]:[d,a,e,f],faceY=frontY>0?[c,d,e,f]:[a,b,e,f];
   const corner=realmDepthPoint(projection,-.5,-.5,0);
-  const ox=corner.x*densityX,oy=corner.y*densityY;
+  const ox=corner.x*densityX-(crop?.left??0),oy=corner.y*densityY-(crop?.top??0);
   const ux=east.x*densityX/SIDE,uy=east.y*densityY/SIDE;
   const vx=south.x*densityX/SIDE,vy=south.y*densityY/SIDE;
-  const rise=projection.rise*densityY;
+  const rise=projection.rise*densityY,spanX=Math.abs(ux)+Math.abs(vx),spanY=Math.abs(uy)+Math.abs(vy);
   for(let row=0;row<rows;row++){
     const y=frontY<0?rows-row-1:row;
     for(let col=0;col<columns;col++){
       const x=frontX<0?columns-col-1:col;
       const i=y*columns+x,z=elevations[i],ink=palette[i];
+      a.x=ox+x*ux+y*vx;a.y=oy+x*uy+y*vy-z*rise;
+      if(crop&&(a.x+spanX<0||a.x-spanX>width||a.y+spanY+z*rise<0||a.y-spanY>height))continue;
       const tile=Math.floor(y/SIDE)*map.width+Math.floor(x/SIDE);
       const molten=map.biomes[tile]===RealmBiome.lava&&!map.bridges.has(tile);
       const fall=falls[tile],spread=fallWidths[tile];
-      a.x=ox+x*ux+y*vx;a.y=oy+x*uy+y*vy-z*rise;
       b.x=a.x+ux;b.y=a.y+uy;c.x=b.x+vx;c.y=b.y+vy;d.x=a.x+vx;d.y=a.y+vy;
       const neighborX=x+frontX>=0&&x+frontX<columns?elevations[i+frontX]:0;
       const neighborY=y+frontY>=0&&y+frontY<rows?elevations[i+frontY*columns]:0;

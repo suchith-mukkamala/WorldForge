@@ -93,6 +93,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
       const causeway=road&&(dx>=3&&dx<=4||dy>=3&&dy<=4)&&
         (dx>=2&&dx<=5&&dy>=2&&dy<=5||
           dy<=2&&northRoad||dy>=5&&southRoad||dx<=2&&westRoad||dx>=5&&eastRoad);
+      let reflective=1;
       let color=span?piers[(dx+Math.floor(dy/3))&3]:causeway?paving[level]:
         step?palette[kind][dy===SIDE-1?0:1]:shelf?lakeBed[level]:palette[blend?edge:kind][level];
       if(!span&&kind===lava){
@@ -111,6 +112,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
           shoreWest&&dx<width||shoreEast&&dx>=SIDE-width;
         const ripple=(py+(px>>3)+((px>>5)&1))%9===0&&((px+(py>>2)*5)&15)<7&&variation>-.08;
         const reef=coast<=2&&variation>.17;
+        if(ripple)reflective=shallow?1.56:1.32;
         color=(shallow||reef?shallows:deepWater)[ripple?3:level];
         if(!shallow&&!reef&&coast===4)color=shadeTerrainPixel(color,.83);
         if(reef&&((px+py*2+mineral)&7)<=1&&(hash&3)!==0)color=reefShards[level];
@@ -140,7 +142,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
         }
       }
       pixels[(row*SIDE+dy)*iw+col*SIDE+dx]=kind===lava?color:
-        litCavernPixel(glow,color,x,y,(dx+.5)/SIDE,(dy+.5)/SIDE);
+        litCavernPixel(glow,color,x,y,(dx+.5)/SIDE,(dy+.5)/SIDE,reflective);
     }
   }
   return pixels;
@@ -177,23 +179,38 @@ export function paintRealmTerrain(ground:CanvasRenderingContext2D,texture:HTMLCa
   return sprites.sort((a,b)=>a.depth-b.depth);
 }
 
+const ashCoats=[['#785c68','#c79e89'],['#516c69','#8cba9a'],
+  ['#615873','#a8a0ba'],['#806b55','#c9af83']] as const;
+const demonCoats=[['#625e87','#a49ac6'],['#6d4258','#b57888'],
+  ['#43667b','#86b6bd'],['#61564b','#b19b73']] as const;
+
 export function paintRealmResident(ctx:CanvasRenderingContext2D,resident:RealmResident,x:number,y:number){
-  const ash=resident.people==='ash-borne',skin=ash?'#7d777a':'#c58582',cloth=ash?'#78616c':'#625e87';
+  const ash=resident.people==='ash-borne',skin=ash?'#8d8584':'#c58582';
+  const [coat,trim]=(ash?ashCoats:demonCoats)[Math.floor(resident.id/2)%ashCoats.length];
   rect(ctx,'#191b2b88',x-6,y-1,12,2);rect(ctx,'#222030bf',x-4,y,8,2);
-  rect(ctx,'#313041',x-4,y-9,8,9);
-  rect(ctx,cloth,x-3,y-9,6,7);
-  rect(ctx,ash?'#c3a18f':'#9e93bc',x-3,y-9,2,4);
-  rect(ctx,'#4d4352',x-3,y-4,6,3);rect(ctx,'#d0a67d',x+1,y-4,1,1);
-  rect(ctx,skin,x-3,y-15,6,7);
-  rect(ctx,ash?'#a7a1a0':'#dda099',x-3,y-13,1,4);
-  rect(ctx,ash?'#a1a09e':'#714558',x-4,y-16,8,3);
-  if(!ash){
-    rect(ctx,'#cfb49a',x-4,y-18,2,3);
-    rect(ctx,'#cfb49a',x+2,y-18,2,3);
+  rect(ctx,'#403747',x-3,y-4,2,4);rect(ctx,'#403747',x+1,y-4,2,4);
+  rect(ctx,'#937486',x-3,y-1,2,1);rect(ctx,'#685364',x+1,y-1,2,1);
+  rect(ctx,'#423947',x-4,y-8,8,5);
+  rect(ctx,coat,x-3,y-9,6,6);
+  rect(ctx,trim,x-4,y-8,2,2);rect(ctx,trim,x+2,y-8,2,1);
+  rect(ctx,skin,x-4,y-4,1,1);rect(ctx,skin,x+3,y-4,1,1);
+  rect(ctx,'#473947',x-2,y-4,4,1);rect(ctx,'#d0a67d',x,y-4,1,1);
+  rect(ctx,trim,x-1,y-7,1,2);
+
+  rect(ctx,skin,x-3,y-15,6,6);
+  rect(ctx,ash?'#b2aaa2':'#dfa596',x-3,y-14,1,4);
+  rect(ctx,ash?'#625d65':'#985c6c',x+2,y-13,1,4);
+  rect(ctx,ash?'#a5a1a4':'#714558',x-3,y-16,6,2);
+  if(ash){
+    rect(ctx,'#d8c8b6',x-2,y-16,3,1);
+    rect(ctx,'#dc9774',x-3,y-14,2,1);
+    rect(ctx,'#f3b879',x-3,y-13,1,1);
+    rect(ctx,'#d9926e',x+2,y-11,1,1);
   }else{
-    rect(ctx,'#e9a876',x-3,y-14,2,1);
-    rect(ctx,'#d9926e',x+2,y-11,2,1);
-    rect(ctx,'#b68a73',x-2,y-7,1,3);
+    rect(ctx,'#9a766f',x-4,y-17,2,2);rect(ctx,'#9a766f',x+2,y-17,2,2);
+    rect(ctx,'#dfc7a9',x-4,y-18,1,2);rect(ctx,'#dfc7a9',x+3,y-18,1,2);
+    rect(ctx,'#bc8d76',x-4,y-15,1,1);rect(ctx,'#bc8d76',x+3,y-15,1,1);
   }
-  rect(ctx,'#eed1a3',x-2,y-12,1,1);rect(ctx,'#eed1a3',x+1,y-12,1,1);
+  rect(ctx,'#f6dbaa',x-2,y-12,1,1);rect(ctx,'#f6dbaa',x+1,y-12,1,1);
+  rect(ctx,ash?'#bca293':'#a67b73',x-1,y-10,2,1);
 }

@@ -11,7 +11,7 @@ import type {World} from './engine';
 import {canAnimate,motionFrame,samePoint,type Motion,type Point} from './motion';
 import {coastalLife} from './coastalLife';
 import {seaPoint,type MortalShip} from './shipSave';
-import {surfaceGrid,VISUAL_TERRAIN_SIDE as SIDE} from './surfaceGrid';
+import {surfaceGrid,VISUAL_TERRAIN_SIDE as SIDE,type SurfaceGrid} from './surfaceGrid';
 import {surfacePatchPixels} from './terrainCellArt';
 import {terrainDetailAt} from './terrainDetails';
 import {pixelTerrainHash} from './depthWorldArt';
@@ -30,8 +30,7 @@ export function SailingCanvas(props:Props){
     const canvas=ref.current,ctx=canvas?.getContext('2d',{alpha:false});
     const land=document.createElement('canvas'),brush=land.getContext('2d',{alpha:false});
     if(!canvas||!ctx||!brush)return;
-    let frame=0,stamp:{source:World;origin:Point;size:Point}|null=null;
-    let treeCover:ReadonlySet<number>|undefined;
+    let frame=0,stamp:{source:World;origin:Point;size:Point;grid:SurfaceGrid}|null=null;
     const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
     const start=seaPoint(latest.current.world.width,latest.current.ship.at);
     let motion:Motion={from:start,to:start,duration:1,start:0,facing:latest.current.ship.heading};
@@ -69,7 +68,7 @@ export function SailingCanvas(props:Props){
         source.terrainCells!==world.terrainCells||waterSeason(source)!==waterSeason(world);
       if(!stamp||changed||!samePoint(stamp.origin,origin)||!samePoint(stamp.size,size)){
         const depths=coastalLife(world).depths;
-        treeCover=surfaceGrid(world).treeCover;
+        const grid=surfaceGrid(world);
         land.width=size.x*SIDE;land.height=size.y*SIDE;
         const pixels=surfacePatchPixels(world,{origin,width:size.x,height:size.y},index=>{
           const biome=world.tiles[index].biome;
@@ -77,8 +76,13 @@ export function SailingCanvas(props:Props){
           return {color:overheadTerrainColor(biome,depths[index]),grain,water:biome==='water'};
         },ATLAS_SEA);
         brush.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer),land.width,land.height),0,0);
-        stamp={source:world,origin,size};
+        stamp={source:world,origin,size,grid};
       }
+      const {columns,rows,openWater,treeCover}=stamp.grid;
+      const waterAt=(x:number,y:number)=>{
+        const col=Math.floor((x+offset.x)*SIDE/TILE),row=Math.floor((y+offset.y)*SIDE/TILE);
+        return col>=0&&row>=0&&col<columns&&row<rows&&!!openWater?.[row*columns+col];
+      };
       ctx.drawImage(land,origin.x*TILE-offset.x,origin.y*TILE-offset.y,size.x*TILE,size.y*TILE);
       paintVolcanicSquares(ctx,world,TILE,offset,{origin,width:size.x,height:size.y});
       for(const vessel of activeVessels(world)){
@@ -86,7 +90,7 @@ export function SailingCanvas(props:Props){
         const {x,y}=seaPoint(world.width,vessel.at);
         if(x<origin.x||y<origin.y||x>=origin.x+size.x||y>=origin.y+size.y)continue;
         paintBlockScenery(ctx,blockSailboat(vessel.heading,true),
-          {x:(x+.5)*TILE-offset.x,y:(y+.5)*TILE-offset.y},DESCENT_BLOCK_VIEW,1.47);
+          {x:(x+.5)*TILE-offset.x,y:(y+.5)*TILE-offset.y},DESCENT_BLOCK_VIEW,1.47,waterAt);
       }
       const entrances=new Set(caves.map(cave=>cave.mouth));
       for(let y=Math.max(0,origin.y);y<Math.min(world.height,origin.y+size.y);y++){
@@ -134,7 +138,7 @@ export function SailingCanvas(props:Props){
           ctx.fillRect(px,py,i<3?2:1,i<3?2:1);
         }
       }
-      paintBlockScenery(ctx,blockSailboat(ship.heading),{x,y},DESCENT_BLOCK_VIEW,1.34);
+      paintBlockScenery(ctx,blockSailboat(ship.heading),{x,y},DESCENT_BLOCK_VIEW,1.34,waterAt);
     };
     frame=requestAnimationFrame(draw);
     return ()=>{observer.disconnect();cancelAnimationFrame(frame);};
