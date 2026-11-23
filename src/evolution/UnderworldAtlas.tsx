@@ -6,6 +6,7 @@ import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
+import {caveRoomName,realmCaverns} from './realmCaverns';
 import {REALM_LAYOUT_NAMES} from './realmGeography';
 import {realmScenery} from './realmScenery';
 import {seaPoint} from './shipSave';
@@ -93,6 +94,7 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
     link.surface===focusSurface)?.cell??projectWorldLayer(focusSurface,world,map);
   const [zoom,setZoom]=useState(start===undefined?1:ATLAS_PLACE_ZOOM);
   const [selected,setSelected]=useState(start);
+  const caverns=realmCaverns(map);
   const [view,setView]=useState<Perspective>(allowRelief?'depth':'overhead');
   const [camera,setCamera]=useState<DepthCamera>(STACKED_CAMERA);
   const [size,setSize]=useState<Point>({x:0,y:0});
@@ -103,17 +105,19 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
   const drag=useRef<{pointer:number;x:number;y:number;scrollLeft:number;scrollTop:number;moving:boolean}|undefined>(undefined);
   const chart=world.descent?.realm?.chart;
   const naturalSites=realmScenery(map).naturalSites;
+  const chambers=caverns.chambers.filter(chamber=>!naturalSites.some(site=>site.cell===chamber.cell));
   const features:Feature[]=[
     ...map.towns.map(town=>({cell:town.index,name:town.name,kind:'town' as const})),
     ...map.links.filter(link=>link.kind==='crater'||chart?.includes(link.surface))
       .map(link=>({cell:link.cell,name:realmLinkName(world,link),
         kind:link.kind==='crater'?'shaft' as const:'passage' as const,link})),
     ...naturalSites.map(site=>({cell:site.cell,name:site.name,kind:'landmark' as const})),
+    ...chambers.map(chamber=>({cell:chamber.cell,name:chamber.name,kind:'landmark' as const})),
   ];
   const town=map.towns.find(town=>town.index===selected);
   const link=features.find(feature=>feature.cell===selected)?.link;
   const site=naturalSites.find(site=>site.cell===selected);
-  const name=town?.name??(link&&realmLinkName(world,link))??site?.name;
+  const name=town?.name??(link&&realmLinkName(world,link))??site?.name??chambers.find(room=>room.cell===selected)?.name;
   const pins=features.filter(feature=>feature.kind!=='landmark'||feature.cell===selected);
   const surface=link?.surface??(selected===undefined?undefined:projectWorldLayer(selected,map,world));
   const place=surface===undefined?undefined:seaPoint(world.width,surface);
@@ -310,6 +314,8 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
         <div className="evo-card-heading"><strong>{name??biome?.name??'Underworld'}</strong></div>
         {(town||selected===undefined)&&census&&<p>{census.demons} demons · {census.ashBorne} Ash Borne</p>}
         {place&&<p className="realm-atlas-coordinates">World position · X {place.x} · Y {place.y}</p>}
+        {selected!==undefined&&<p>{name!==caveRoomName(caverns,selected)&&caveRoomName(caverns,selected)+' · '}
+          {caverns.clearance[selected]} blocks of headroom</p>}
         {town?.berth!==undefined&&<p>Port on the Buried Sea</p>}
         {site&&<p>{site.description}</p>}
         {surface!==undefined&&onSurface&&<button type="button" className="atlas-terrain-cell-zoom"

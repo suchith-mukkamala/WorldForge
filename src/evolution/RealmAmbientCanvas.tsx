@@ -1,19 +1,22 @@
 import {useEffect,useRef} from 'react';
-import {paintRealmAmbient,REALM_AMBIENT_STEP,type RealmGlimmer} from './realmAmbient';
+import {paintRealmAmbient,paintRealmWildlife,REALM_AMBIENT_STEP,type RealmGlimmer,type RealmTrack} from './realmAmbient';
 
-export function RealmAmbientCanvas({points,width,height,unit,hidden}:{points:readonly RealmGlimmer[];
-  width:number;height:number;unit:number;hidden:boolean}){
+export function RealmAmbientCanvas({points,tracks,width,height,unit,hidden}:{points:readonly RealmGlimmer[];
+  tracks:readonly RealmTrack[];width:number;height:number;unit:number;hidden:boolean}){
   const ref=useRef<HTMLCanvasElement>(null);
   const scale=Math.min(1,720/width);
   useEffect(()=>{
     const canvas=ref.current,ctx=canvas?.getContext('2d');
-    if(!canvas||!ctx||hidden||!points.length)return;
+    if(!canvas||!ctx||hidden||!(points.length||tracks.length))return;
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
     const glimmers=points.map(point=>({...point,x:point.x*scale,y:point.y*scale}));
+    const wildlife=tracks.map(track=>({...track,points:track.points.map(point=>
+      point&&{x:point.x*scale,y:point.y*scale})}));
     let request=0,visible=true,last=-Infinity;
     const draw=(now:number)=>{
       ctx.clearRect(0,0,canvas.width,canvas.height);
       paintRealmAmbient(ctx,glimmers,now,unit*scale);
+      paintRealmWildlife(ctx,wildlife,now,unit*scale);
     };
     const tick=(now:number)=>{
       if(now-last>=REALM_AMBIENT_STEP){draw(now);last=now;}
@@ -37,8 +40,8 @@ export function RealmAmbientCanvas({points,width,height,unit,hidden}:{points:rea
       document.removeEventListener('visibilitychange',sync);
       reduced.removeEventListener('change',sync);
     };
-  },[points,width,height,unit,scale,hidden]);
-  if(!points.length)return null;
-  return <canvas ref={ref} className="strata-life" aria-hidden="true" hidden={hidden}
+  },[points,tracks,width,height,unit,scale,hidden]);
+  if(!(points.length||tracks.length))return null;
+  return <canvas ref={ref} className="strata-life" aria-hidden="true" hidden={hidden} data-wildlife={tracks.length}
     width={Math.ceil(width*scale)} height={Math.ceil(height*scale)}/>;
 }

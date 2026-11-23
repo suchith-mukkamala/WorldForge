@@ -985,8 +985,23 @@
     linear-gradient(#203b46, #27313d 46%, #252636 65%, #1d2633);
 }
 .strata-viewport:active { cursor: grabbing; }
-.strata-level, .strata-rock { position: absolute; left: 0; width: 100%; }
-.strata-rock { top: 0; height: 100%; pointer-events: none; image-rendering: pixelated; }
+.world-atlas .evo-map-actions .strata-roof-toggle[aria-pressed="true"] {
+  background: #415d47; border-color: #d0b984; color: #ffedc8;
+}
+.strata-level, .strata-rock, .strata-cavern { position: absolute; left: 0; width: 100%; }
+.strata-rock, .strata-cavern { top: 0; height: 100%; pointer-events: none; image-rendering: pixelated; }
+.strata-cave-glow { z-index: 1; }
+.strata-skylight {
+  position: absolute;
+  z-index: 1;
+  width: clamp(5px, 1.2%, 22px);
+  aspect-ratio: 2 / 1;
+  transform: translate(-50%, -50%);
+  background: #4e423d;
+  box-shadow: inset 0 2px #c3a375, inset 2px -1px #87755d;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  pointer-events: none;
+}
 .strata-upper { top: 0; }
 .strata-level > canvas.evo-depth-canvas, .strata-level > canvas.strata-floor {
   display: block;
