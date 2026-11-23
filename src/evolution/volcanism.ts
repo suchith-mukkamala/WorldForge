@@ -187,9 +187,55 @@ function exposedLand(world:World,cells:readonly LavaCell[]){
     [{index,elevation:SEA_LEVEL+Math.max(1,Math.round(patch.thickness/patch.dry/UNIT))}]:[]);
 }
 
+function drainCaldera(world:World,day:number):World{
+  const layout=world.volcanicLayout,caldera=layout?.caldera;
+  if(!layout||!caldera||caldera.drainedAt!==undefined||day<caldera.breachDay)return world;
+  const {lake,outflow}=caldera,{tiles}=world;
+  const center=lake[0],shore=outflow[outflow.length-1],cut=outflow.slice(1,-1);
+  const heights=topographyForWorld(world).heights;
+  const upper=heights[center];
+  if(upper<SEA_LEVEL+13||lake.some(i=>tiles[i].biome!=='water'||heights[i]!==upper)||
+    tiles[shore].biome!=='water'||heights[shore]>SEA_LEVEL)return world;
+  const basin=new Set(lake);
+  if(cut.some(i=>!basin.has(i)&&tiles[i].biome==='water'))return world;
+  const ship=world.descent?.ship;
+  if(ship&&basin.has(ship.at)||world.shipments?.some(ship=>ship.mode==='sea'&&
+    ship.route.some(i=>basin.has(i))))return world;
+
+  const changed=new Set([...lake,...cut]),blocked=protectedGround(world);
+  const lava=lavaField(world).byTile;
+  if([...changed].some(i=>blocked(i)||lava.has(i)))return world;
+  const lower=SEA_LEVEL+Math.max(6,Math.floor((upper-SEA_LEVEL)*.34));
+  const elevations=heights.slice();
+  const next:World={...world,tiles:tiles.slice(),topography:{version:1,heights:elevations},
+    volcanicLayout:{...layout,caldera:{...caldera,drainedAt:day}},
+    nextEventId:world.nextEventId+1,events:[...world.events,{
+      id:world.nextEventId,year:Math.floor(day/365),type:'world' as const,
+      message:'The caldera rim gave way. A new river cuts through the old volcanic island.',
+    }].slice(-90)};
+  const origin=seaPoint(world.width,center),edits:[number,Biome][]=[];
+  elevations[center]=lower;
+  for(const i of lake.slice(1)){
+    const p=seaPoint(world.width,i);
+    elevations[i]=Math.min(upper-1,lower+Math.ceil(Math.hypot(p.x-origin.x,p.y-origin.y))*3);
+    next.tiles[i]={biome:'wasteland',food:.15};
+    edits.push([i,'wasteland']);
+    editDeposit(next,i);
+  }
+  let upstream=lower;
+  for(const [step,i] of cut.entries()){
+    const grade=Math.round(lower-(lower-SEA_LEVEL-1)*(step+1)/(cut.length+1));
+    elevations[i]=upstream=Math.max(SEA_LEVEL+1,Math.min(upstream-1,grade,elevations[i]));
+  }
+  clearTerrainTiles(next,[...changed]);
+  if(world.woodland)next.woodland=rewriteWoodland(world.woodland,edits);
+  return next;
+}
+
 /** Each calendar day is deterministic regardless of playback speed. World
- * topology changes only when a coherent shelf of solid rock clears sea level. */
+ * topology changes when a basalt shelf clears sea level or a caldera drains. */
 export function advanceVolcanism(world:World,day:number):World{
+  world=drainCaldera(world,day);
   const layout=world.volcanicLayout;
   if(!layout?.vents.length)return world;
   const previous=world.volcanism,old=previous?.cells??[];

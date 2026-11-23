@@ -1,5 +1,6 @@
 import {terrainHash,terrainHumidity,terrainNoise,terrainTemperature} from './biomeGeneration';
 import type {Biome,World} from './engine';
+import {validCaldera,type Caldera} from './caldera';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {tidalApproach} from './tidalCaves';
 import {SEA_LEVEL,topographyForWorld} from './topography';
@@ -9,7 +10,7 @@ export const VOLCANIC_AGES=['young','weathered','atoll'] as const;
 type VolcanicAge=typeof VOLCANIC_AGES[number];
 export type VolcanicIsland={index:number;radius:number;age:VolcanicAge};
 export type Volcano={index:number;rim:number;radius:number;period:number;offset:number};
-export type VolcanicLayout={islands:VolcanicIsland[];vents:Volcano[]};
+export type VolcanicLayout={islands:VolcanicIsland[];vents:Volcano[];caldera?:Caldera};
 
 const directions=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]] as const;
 const names=['Cinder','Redwake','Obsidian','Ashmantle','Ironcloud','Emberglass','Smokecrest','Fireglass'];
@@ -20,7 +21,8 @@ export function volcanoName(volcano:Volcano,world:Pick<World,'settings'|'volcani
   const number=before.filter(vent=>base(vent)===label).length;
   return 'Mount '+label+(number===1?' II':number===2?' III':'');
 }
-export const volcanicIslandName=(island:VolcanicIsland)=>island.age==='young'?
+export const volcanicIslandName=(island:VolcanicIsland,caldera?:Caldera)=>island.index===caldera?.lake[0]?
+  'Caldera Lake':island.age==='young'?
   'Young volcano':island.age==='weathered'?'Weathered volcanic island':'Coral atoll';
 
 function oceanRoom(width:number,height:number,biomes:readonly Biome[]){
@@ -170,7 +172,7 @@ export function sculptVolcanicIslands(width:number,height:number,seed:number,bio
 
 export function volcanicLayout(width:number,height:number,seed:number,biomes:readonly Biome[],
   heights:readonly number[],islands:VolcanicIsland[],
-  blocks:(index:number)=>boolean):VolcanicLayout{
+  blocks:(index:number)=>boolean,caldera?:Caldera):VolcanicLayout{
   const young=islands.find(island=>island.age==='young');
   const collar=young&&seaNeighbors(young.index,width,biomes.length)
     .filter(i=>biomes[i]!=='water'&&!blocks(i)).sort((a,b)=>heights[b]-heights[a])[0];
@@ -180,7 +182,7 @@ export function volcanicLayout(width:number,height:number,seed:number,biomes:rea
     const {x,y}=seaPoint(width,index);
     return islands.some(island=>Math.hypot(island.index%width-x,Math.floor(island.index/width)-y)<island.radius+1);
   };
-  return {islands,vents:landVents(width,height,seed,biomes,heights,primary,index=>
+  return {islands,...(caldera?{caldera}:{}),vents:landVents(width,height,seed,biomes,heights,primary,index=>
     blocks(index)||nearChain(index))};
 }
 
@@ -200,7 +202,8 @@ export function enableVolcanicWorld(world:World):World{
 }
 
 export const volcanoApproach=(world:Pick<World,'volcanicLayout'|'underworld'>,index:number)=>
-  world.underworld?.outpost===index||!!world.volcanicLayout?.vents.some(vent=>vent.index===index||vent.rim===index);
+  world.underworld?.outpost===index||!!world.volcanicLayout?.caldera?.outflow.includes(index)||
+  !!world.volcanicLayout?.vents.some(vent=>vent.index===index||vent.rim===index);
 export const ventHasGround=(world:World,vent:Volcano)=>
   world.tiles[vent.index].biome!=='water'&&world.tiles[vent.rim].biome!=='water';
 export function volcanicCoastBiome(width:number,height:number,index:number,seed:number):Biome{
@@ -212,7 +215,7 @@ export function volcanicCoastBiome(width:number,height:number,index:number,seed:
 
 export function validVolcanicLayout(value:unknown,width:number,height:number):value is VolcanicLayout{
   if(!value||typeof value!=='object')return false;
-  const {islands,vents}=value as VolcanicLayout,size=width*height;
+  const {islands,vents,caldera}=value as VolcanicLayout,size=width*height;
   const count=(n:number,min:number,max:number)=>Number.isInteger(n)&&n>=min&&n<=max;
   if(!Array.isArray(islands)||islands.length>3||!Array.isArray(vents)||vents.length>3)return false;
   const validIndex=(i:number)=>count(i,0,size-1);
@@ -221,5 +224,6 @@ export function validVolcanicLayout(value:unknown,width:number,height:number):va
     vents.every(vent=>vent&&validIndex(vent.index)&&validIndex(vent.rim)&&
       seaNeighbors(vent.index,width,size).includes(vent.rim)&&count(vent.radius,5,14)&&
       count(vent.period,70,140)&&count(vent.offset,0,vent.period-1))&&
-    new Set(vents.map(vent=>vent.index)).size===vents.length;
+    new Set(vents.map(vent=>vent.index)).size===vents.length&&
+    (caldera===undefined||islands.some(island=>island.age==='weathered'&&validCaldera(caldera,width,height,island.index)));
 }

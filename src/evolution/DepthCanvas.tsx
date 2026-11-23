@@ -1,3 +1,5 @@
+import {AtlasClouds} from './AtlasClouds';
+import type {CloudPose} from './surfaceClouds';
 import {paintRaisedVolcanism} from './volcanicArt';
 import {WORLD_TREE_BLOCK,worldTreeClearings} from './worldTree';
 import {worldTreeModel} from './worldTreeArt';
@@ -17,7 +19,7 @@ import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain
 import {orderedDepthTiles,paintDepthBackdrop,type DepthRasterRequest,type DepthRasterResult} from './depthBackdrop';
 import {AtlasFish} from './AtlasFish';
 import {waterSeason} from './riverSeasons';
-import {surfaceGrid,type SurfaceGrid} from './surfaceGrid';
+import {surfaceGrid,VISUAL_TERRAIN_SIDE,type SurfaceGrid} from './surfaceGrid';
 import {fitStructure,structureFootings,structureForBuilding,structureSite,surfaceHeightAt,type StructureSite} from './structureGround';
 import {buildingPlots,paintPlotOutline,type BuildingPlots} from './buildingPlots';
 import type {RiverCourse} from './riverCourses';
@@ -356,14 +358,14 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
 
 export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   zoom=1,speed=4,relief=2.5,camera=DEFAULT_DEPTH_CAMERA,orbiting=false,
-  followId=null,personId=null,fillWidth=false,onFollowPosition,showSkylands=false,onSkyland,cutaway=false}:{
+  followId=null,personId=null,fillWidth=false,onFollowPosition,showSkylands=false,onSkyland,cutaway=false,showClouds=false}:{
   world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;onSelect:(x:number,y:number)=>void;
   onEdit:(x:number,y:number)=>void;zoom?:number;speed?:number;
   relief?:number;camera?:DepthCamera;orbiting?:boolean;
   followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
-  showSkylands?:boolean;onSkyland?:(id:number)=>void;cutaway?:boolean;
+  showSkylands?:boolean;showClouds?:boolean;onSkyland?:(id:number)=>void;cutaway?:boolean;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const rasterWorker=useRef<Worker|null>(null);
@@ -407,6 +409,14 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     skylands,worldTree:world.worldTree},relief,camera,topography.heights),
     [world.width,world.height,skylands,world.worldTree,relief,camera.yaw,camera.pitch,topography]);
   const size=projector.size;
+  const cloudProjection=useMemo(()=>{
+    const {width,height}=world,elevations=topography.heights;
+    return (cloud:CloudPose)=>{
+      const x=cloud.x-.5,y=cloud.y-.5;
+      const ground=interpolatedGroundHeight(elevations,width,height,x,y);
+      return projector.projectSmooth(x,y,Math.max(cloud.height,ground+22));
+    };
+  },[projector,world.width,world.height,topography]);
   // Pinch changes the canvas CSS scale continuously. Rebuilding the terrain
   // and NPC layers on every fractional zoom would cause trackpad stutter.
   // Only population visibility/detail thresholds require an actual repaint.
@@ -483,9 +493,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     }
     if(worker&&job&&!job.result&&!orbiting&&!rasterBusy.current){
       rasterBusy.current=true;
-      const {width,height,settings,tiles,terrainCells,dayOfYear,woodland,worldTree}=world;
+      const {width,height,settings,tiles,terrainCells,dayOfYear,woodland,worldTree,volcanicLayout}=world;
       const message:DepthRasterRequest={id:job.id,world:{width,height,settings,tiles,topography,
-        terrainCells,dayOfYear,woodland,skylands:world.skylands,worldTree,rootClearings,feeder},relief,camera,density:sceneryDensity,
+        terrainCells,dayOfYear,woodland,skylands:world.skylands,worldTree,rootClearings,feeder,volcanicLayout},relief,camera,density:sceneryDensity,
         plots:plots&&{squares:plots.squares,decoratedTiles:plots.decoratedTiles},cutaway,showSkylands:!!skylands};
       try{worker.postMessage(message);}catch{setRasterFailed(true);}
     }
@@ -751,6 +761,9 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       (brush.kind==='inspect'?'inspect it':'apply the selected map tool')+
       '. Arrow keys move the selection; Enter applies the brush.'}
     onClick={click} onKeyDown={keyboard}/>
+    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds seed={world.settings.seed}
+      columns={world.width} rows={world.height} width={size.width} unit={DEPTH_TILE_WIDTH/(2*VISUAL_TERRAIN_SIDE)}
+      view={depthBlockView(camera)} project={cloudProjection}/>}
     {fillWidth&&overlay==='terrain'&&showBuildings&&!orbiting&&
       <AtlasFish world={world} width={size.width} height={size.height} square={1.5} project={p=>{
         const index=Math.floor(p.y)*world.width+Math.floor(p.x);

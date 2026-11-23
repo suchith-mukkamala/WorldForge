@@ -153,9 +153,11 @@ export function initializeUnderworld(world:World):World{
   if(world.underworld||!world.volcanicLayout?.vents.length)return world;
   const geography=1,links=placeLinks(world,anchors(world),geography),seed=world.settings.seed;
   const older=world.volcanicLayout.islands.find(island=>island.age==='weathered');
+  const caldera=world.volcanicLayout.caldera;
   const outpost=older&&world.tiles.findIndex((tile,i)=>tile.biome!=='water'&&
     distance(i,older.index,world.width)<older.radius+.4&&
-    seaNeighbors(i,world.width,world.tiles.length).some(j=>world.tiles[j]?.biome==='water')&&
+    !caldera?.outflow.includes(i)&&seaNeighbors(i,world.width,world.tiles.length)
+      .some(j=>world.tiles[j]?.biome==='water'&&!caldera?.lake.includes(j))&&
     !nearSurfaceRoots(world,i)&&!tidalApproach(world,i)&&
     !world.ancientSites?.some(p=>p.y*world.width+p.x===i));
   const population=TOWNS.map(({demons,ashBorne},id)=>({

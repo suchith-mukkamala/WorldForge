@@ -69,8 +69,8 @@ function StackedRock({projection,world,links,active}:{projection:Projection;worl
     width={Math.ceil(size.width*scale)} height={Math.ceil(size.height*scale)}/>;
 }
 
-export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld}:{world:World;map:RealmMap;
-  at?:number;onSurface:(cell:number)=>void;onUnderworld:(cell?:number)=>void}){
+export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld,showClouds,onToggleClouds}:{world:World;map:RealmMap;
+  at?:number;showClouds?:boolean;onToggleClouds?:()=>void;onSurface:(cell:number)=>void;onUnderworld:(cell?:number)=>void}){
   const [camera,setCamera]=useState<DepthCamera>(STACKED_CAMERA);
   const [zoom,setZoom]=useState(1),[selected,setSelected]=useState<Selection>();
   const [roof,setRoof]=useState(false);
@@ -171,6 +171,8 @@ export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld}:{world:
             onClick={()=>setCamera(c=>({...c,pitch:c.pitch===STACKED_CAMERA.pitch?42:STACKED_CAMERA.pitch}))}>Tilt</button>
           <button type="button" className="strata-roof-toggle" aria-pressed={roof}
             onClick={()=>setRoof(value=>!value)}>Cave roof</button>
+          {onToggleClouds&&<button type="button" aria-pressed={showClouds}
+            onClick={onToggleClouds}>Clouds</button>}
           <button type="button" onClick={fit}>Fit both</button>
           <button type="button" aria-label="Zoom out" disabled={zoom<=1} onClick={()=>zoomTo(stepAtlasZoom(zoom,-1))}>−</button>
           <button type="button" aria-label="Zoom in" disabled={zoom>=MAX_ATLAS_ZOOM} onClick={()=>zoomTo(stepAtlasZoom(zoom,1))}>+</button>
@@ -218,7 +220,7 @@ export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld}:{world:
               river={water&&feature?.kind==='seep'?cavernFeederCourse(water):undefined}
               selected={selected?.layer==='surface'?chosen??null:null}
               onSelect={(x,y)=>setSelected({layer:'surface',cell:y*world.width+x})}
-              onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway/>
+              onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway showClouds={showClouds}/>
           </div>
           <div className="strata-level strata-lower" style={{top:lowerTop/size.height*100+'%',height:lowerHeight/size.height*100+'%'}}>
             <RealmReliefCanvas map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}

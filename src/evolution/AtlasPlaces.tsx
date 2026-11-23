@@ -49,8 +49,9 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
     .sort((a,b)=>a.cave.name.localeCompare(b.cave.name)):[];
   const vents=open&&onVent?(world.volcanicLayout?.vents??[])
     .filter(vent=>ventHasGround(world,vent)&&matches(volcanoName(vent,world)+' volcano crater')):[];
+  const caldera=world.volcanicLayout?.caldera;
   const islands=open&&onVent?(world.volcanicLayout?.islands??[])
-    .filter(island=>island.age!=='young'&&matches(volcanicIslandName(island))):[];
+    .filter(island=>island.age!=='young'&&(matches(volcanicIslandName(island))||matches(volcanicIslandName(island,caldera)))):[];
   const underworld=open&&onUnderworld&&!!world.descent?.realm?.chart.length&&matches('Underworld map');
   const tree=open&&matches('World Tree root grove')?world.worldTree:undefined;
   const chooseTree=()=>{if(tree){close();onSite(tree.x,tree.y);}};
@@ -96,7 +97,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
             <span>{volcanoName(vent,world)}<small>Volcano</small></span>
           </button></li>)}
           {islands.map(island=><li key={island.index}><button type="button" onClick={()=>chooseVent(island.index)}>
-            <span aria-hidden="true">◇</span><span>{volcanicIslandName(island)}</span>
+            <span aria-hidden="true">◇</span><span>{volcanicIslandName(island,caldera)}</span>
           </button></li>)}
         </ul></>}
         {caves.length>0&&<><h3>Sea caves</h3><ul>
@@ -126,7 +127,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
             </button>
           </li>)}
         </ul></>}
-        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!vents.length&&!islands.length&&!underworld&&!tree&&filter&&<p>No places match your search.</p>}
+        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!vents.length&&!islands.length&&!underworld&&!tree&&!vents.length&&!islands.length&&filter&&<p>No places match your search.</p>}
       </div>
     </div>}
   </div>;

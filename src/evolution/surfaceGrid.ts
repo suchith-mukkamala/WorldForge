@@ -1,4 +1,5 @@
 import type {World} from './engine';
+import {calderaRiver} from './caldera';
 import {terrainRenderGrid,TERRAIN_CELL_SIDE,TERRAIN_ELEVATION_UNITS,VISUAL_TERRAIN_SIDE,
   type TerrainGrid,type TerrainSource} from './terrainCells';
 import {floodplains,riverLinks,waterSeason} from './riverSeasons';
@@ -13,12 +14,12 @@ export {VISUAL_TERRAIN_SIDE};
 export const Shore={ground:0,wetSand:1,drySand:2,shallows:3,channel:4,
   gravel:5,mud:6,ice:7,flood:8,foam:9,reefBase:10,reefPink:11,reefGold:12,pool:13,spray:14,rootTrail:15,rootBark:16,rootMoss:17,rootWet:18,rootSubmerged:19} as const;
 export type SurfaceGrid=TerrainGrid&{shore:Uint8Array;openWater?:Uint8Array;shadow?:Uint8Array;rootRise?:Uint8Array;treeCover?:ReadonlySet<number>};
-export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldTree'|'volcanism'|'underworld'>&
+export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldTree'|'volcanism'|'underworld'|'volcanicLayout'>&
   Partial<Pick<World,'settlements'|'ancientSites'|'ruins'>>&{rootClearings?:readonly number[];feeder?:CavernFlow};
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
 const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
-const cache=new WeakMap<TerrainGrid,{season:string;riverlands:boolean;feederKey:string;
+const cache=new WeakMap<TerrainGrid,{season:string;riverlands:boolean;feederKey:string;outflow?:readonly number[];
   skylands:World['skylands'];worldTree:World['worldTree'];clearings:string;grid:SurfaceGrid}>();
 
 export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:number)=>{
@@ -31,7 +32,7 @@ export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:n
  * samples are interpolated here so saves and erosion retain their grid. */
 export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const base=terrainRenderGrid(world),season=waterSeason(world),riverlands=!!world.settings.riverlands;
-  const {skylands,worldTree}=world;
+  const {skylands,worldTree}=world,outflow=calderaRiver(world);
   const feeder=world.feeder??cavernFlow(world),feederKey=cavernFlowKey(feeder);
   const cleared=world.rootClearings??worldTreeClearings(world),clearings=cleared.join(',');
   const previous=cache.get(base);
@@ -234,6 +235,6 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
     }
   }
   const grid={columns,rows,ground,water,material,shore,openWater,shadow,rootRise,treeCover};
-  cache.set(base,{season,riverlands,feederKey,skylands,worldTree,clearings,grid});
+  cache.set(base,{season,riverlands,feederKey,outflow,skylands,worldTree,clearings,grid});
   return grid;
 }

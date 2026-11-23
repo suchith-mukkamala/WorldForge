@@ -1,4 +1,5 @@
 import type {World} from './engine';
+import {calderaRiver} from './caldera';
 import {terrainHash} from './biomeGeneration';
 import {hydrologyForWorld,type Hydrology} from './hydrology';
 import {oceanBasins,shallowCrossing} from './regionalGeography';
@@ -9,13 +10,13 @@ export type RiverStop={kind:RiverStopKind;index:number;label:string};
 export type RiverCourse={mouth:number;outlet:number;name:string;path:readonly number[];
   stops:readonly RiverStop[];delta:boolean;discharge?:number};
 const names=['Alder','Silverrun','Ember','Mosswater','Cairn','High Reed','Willow','Greybank'];
-const cache=new WeakMap<Hydrology,readonly RiverCourse[]>();
+const cache=new WeakMap<Hydrology,{outflow?:readonly number[];courses:readonly RiverCourse[]}>();
 
 /** The main stem of each listed river is a chain of real downstream
  * neighbors. Its stops are picked from slope, vegetation and bank access. */
 export function riverCourses(world:World):readonly RiverCourse[]{
-  const drainage=hydrologyForWorld(world),cached=cache.get(drainage);
-  if(cached)return cached;
+  const drainage=hydrologyForWorld(world),cached=cache.get(drainage),outflow=calderaRiver(world);
+  if(cached&&cached.outflow===outflow)return cached.courses;
   const {width,height,tiles}=world,heights=topographyForWorld(world).heights;
   const {flowTo,channel,catchment,basin}=drainage;
   const feeder=new Int32Array(tiles.length).fill(-1),mouths:number[]=[];
@@ -31,6 +32,13 @@ export function riverCourses(world:World):readonly RiverCourse[]{
   const seas=oceanBasins(world,drainage),coastal=(i:number)=>seas.has(basin[flowTo[i]]);
   mouths.sort((a,b)=>Number(coastal(b))-Number(coastal(a))||catchment[b]-catchment[a]||a-b);
   const rivers:RiverCourse[]=[];
+  if(outflow){
+    const path=outflow.slice(1,-1),mouth=path[path.length-1],outlet=outflow[outflow.length-1];
+    rivers.push({mouth,outlet,path,name:'Caldera outflow',delta:false,stops:[
+      {kind:'source',index:path[0],label:'Caldera outlet'},
+      {kind:'mouth',index:mouth,label:'River mouth'},
+    ]});
+  }
   const phase=Math.floor(terrainHash(width,height,world.settings.seed+812)*names.length);
   for(const mouth of mouths){
     if(rivers.length>=5)break;
@@ -67,6 +75,6 @@ export function riverCourses(world:World):readonly RiverCourse[]{
     rivers.push({mouth,outlet:flowTo[mouth],name:names[(phase+rivers.length)%names.length]+' River',
       path,stops,delta});
   }
-  cache.set(drainage,rivers);
+  cache.set(drainage,{outflow,courses:rivers});
   return rivers;
 }

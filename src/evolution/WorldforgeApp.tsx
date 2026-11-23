@@ -1,4 +1,5 @@
 import {ATLAS_PERSON_SIZE} from './personSpriteScale';
+import {calderaRiver} from './caldera';
 import {enableVolcanicWorld,ventHasGround,volcanicIslandName,volcanoName} from './volcanicGeography';
 import {initializeUnderworld,underworldMap} from './underworld';
 import {WorldLayerSwitch} from './WorldLayerSwitch';
@@ -235,6 +236,7 @@ export function WorldforgeApp(){
   const [selected,setSelected]=useState<{x:number;y:number}|null>(null);
   const [skySelection,setSkySelection]=useState<Skyland|null>(null);
   const [showSkylands,setShowSkylands]=useState(false);
+  const [showClouds,setShowClouds]=useState(true);
   const visibleSkylands=overlay==='terrain'&&showSkylands&&brush.kind==='inspect';
   const [selectedAgentId,setSelectedAgentId]=useState<number|null>(null);
   const [followId,setFollowId]=useState<number|null>(null);
@@ -779,6 +781,9 @@ export function WorldforgeApp(){
   const selectedVent=displayed?world.volcanicLayout?.vents.find(vent=>
     (vent.index===drainageIndex||vent.rim===drainageIndex)&&ventHasGround(world,vent)):undefined;
   const selectedIsland=world.volcanicLayout?.islands.find(island=>island.index===drainageIndex);
+  const caldera=world.volcanicLayout?.caldera;
+  const selectedCaldera=caldera?.lake.includes(drainageIndex)?caldera:undefined;
+  const outflow=selectedCaldera?calderaRiver(world):undefined;
   const selectedOutpost=drainageIndex===world.underworld?.outpost;
 
   const selectedTerrain=displayed?terrainCellsIn(world,drainageIndex):undefined;
@@ -1209,7 +1214,8 @@ export function WorldforgeApp(){
         {notice&&<p className="evo-notice" role="status">{notice}</p>}
         {realmMap?<Suspense fallback={<p role="status">Opening the world layers…</p>}>
           {stacked?<StackedAtlas world={world} map={realmMap} at={realm?.visit?.at}
-            onSurface={findCoast} onUnderworld={openUnderworld}/>:
+            onSurface={findCoast} onUnderworld={openUnderworld}
+            showClouds={showClouds} onToggleClouds={()=>setShowClouds(value=>!value)}/>:
             <UnderworldAtlas world={world} map={realmMap} focusSurface={belowFocus}
               at={realm?.visit?.at} onSurface={findCoast} allowRelief/>}
         </Suspense>:<section className="evo-section-card realm-layer-empty" aria-label="Underworld layer">
@@ -1251,7 +1257,7 @@ export function WorldforgeApp(){
             <div className="atlas-map-title" aria-live="polite">
               <strong>{selectedSkyland?skylandName(selectedSkyland):treeSelected?'World Tree':
                 selectedVent?volcanoName(selectedVent,world):
-                selectedIsland?volcanicIslandName(selectedIsland):selectedCave?selectedCave.cave.name:
+                selectedCaldera?'Caldera Lake':selectedIsland?volcanicIslandName(selectedIsland):selectedCave?selectedCave.cave.name:
                 closeup?(settlement?.name??(ancientSite&&ancientSiteName(ancientSite))??
                 (waterfallBasin?'Waterfall basin':detail==='street'?'Street map':'Local map')):'World map'}</strong>
               <small>{selectedSkyland?'Floating islands':building?BUILDING_LABELS[building.type]:
@@ -1326,6 +1332,8 @@ export function WorldforgeApp(){
                 {showDiagnostics?'◉ STATS':'◌ STATS'}
               </button>
 
+              {overlay==='terrain'&&<button type="button" className={showClouds?'is-on':''}
+                aria-pressed={showClouds} onClick={()=>setShowClouds(value=>!value)}>Clouds</button>}
               {mapView==='depth'&&<button className={advancedView?'is-on':''}
                 aria-expanded={advancedView} aria-controls="evo-camera-panel"
                 onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
@@ -1474,11 +1482,11 @@ export function WorldforgeApp(){
                 overlay={overlay} zoom={zoom} speed={speed} fillWidth river={showRivers?chartedRiver:undefined}
                 followId={followId} personId={selectedAgentId} onFollowPosition={centerCamera}
                 selected={selectedSkyland?null:displayed} onSelect={chooseTile} onEdit={brushAt}
-                showSkylands={visibleSkylands} onSkyland={id=>findSkyland(id,false)}
+                showSkylands={visibleSkylands} showClouds={showClouds} onSkyland={id=>findSkyland(id,false)}
                 onDiagnostics={showDiagnostics?setCanvasDiagnostics:undefined}/>:
                 <DepthCanvas world={world} brush={brush} overlay={overlay} river={showRivers?chartedRiver:undefined}
                   zoom={zoom} speed={speed} fillWidth selected={selectedSkyland?null:displayed} onSelect={chooseTile}
-                  showSkylands={visibleSkylands} onSkyland={id=>findSkyland(id,false)}
+                  showSkylands={visibleSkylands} showClouds={showClouds} onSkyland={id=>findSkyland(id,false)}
                   onEdit={brushAt} relief={RELIEF_LEVELS[reliefLevel]}
                   camera={{yaw:orbitYaw,pitch:activeCameraPitch}} orbiting={orbiting}
                   followId={followId} personId={selectedAgentId}
@@ -1590,7 +1598,18 @@ export function WorldforgeApp(){
                   <button onClick={()=>{navigate('descent');setDescentCrater(selectedVent.index);}}>
                     Descend at the crater rim</button>}
               </div>}
-              {selectedIsland?.age==='weathered'&&<div className="evo-selected-settlement">
+              {selectedCaldera&&<div className="evo-selected-settlement" aria-label="Caldera details">
+                <strong>Caldera Lake</strong>
+                {selectedCaldera.drainedAt===undefined?
+                  <p>Rain collects behind the old rim. Spring runoff can cut through its lowest saddle.</p>:
+                  <p>The rim breached. The stepped lakebed is open on foot.</p>}
+                {outflow&&<button type="button" onClick={()=>{
+                  setRiverMouth(outflow[outflow.length-2]);setShowRivers(true);findCoast(outflow[1]);
+                }}>Follow the outflow</button>}
+                {world.underworld?.outpost!==undefined&&
+                  <button onClick={()=>findCoast(world.underworld!.outpost!)}>Show Ash Borne anchorage</button>}
+              </div>}
+              {selectedIsland?.age==='weathered'&&!selectedCaldera&&<div className="evo-selected-settlement">
                 <strong>Weathered volcanic island</strong>
                 <p>Rain feeds the forested slopes, with dry scrub on the sheltered side.</p>
                 {world.underworld?.outpost!==undefined&&

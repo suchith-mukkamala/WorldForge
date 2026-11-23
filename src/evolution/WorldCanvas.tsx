@@ -1,3 +1,4 @@
+import {AtlasClouds} from './AtlasClouds';
 import {paintVolcanicSquares} from './volcanicArt';
 import {paintOverheadWorldTree} from './worldTreeArt';
 import {useEffect,useRef} from 'react';
@@ -38,7 +39,7 @@ import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
 import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp} from './blockModels';
 import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,placeBlockArt,paintBlockContact,
-  paintBlockScenery,type BlockStamp} from './blockScenery';
+  depthBlockView,paintBlockScenery,type BlockStamp} from './blockScenery';
 import {structureForBuilding,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
 import {visibleCoastTile} from './worldOutline';
@@ -53,6 +54,8 @@ import {overheadSkylandHit,paintOverheadSkylands} from './skylandArt';
 export const WORLD_CELL_SIZE=6;
 const CELL=WORLD_CELL_SIZE;
 export type MapOverlay='terrain'|'resources'|'deposits'|'elevation'|'watersheds'|'trade';
+const cloudView=depthBlockView({yaw:315,pitch:90});
+const overheadCloud=({x,y}:Point)=>({x:x*CELL,y:y*CELL});
 const BASIN_COLORS=['#344f5c','#3b5956','#46515c','#4a5e50',
   '#465766','#50545f','#3d605f','#505e54'];
 /** Only these zoom boundaries add scenic objects; fractional steps within a
@@ -62,7 +65,7 @@ export const sceneryZoomTier=(zoom:number)=>zoom>=ATLAS_TOWN_ZOOM?2:zoom>=2?1:0;
 export function WorldCanvas({
   world,brush,overlay,selected,onSelect,onEdit,zoom=1,speed=4,river,
   followId=null,personId=null,fillWidth=false,onFollowPosition,onDiagnostics,
-  showSkylands=true,onSkyland,
+  showSkylands=true,onSkyland,showClouds=false,
 }:{
   world:World;brush:Brush;overlay:MapOverlay;river?:RiverCourse;
   selected:{x:number;y:number}|null;
@@ -70,7 +73,7 @@ export function WorldCanvas({
   zoom?:number;speed?:number;followId?:number|null;personId?:number|null;fillWidth?:boolean;
   onFollowPosition?:(x:number,y:number)=>void;
   onDiagnostics?:(stats:{drawn:number;frameMs:number})=>void;
-  showSkylands?:boolean;onSkyland?:(id:number)=>void;
+  showSkylands?:boolean;showClouds?:boolean;onSkyland?:(id:number)=>void;
 }){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const mapWidth=world.width*CELL,mapHeight=world.height*CELL;
@@ -635,6 +638,9 @@ export function WorldCanvas({
           brush.kind==='food'?'replenish food':'paint '+brush.biome)+
       '. Arrow keys move the selection; Enter applies the selected brush.'}
     onClick={select} onKeyDown={keyboard}/>
+    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds seed={world.settings.seed}
+      columns={world.width} rows={world.height} width={mapWidth}
+      unit={CELL/(Math.SQRT2*VISUAL_TERRAIN_SIDE)} view={cloudView} project={overheadCloud}/>}
     {fillWidth&&overlay==='terrain'&&atlasLevel(zoom)!=='world'&&
       <AtlasFish world={world} width={mapWidth} height={mapHeight} square={1.1} project={p=>{
         if(skylands&&overheadSkylandHit(skylands,p.x,p.y)!==undefined)return;
