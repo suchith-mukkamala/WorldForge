@@ -75,7 +75,7 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
   const elevations=topographyForWorld(world).heights;
   const caverns=realmCaverns(map);
   const connections=useMemo(()=>caveConnections(world,map,caverns),[map,caverns,elevations]);
-  const skylight=connections.find(site=>site.kind==='skylight');
+  const openings=connections.filter(site=>site.kind!=='fault');
   const feature=roof&&selected?connections.find(site=>
     (selected.layer==='surface'?site.surface:site.cell)===selected.cell):undefined;
   const links=useMemo(()=>map.links.filter(link=>link.kind==='crater'||
@@ -213,8 +213,8 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
               onSelect={(x,y)=>setSelected({layer:'surface',cell:y*world.width+x})}
               onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway/>
           </div>
-          {roof&&skylight&&<span className="strata-skylight" style={spot(surfacePoint(skylight.surface))}
-            aria-hidden="true"/>}
+          {roof&&openings.map(site=><span key={site.kind} className="strata-geology" data-kind={site.kind}
+            data-active={feature===site||undefined} style={spot(surfacePoint(site.surface))} aria-hidden="true"/>)}
           <span className="strata-label strata-label-surface">Surface</span>
           <span className="strata-label strata-label-realm" style={{top:lowerTop/size.height*100+'%'}}>Underworld</span>
           {links.map(shaft=><div className="strata-pair" key={shaft.link.surface} data-shaft={shaft.link.surface}>
@@ -258,6 +258,14 @@ export function StackedAtlas({world,map,at,onSurface,onUnderworld}:{world:World;
           {selected?.layer==='underworld'&&<button type="button" className="atlas-terrain-cell-zoom"
             onClick={()=>onUnderworld(corresponding?.link.surface??projectWorldLayer(selected.cell,map,world))}>
             Open Underworld atlas</button>}
+          {roof&&openings.length>0&&<details className="strata-openings">
+            <summary>Natural openings</summary>
+            {openings.map(site=><button key={site.kind} type="button" className="atlas-terrain-cell-zoom"
+              onClick={event=>{
+                event.currentTarget.closest('details')?.removeAttribute('open');
+                setSelected({layer:'surface',cell:site.surface});focus(surfacePoint(site.surface));
+              }}>{geology[site.kind]}</button>)}
+          </details>}
           <div className="strata-focus-row">
             <button type="button" className="atlas-terrain-cell-zoom"
               onClick={()=>focus(surfacePoint(Math.floor(world.height/2)*world.width+Math.floor(world.width/2)))}>
