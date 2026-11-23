@@ -49,16 +49,16 @@ export function realmLight(map:RealmMap):Glow{
   return baked;
 }
 
-export function litCavernPixel(glow:Glow,ink:number,x:number,y:number,u:number,v:number):number{
+export function litCavernPixel(glow:Glow,ink:number,x:number,y:number,u:number,v:number,reflect=1):number{
   const {stride,values}=glow;
   const tl=(y*stride+x)*4,tr=tl+4,bl=tl+stride*4,br=bl+4;
   const a=(1-u)*(1-v),b=u*(1-v),c=(1-u)*v,d=u*v;
   const sample=(k:number)=>values[tl+k]*a+values[tr+k]*b+values[bl+k]*c+values[br+k]*d;
-  const exposure=sample(3);
+  const exposure=sample(3)*reflect;
   if(exposure<.008)return ink;
   const keep=1-exposure;
-  const r=Math.min(255,Math.round((ink&255)*keep+sample(0)));
-  const g=Math.min(255,Math.round((ink>>>8&255)*keep+sample(1)));
-  const bColor=Math.min(255,Math.round((ink>>>16&255)*keep+sample(2)));
+  const r=Math.min(255,Math.round((ink&255)*keep+sample(0)*reflect));
+  const g=Math.min(255,Math.round((ink>>>8&255)*keep+sample(1)*reflect));
+  const bColor=Math.min(255,Math.round((ink>>>16&255)*keep+sample(2)*reflect));
   return (255<<24|bColor<<16|g<<8|r)>>>0;
 }

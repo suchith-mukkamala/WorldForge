@@ -223,7 +223,7 @@ export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld,showClou
               onEdit={ignoreEdit} camera={camera} relief={STACKED_RELIEF} zoom={zoom} fillWidth cutaway showClouds={showClouds}/>
           </div>
           <div className="strata-level strata-lower" style={{top:lowerTop/size.height*100+'%',height:lowerHeight/size.height*100+'%'}}>
-            <RealmReliefCanvas map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}
+            <RealmReliefCanvas zoom={zoom} map={map} projection={projection.lower} camera={camera} day={volcanicDay(world)}
               selected={selected?.layer==='underworld'?selected.cell:undefined} residents={residents}
               onSelect={cell=>setSelected({layer:'underworld',cell})}/>
           </div>

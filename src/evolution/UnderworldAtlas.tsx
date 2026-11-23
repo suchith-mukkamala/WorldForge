@@ -293,7 +293,7 @@ export function UnderworldAtlas({world,map:floor,focusSurface,at,marked,onSurfac
         <div ref={sheet} className="atlas-sheet realm-atlas-sheet"
           style={{width:'min('+zoom*100+'%, calc(var(--atlas-height) * '+
             zoom*bounds.width/bounds.height+'))',aspectRatio:bounds.width+'/'+bounds.height}}>
-          {relief?<RealmReliefCanvas map={map} projection={relief} camera={camera} day={volcanicDay(world)}
+          {relief?<RealmReliefCanvas zoom={zoom} map={map} projection={relief} camera={camera} day={volcanicDay(world)}
             onSelect={setSelected} selected={selected} showSelection={false} residents={residents}/>:
             <RealmFloor world={world} map={map} close={!overview} onInspect={setSelected}/>}
           {!relief&&residents.map(resident=><RealmAtlasResident key={resident.id} resident={resident}

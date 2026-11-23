@@ -1,3 +1,4 @@
+import type {RasterCrop} from './atlasRaster';
 import {ATLAS_SEA,highlandColor} from './atlasTerrain';
 import type {BuildingPlots} from './buildingPlots';
 import {paintDepthCells} from './depthCellTerrain';
@@ -31,7 +32,7 @@ export function orderedDepthTiles(w:BackdropWorld,projector:Projector,cutaway=fa
 
 export function paintDepthBackdrop(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,
   hit:DepthPicking,w:BackdropWorld,projector:Projector,density:number,ordered:readonly number[],
-  plots?:BackdropPaint,sample=1,cutaway=false){
+  plots?:BackdropPaint,sample=1,cutaway=false,crop?:RasterCrop){
   const {width,height,tiles,settings}=w,heights=topographyForWorld(w).heights;
   const ocean=coastalDepth(width,height,i=>tiles[i].biome==='water');
   paintDepthCells(ctx,hit,w,projector,density,ordered,ATLAS_SEA,index=>{
@@ -41,5 +42,5 @@ export function paintDepthBackdrop(ctx:CanvasRenderingContext2D|OffscreenCanvasR
     const upland=settings.landforms?highlandColor(biome,heights[index],grain):undefined;
     return {color:biome==='water'?OCEAN_TONES[ocean[index]]:
       upland??surfaceColor(biome,x,y,settings.seed,cover),grain,water:biome==='water'};
-  },plots,sample,cutaway);
+  },plots,sample,cutaway,crop);
 }

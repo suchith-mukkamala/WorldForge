@@ -19,7 +19,7 @@ export const BLOCK_FACES=[
   {dx:0,dy:1,dz:0,quad:[[0,1,0],[1,1,0],[1,1,1],[0,1,1]],light:.81},
   {dx:0,dy:-1,dz:0,quad:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],light:.95},
 ] as const;
-type Face={x:number;y:number;z:number;direction:number;color:string};
+type Face={x:number;y:number;z:number;direction:number;color:string;occlusion?:number};
 export type BlockModel={key:string;faces:readonly Face[];feet:readonly Point[];footing:'stone'|'timber';sculpted?:boolean};
 
 const stride=32,layer=stride*stride;
@@ -41,7 +41,13 @@ function model(key:string,make:(grid:BlockGrid)=>void,quarter=0,
     const x=plane%stride-16,y=Math.floor(plane/stride)-16;
     if(z===0)feet.push({x,y});
     BLOCK_FACES.forEach(({dx,dy,dz},direction)=>{
-      if(!grid.cells.has(cell(x+dx,y+dy,z+dz)))faces.push({x,y,z,direction,color});
+      const u=x+dx,v=y+dy;
+      if(grid.cells.has(cell(u,v,z+dz)))return;
+      // A higher neighbor blocks light on a roof step or around a lintel.
+      const occlusion=dz?Number(grid.cells.has(cell(x-1,y,z+1)))+
+        Number(grid.cells.has(cell(x,y-1,z+1))):Number(grid.cells.has(cell(u,v,z+1)))+
+        Number(grid.cells.has(cell(u,v,z+2)));
+      faces.push({x,y,z,direction,color,occlusion});
     });
   }
   const compiled={key,faces,feet,footing};
@@ -172,35 +178,53 @@ function regionalTree(grid:BlockGrid,kind:TreeKind,variant:number,season?:Visual
   }
 }
 
+function oakCrown(grid:BlockGrid,variant:number,season:VisualSeason|undefined){
+  const lean=variant%3-1,tall=variant%2;
+  const leaf=season==='Harvest'?['#6f4e3a','#99633d','#b3834c','#d4a768']:
+    ['#305f48','#408156','#609f62',season==='Frost'?'#a2b193':'#8ebb76'];
+  const lobes=[
+    {x:-2.1+lean*.35,y:.5,z:6.3,rx:2.65,ry:2.7,rz:2.1},
+    {x:2,y:-.7,z:7.3,rx:2.8,ry:2.55,rz:2.35},
+    {x:-.3,y:-1.8,z:7,rx:2.95,ry:2.2,rz:2.6},
+    {x:lean*.7,y:.25,z:9.1+tall*.65,rx:3.15,ry:2.65,rz:2.45},
+  ];
+  grid.box(-2,0,4,3,1,1,'#856249');
+  grid.box(1,-1,4,2,1,1,'#76503c');
+  grid.box(2,-1,5,1,1,2,'#805a43');
+  grid.box(0,-2,5,1,2,1,'#947153');
+  for(let z=4;z<=12;z++)for(let y=-4;y<=3;y++)for(let x=-5;x<=5;x++){
+    const grain=terrainHash(x+z*23,y,variant+7219);
+    if(!lobes.some(p=>((x-p.x)/p.rx)**2+((y-p.y)/p.ry)**2+((z-p.z)/p.rz)**2<.98+grain*.21))continue;
+    const step=Math.max(0,Math.min(3,Math.floor((z-5)*.42-(x+y)*.10+grain*.9)));
+    const flower=season==='Bloom'&&z>=9&&grain>.966;
+    grid.box(x,y,z,1,1,1,flower?'#d6c49b':leaf[step]);
+  }
+}
+
 export function blockProp(kind:BlockProp,seed:number,season?:VisualSeason):BlockModel{
   const variant=(seed>>>0)%4;
   const canopy=kind==='larch'||kind==='birch'||kind==='oak'?season:undefined;
   return model(kind+':'+variant+(canopy?':'+canopy:''),grid=>{
     if(kind==='oak'||kind==='pine'){
-      const tall=variant%2,lean=variant%3-1;
+      const tall=variant%2;
       const needles=['#366a54','#3e7d61','#588e6b','#78a17b'];
-      const leaves=season==='Harvest'?['#865f3d','#a0744a','#b58755','#d2a760']:
-        ['#376f50','#4e8d5f','#65a471',
-        variant===2?'#b49b58':variant===3?'#8aaa78':'#82ad75'];
       grid.box(-1,-1,0,2,2,6+tall,'#75543f');
+      grid.box(-1,-1,1,1,1,Math.max(3,5+tall),'#a37a56');
       grid.box(-2,-1,0,4,2,1,'#6a503e');
+      grid.box(-1,1,0,1,1,1,'#835d46');
       if(kind==='pine'){
         for(let crown=0;crown<3;crown++){
           const span=8-crown*2,z=3+crown*3+tall;
           grid.box(-span/2+1,-span/2,z,span-2,span,1,needles[crown]);
           grid.box(-span/2,-span/2+1,z,span,span-2,1,needles[crown]);
           grid.box(-span/2+1,-span/2+1,z+1,span-2,span-2,2,needles[crown+1]);
+          if(crown<2){
+            grid.box(-span/2,(variant+crown)%3-1,z+1,1,2,1,needles[crown+1]);
+            grid.box(0,span/2-1,z+1,2,1,1,needles[crown]);
+          }
         }
         grid.box(-1,-1,11+tall,2,2,2,variant===2?'#a5b6a3':needles[3]);
-      }else{
-        grid.box(-3,-2,4,6,4,4,leaves[0]);
-        grid.box(-2,-3,5,5,6,3,leaves[1]);
-        grid.box(-4+lean,-1,5,3,3,3,leaves[1]);
-        grid.box(-2+lean,-2,7,5,4,3,leaves[2]);
-        grid.box(-1+lean,-1,10,3,2,1+tall,leaves[3]);
-        grid.box(2,-3,7,2,3,2,leaves[2]);
-        grid.box(2,-2,9,1,2,1,leaves[3]);
-      }
+      }else oakCrown(grid,variant,season);
       return;
     }
     if(kind==='birch'||kind==='spruce'||kind==='larch'||kind==='willow'||kind==='acacia'||kind==='baobab'){
@@ -524,6 +548,20 @@ export function blockBuilding(b:Building,variant:number,options:ArchitectureOpti
     grid.box(x,y+depth-1,1,width,1,1,stone);
     grid.box(-1,y+depth,0,2,2,1,course);
     const light=stage==='finishing'?'#756c63':'#e8c284';
+    const lime=tint(wall,course,.32),joint=tint(wall,BEAM,.23);
+    const masonry=culture==='dwarf'||tier>=2||type==='communal';
+    for(let z=2;z<h;z++){
+      for(let u=x+1;u<x+width-1;u++)if(masonry&&(u+2*z+variant)%4===0){
+        grid.box(u,y,z,1,1,1,z%2===0?lime:joint);
+        grid.box(u,y+depth-1,z,1,1,1,z%2===0?joint:lime);
+      }
+      for(const u of [x,x+width-1])
+        if(masonry&&z%2===0)grid.box(u,y+1+(z+variant)%(depth-2),z,1,2,1,lime);
+    }
+    if(!masonry)for(const u of [x+1,x+width-2]){
+      grid.box(u,y+depth-1,2,1,1,Math.max(1,h-2),tint(wall,wood,.54));
+      grid.box(u,y+depth-1,Math.min(h,5),1,1,1,wood);
+    }
     const sill=tint(style.trim,stone,.30);
     for(let u=x+1;u<x+width-1;u+=2){
       grid.box(u,y,1,1,1,1,course);
@@ -852,6 +890,11 @@ function caveCrystal(g:BlockGrid,x:number,y:number,width:number,height:number,va
     const w=width-edge;
     g.box(x+shift,y+edge,z,w,w,1,z<2?stone:z>=height-3?tip:body);
     g.box(x+shift+w-1,y+edge,z,1,Math.max(1,w-1),1,z>=height-4?tip:facet);
+    if(w>=3&&z>=3&&z<height-3){
+      const stripe=Math.min(w-2,Math.floor(w*.35)+(z%9===0?1:0));
+      g.box(x+shift+stripe,y+edge,z,1,1,1,z%5===0?tip:facet);
+      if(z%6===0)g.box(x+shift,y+edge+w-1,z,1,1,1,stone);
+    }
   }
 }
 

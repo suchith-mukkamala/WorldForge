@@ -110,11 +110,15 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
       const time=reduced.matches?1600:now;
       paintRealmWildlife(ctx,tracks,time,1.15);
       const actors:{depth:number;paint:()=>void}[]=[];
+      const waterAt=(x:number,y:number)=>{
+        const col=Math.floor(x/TILE),row=Math.floor(y/TILE);
+        return col>=0&&row>=0&&col<width&&row<height&&map.biomes[row*width+col]===RealmBiome.sea;
+      };
       const boatAt=ship?.at??map.towns.find(town=>town.berth!==undefined)?.berth;
       if(boatAt!==undefined&&!atSea){
         const dock=seaPoint(width,boatAt),at={x:(dock.x+.5)*TILE,y:(dock.y+.57)*TILE};
         actors.push({depth:at.y,paint:()=>paintBlockScenery(ctx,
-          blockSailboat(ship?.heading??'south',false),at,DESCENT_BLOCK_VIEW,1.25)});
+          blockSailboat(ship?.heading??'south',false),at,DESCENT_BLOCK_VIEW,1.25,waterAt)});
       }
       for(const resident of residents){
         const {x,y}=seaPoint(width,resident.index);
@@ -124,7 +128,7 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
       }
       actors.push({depth:p.y,paint:()=>{
         if(atSea)paintBlockScenery(ctx,blockSailboat(ship.heading,true),
-          {x:p.x,y:p.y-4},DESCENT_BLOCK_VIEW,1.45);
+          {x:p.x,y:p.y-4},DESCENT_BLOCK_VIEW,1.45,waterAt);
         else paintPerson(ctx,actor,Math.round(p.x-8),Math.round(p.y-20),facing,
           position.stride,position.walking?'walk':'idle');
       }});

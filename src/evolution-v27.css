@@ -1105,3 +1105,12 @@ canvas.realm-atlas-resident, .realm-atlas-sheet canvas.realm-atlas-resident {
   .strata-pin { width: 19px; height: 19px; }
   .strata-town { width: 14px; height: 14px; }
 }
+
+.atlas-close-raster,
+.realm-atlas-sheet canvas.atlas-close-raster {
+  position: absolute;
+  inset: auto;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+.atlas-close-raster[hidden] { display: none; }

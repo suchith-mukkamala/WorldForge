@@ -1,3 +1,4 @@
+import type {RasterCrop} from './atlasRaster';
 import type {BuildingPlots} from './buildingPlots';
 import type {createDepthProjector} from './depthProjection';
 import {DEPTH_RISE} from './depthProjection';
@@ -27,7 +28,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   hit:DepthPicking,w:SurfaceWorld,
   projector:Projector,density:number,tiles:readonly number[],sea:string,
   tilePaint:(index:number)=>{color:string;grain:number;water:boolean},
-  plots?:Pick<BuildingPlots,'squares'|'decoratedTiles'>,sample=1,cutaway=false):void{
+  plots?:Pick<BuildingPlots,'squares'|'decoratedTiles'>,sample=1,cutaway=false,crop?:RasterCrop):void{
   const {width,height}=hit,image=ctx.createImageData(width,height);
   const pixels=new Uint32Array(image.data.buffer);
   if(!cutaway)pixels.fill(terrainPixel(sea));
@@ -44,6 +45,8 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   const stepY=projector.projectSmooth(-.5,-.5+step,0);
   const ux=(stepX.x-origin.x)*density,uy=(stepX.y-origin.y)*density;
   const vx=(stepY.x-origin.x)*density,vy=(stepY.y-origin.y)*density;
+  const ox=origin.x*density-(crop?.left??0),oy=origin.y*density-(crop?.top??0);
+  const spanX=(Math.abs(ux)+Math.abs(vx))*SIDE,spanY=(Math.abs(uy)+Math.abs(vy))*SIDE;
   const rise=projector.riseScale/DEPTH_RISE/TERRAIN_ELEVATION_UNITS*density;
   const level=(i:number)=>ground[i]+water[i]+(decks?.[i]??0)+(rootRise?.[i]??0);
   const seaHeight=(SEA_LEVEL-9)*TERRAIN_ELEVATION_UNITS;
@@ -73,6 +76,11 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   for(const index of tiles){
     const first=firstTerrainSquare(w.width,columns,index);
     const baseX=first%columns,baseY=Math.floor(first/columns);
+    if(crop){
+      const x=ox+baseX*ux+baseY*vx,y=oy+baseX*uy+baseY*vy;
+      const highest=(255*TERRAIN_ELEVATION_UNITS+255)*rise;
+      if(x+spanX<0||x-spanX>width||y+spanY<0||y-spanY-highest>height)continue;
+    }
     const paint=tilePaint(index),palette=terrainSwatches(paint.color,paint.water);
     const sunlight=light[index];
     const decorated=plots?.decoratedTiles.has(index)?plots.squares:undefined;
@@ -83,7 +91,7 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
       const plot=decorated?.get(i);
       const surface=cellPixel(grid,i,palette,paint.grain,sunlight);
       const color=plot?paintPlotSquare(surface,plot.color):surface;
-      a.x=origin.x*density+x*ux+y*vx;a.y=origin.y*density+x*uy+y*vy-z*rise;
+      a.x=ox+x*ux+y*vx;a.y=oy+x*uy+y*vy-z*rise;
       b.x=a.x+ux*sample;b.y=a.y+uy*sample;
       c.x=b.x+vx*sample;c.y=b.y+vy*sample;
       d.x=a.x+vx*sample;d.y=a.y+vy*sample;
