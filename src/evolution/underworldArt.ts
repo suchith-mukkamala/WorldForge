@@ -23,6 +23,13 @@ export const UNDERWORLD_BIOMES=[
 ] as const;
 const palette=UNDERWORLD_BIOMES.map(biome=>biome.floor.map(terrainPixel));
 const shallows=['#306e88','#3d909f','#63aaa9','#9fd0bb'].map(terrainPixel);
+const water={
+  rift:['#20374e','#2b4d67','#365f7e','#588397'].map(terrainPixel),
+  lakes:['#183c45','#235b61','#2e7374','#50988e'].map(terrainPixel),
+  isles:['#222f58','#2b4a79','#3a6197','#5788a9'].map(terrainPixel),
+};
+const reefShards=['#527d98','#749fb4','#8fb6c1','#accaaf'].map(terrainPixel);
+const foam=['#699fab','#92c6c4','#c4e4ce'].map(terrainPixel);
 const paving=['#82756d','#9d8b7e','#af9d87','#c9b69b'].map(terrainPixel);
 const piers=['#796b68','#938278','#a48f7e','#b7a38a'].map(terrainPixel);
 const emberLight=terrainPixel('#ffb06a');
@@ -50,6 +57,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
   const iw=width*SIDE;
   const pixels=new Uint32Array(iw*height*SIDE);
   const scene=realmScenery(map);
+  const deepWater=map.layout?water[map.layout]:palette[sea];
   pixels.fill(abyss);
   for(let row=0;row<height;row++)for(let col=0;col<width;col++){
     const x=origin.x+col,y=origin.y+row,i=y*map.width+x;
@@ -64,6 +72,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
     const lightX=(.5+(formation?.dx??0))*SIDE,lightY=(.5+(formation?.dy??0))*SIDE;
     const mineral=Math.floor(terrainNoise(x,y,5,map.seed+91)*6);
     const coast=scene.coast[i];
+    const fall=scene.falls.get(i),spray=scene.spray.has(i);
     const northRoad=map.roads.has(i-map.width),southRoad=map.roads.has(i+map.width);
     const westRoad=x>0&&map.roads.has(i-1),eastRoad=x<map.width-1&&map.roads.has(i+1);
     const hotEdge=north===lava||south===lava||west===lava||east===lava;
@@ -94,8 +103,10 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
           shoreWest&&dx<width||shoreEast&&dx>=SIDE-width;
         const ripple=(py+mineral+(hash>>>27&1))%9===0&&variation>.04;
         const reef=coast<=2&&variation>.17;
-        color=(shallow||reef?shallows:palette[sea])[ripple?3:level];
+        color=(shallow||reef?shallows:deepWater)[ripple?3:level];
         if(!shallow&&!reef&&coast===4)color=shadeTerrainPixel(color,.83);
+        if(reef&&((px+py*2+mineral)&7)<=1&&(hash&3)!==0)color=reefShards[level];
+        if(spray&&Math.hypot(dx-3.5,dy-3.5)<2.5+(hash&1))color=foam[Math.min(2,level)];
       }else if(!span){
         const seam=(px+py*2+mineral)&15;
         if(!causeway&&(kind===basalt||kind===ember)&&seam<=1)color=shadeTerrainPixel(color,.76+(hash&3)*.046);
@@ -111,6 +122,12 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
         if(light){
           const glow=Math.max(0,1-(Math.abs(dx+.5-lightX)+Math.abs(dy+.5-lightY))/8);
           color=tintStone(color,light,glow*.29);
+        }
+        if(fall){
+          const run=fall.dx*(dx-3.5)+fall.dy*(dy-3.5);
+          const width=Math.abs(fall.dy*(dx-3.5)+fall.dx*(dy-3.5));
+          if(run>=-.5&&width<=1.5)color=foam[(hash>>>25)%3];
+          else if(run>=-1.5&&width<=2.5)color=tintStone(color,foam[0],.3);
         }
       }
       pixels[(row*SIDE+dy)*iw+col*SIDE+dx]=color;

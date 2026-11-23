@@ -8,11 +8,14 @@ export type RealmFormation={kind:RealmFormationKind;variant:number;size:number;d
 export type RealmEffectKind='spore'|'spark'|'foam'|'steam'|'gleam'|'bat';
 export type RealmEffect={cell:number;kind:RealmEffectKind;phase:number};
 export type RealmNaturalSite={cell:number;name:string;description:string};
+type RealmFall={outlet:number;dx:number;dy:number};
 export type RealmScenery={
   formations:Map<number,RealmFormation>;
   landmarks:Set<number>;
   docks:Map<number,Facing>;
   gates:Map<number,RealmLink['kind']>;
+  falls:Map<number,RealmFall>;
+  spray:Set<number>;
   coast:Uint8Array;
   effects:RealmEffect[];
   naturalSites:RealmNaturalSite[];
@@ -38,6 +41,29 @@ function coastalDepth({width,height,biomes}:RealmMap){
   return coast;
 }
 
+function shoreFalls(map:RealmMap,occupied:Set<number>){
+  const {width:w,height:h,biomes,heights,seed}=map;
+  const choices:{cell:number;outlet:number;score:number}[]=[];
+  for(let i=0;i<biomes.length;i++){
+    const biome=biomes[i];
+    if(occupied.has(i)||heights[i]<6||biome!==chalk&&biome!==steam&&biome!==glowroot)continue;
+    const outlet=seaNeighbors(i,w,biomes.length).find(j=>biomes[j]===sea);
+    if(outlet===undefined||occupied.has(outlet))continue;
+    const score=terrainHash(i,247,seed)*2+heights[i]*.12;
+    choices.push({cell:i,outlet,score});
+  }
+  choices.sort((a,b)=>b.score-a.score);
+  const falls=new Map<number,RealmFall>(),spray=new Set<number>();
+  const capacity=Math.round(Math.sqrt(w*h)/11);
+  for(const {cell,outlet} of choices){
+    const {x,y}=seaPoint(w,cell),q=seaPoint(w,outlet);
+    if([...falls.keys()].some(i=>Math.hypot(i%w-x,Math.floor(i/w)-y)<5))continue;
+    falls.set(cell,{outlet,dx:q.x-x,dy:q.y-y});spray.add(outlet);
+    if(falls.size>=capacity)break;
+  }
+  return {falls,spray};
+}
+
 /** Decoration is seeded from the saved cave floor. Roads, houses, and
  * passage cells leave room for the same routes in the atlas and on foot. */
 export function realmScenery(map:RealmMap):RealmScenery{
@@ -57,13 +83,15 @@ export function realmScenery(map:RealmMap):RealmScenery{
     const {x,y}=seaPoint(w,town.berth),land=seaPoint(w,town.index);
     docks.set(town.berth,x<land.x?'east':x>land.x?'west':y<land.y?'south':'north');
   }
+  const {falls,spray}=shoreFalls(map,occupied);
+  for(const cell of falls.keys())occupied.add(cell);
   const coast=coastalDepth(map),effects:RealmEffect[]=[];
   const density=Math.max(.58,Math.min(1,Math.sqrt(2800/biomes.length)));
   for(let i=0;i<biomes.length;i++){
     const {x,y}=seaPoint(w,i),kind=biomes[i],roll=terrainHash(x,y,seed+931);
     const phase=terrainHash(i,23,seed);
     if(kind===lava&&!map.bridges.has(i)&&roll>.36)effects.push({cell:i,kind:'spark',phase});
-    if(kind===sea&&!docks.has(i)&&coast[i]<=3&&roll>.78)effects.push({cell:i,kind:'foam',phase});
+    if(kind===sea&&!docks.has(i)&&(spray.has(i)||coast[i]<=3&&roll>.78))effects.push({cell:i,kind:'foam',phase});
     if(occupied.has(i)||kind===sea||kind===lava)continue;
     const pocket=terrainNoise(x,y,4.2,seed+133);
     const chance=kind===glowroot?(pocket>-.02?.57:.22):kind===crystal?(pocket>-.13?.51:.19):
@@ -96,7 +124,7 @@ export function realmScenery(map:RealmMap):RealmScenery{
     }
     return cell<0?[]:[{cell,name,description}];
   });
-  const scene={formations,landmarks,docks,gates,coast,effects,naturalSites};
+  const scene={formations,landmarks,docks,gates,falls,spray,coast,effects,naturalSites};
   scenes.set(map,scene);
   return scene;
 }

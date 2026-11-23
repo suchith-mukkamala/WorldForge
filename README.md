@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.32.0 — Buried Frontiers** gives newly generated Underworlds their own seeded geography. Explore a winding **Rift Sea**, separate **Twin Basins**, or a **Flooded Archipelago**. Islands, lava channels, and ridges vary within each layout. The atlas and Descend show mineral reefs, brighter shallows, waterfall pools, and shore landings. Existing caves keep their maps and gain the new artwork.
+
 - **v2.31.0 — Cavern Canopy** gives both layers in **Stacked 3D** jagged cliff faces, rocky ledges, and mineral seams. Glowing vines grow in uneven clusters from the Surface rock and end in the open space above the Underworld. Open **Underworld → Places** to zoom to natural landmarks such as the Glowroot Canopy, Prism Gallery, and Mineral Terraces when they occur in your world.
 
 - **v2.30.0 — Living Caverns** adds towering glowroot groves, crystal clusters, basalt spires, and steaming mineral pools to the Underworld. Ashgate, Belowleaf, Lantern Quay, and Glassbank have distinct stonework and lighting. Small bats, spores, lava sparks, and water glints bring movement to the 3D atlas and the view on foot. Existing worlds gain the new scenery.
@@ -153,7 +155,7 @@ The long-run simulation is intentionally more expensive than unit tests. The sim
 
 ## Project roadmap
 
-- **Current** — v2.31.0 adds rougher cutaway rock, glowing vines, and named cavern landmarks. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
+- **Current** — v2.32.0 generates distinct Underworld layouts from the world seed and adds waterfalls, mineral reefs, and stepped cliffs. GitHub Pages publishes compiled Vite output under `/WorldForge/`.
 - **Play:** observe from the atlas, intervene in God Mode, or Descend as a mortal and walk the same world. Press **P** on the atlas to pause or resume time, and **?** for that hint. Mortal exploration keeps its own keys.
 - **Future visual direction** — Keep the pixel-art atlas and Descend view. Later, explore procedurally generated planets, additional realms, and interplanetary travel. Inhabiting an existing resident remains a future option.
 

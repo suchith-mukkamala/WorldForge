@@ -6,6 +6,7 @@ import {boundedMapZoom,captureWorldZoomAnchor,gestureZoomFactor,isMapPanDrag,
   mapScrollForDrag,restoreWorldZoomAnchor,type WorldZoomAnchor} from './mapGestures';
 import type {Point} from './motion';
 import {RealmReliefCanvas} from './RealmReliefCanvas';
+import {REALM_LAYOUT_NAMES} from './realmGeography';
 import {realmScenery} from './realmScenery';
 import {seaPoint} from './shipSave';
 import {realmDepthPoint,STACKED_CAMERA,stackedProjection} from './stackedProjection';
@@ -212,7 +213,8 @@ export function UnderworldAtlas({world,map,focusSurface,at,marked,onSurface,onMa
       <div className="evo-card-heading evo-map-heading">
         <div className="atlas-map-title" aria-live="polite">
           <strong>{name??'Underworld map'}</strong>
-          <small>{link?'Passage to the Surface':biome?.name??(relief?'Raised terrain':'Underground world layer')}</small>
+          <small>{link?'Passage to the Surface':biome?.name??
+            (map.layout?REALM_LAYOUT_NAMES[map.layout]:relief?'Raised terrain':'Underground world layer')}</small>
         </div>
         <div className="evo-map-actions">
           {allowRelief&&<div className="realm-view-controls" role="group" aria-label="Underworld perspective">
