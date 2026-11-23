@@ -2,6 +2,7 @@ import {tidalApproach} from './tidalCaves';
 import {terrainHash,terrainNoise} from './biomeGeneration';
 import type {World} from './engine';
 import {generateRealmGeography,RealmBiome,type RealmLayout} from './realmGeography';
+import {planRealmWater,validRealmWatershed,type RealmWaterFloor,type RealmWatershed} from './realmWater';
 import {seaNeighbors,seaPoint,validMortalShip,type MortalShip} from './shipSave';
 import {skylandMesh} from './skylands';
 import {volcanicDay} from './volcanism';
@@ -11,14 +12,15 @@ export {RealmBiome} from './realmGeography';
 export type RealmPeople='demon'|'ash-borne';
 export type RealmLink={surface:number;cell:number;kind:'crater'|'roots'|'falls'};
 type Population={demons:number;ashBorne:number};
-export type Underworld={links:RealmLink[];population:Population[];outpost?:number;terraces?:number[];geography?:1};
+export type Underworld={links:RealmLink[];population:Population[];outpost?:number;terraces?:number[];geography?:1;
+  watershed?:RealmWatershed|null};
 export type RealmVisit={at:number;origin:number;ship?:MortalShip};
 export type RealmExploration={chart:number[];visit?:RealmVisit};
 export type RealmTown={id:number;index:number;berth?:number;home:RealmPeople;name:string};
 export type RealmMap={
   width:number;height:number;seed:number;biomes:Uint8Array;heights:Uint8Array;layout?:RealmLayout;
   towns:RealmTown[];roads:Set<number>;bridges:Set<number>;fords:Set<number>;
-  houses:Map<number,RealmTown>;links:RealmLink[];
+  houses:Map<number,RealmTown>;links:RealmLink[];water?:RealmWaterFloor;
 };
 export type RealmResident={id:number;index:number;people:RealmPeople;name:string;line:string};
 
@@ -160,7 +162,17 @@ export function initializeUnderworld(world:World):World{
     demons:demons+Math.floor(terrainHash(id,19,seed)*7),
     ashBorne:ashBorne+Math.floor(terrainHash(id,37,seed)*6),
   }));
-  return {...world,underworld:{links,population,geography,...(outpost!==undefined&&outpost>=0?{outpost}:{})}};
+  return initializeRealmWater({...world,underworld:{links,population,geography,
+    ...(outpost!==undefined&&outpost>=0?{outpost}:{})}});
+}
+
+/** Attach the watershed once. Old maps, shaft IDs and saved voyages keep
+ * their coordinates when the seasonal shoreline is introduced. */
+export function initializeRealmWater(world:World):World{
+  const state=world.underworld;
+  if(!state||state.watershed!==undefined)return world;
+  const map=underworldMap(world)!;
+  return {...world,underworld:{...state,watershed:planRealmWater(world,map)}};
 }
 
 function nearSurfaceRoots(world:World,i:number){
@@ -322,7 +334,7 @@ export function realmResidents(world:World,map:RealmMap):RealmResident[]{
 
 export function validUnderworld(value:unknown,width:number,height:number):value is Underworld{
   if(!value||typeof value!=='object')return false;
-  const {links,population,outpost,terraces,geography}=value as Underworld,realm=dimensions(width,height);
+  const {links,population,outpost,terraces,geography,watershed}=value as Underworld,realm=dimensions(width,height);
   const index=(i:number,n:number)=>Number.isInteger(i)&&i>=0&&i<n;
   return (geography===undefined||geography===1)&&Array.isArray(links)&&links.length>0&&links.length<=5&&
     links.some(link=>link?.kind==='crater')&&links.every(link=>link&&index(link.surface,width*height)&&
@@ -332,6 +344,7 @@ export function validUnderworld(value:unknown,width:number,height:number):value 
     Array.isArray(population)&&population.length===TOWNS.length&&population.every(group=>group&&
       index(group.demons,1000)&&index(group.ashBorne,1000))&&
     (outpost===undefined||index(outpost,width*height))&&
+    (watershed===undefined||validRealmWatershed(watershed,width,height,realm.width,realm.height))&&
     (terraces===undefined||Array.isArray(terraces)&&terraces.length<=4&&
       terraces.every(i=>index(i,realm.width*realm.height))&&new Set(terraces).size===terraces.length);
 }

@@ -36,7 +36,7 @@ describe('Underworld caverns',()=>{
     for(const seed of [1,2,3,41]){
       const world=worldFor(seed),map=underworldMap(world)!,plan=realmCaverns(map);
       const drainage=hydrologyForWorld(world);
-      for(const {kind,surface,cell} of caveConnections(world,map,plan)){
+      for(const {kind,surface,cell,overflow} of caveConnections(world,map,plan)){
         found.add(kind);
         if(kind==='fault'){
           expect(map.links.some(link=>link.surface===surface&&link.kind==='crater')).toBe(true);
@@ -44,9 +44,15 @@ describe('Underworld caverns',()=>{
         }
         const projected=projectWorldLayer(surface,world,map);
         if(kind==='seep'){
-          expect(drainage.channel[surface]>0||map.links.some(link=>link.surface===surface&&link.kind==='falls')).toBe(true);
-          expect([projected,...seaNeighbors(projected,map.width,map.biomes.length)]).toContain(cell);
-          expect(map.biomes[cell]).toBe(RealmBiome.sea);
+          expect(Math.hypot(cell%map.width-projected%map.width,
+            Math.floor(cell/map.width)-Math.floor(projected/map.width))).toBeLessThanOrEqual(4);
+          if(overflow){
+            expect(world.tiles[surface].biome).not.toBe('water');
+            expect(map.biomes[cell]).not.toBe(RealmBiome.sea);
+          }else{
+            expect(drainage.channel[surface]).toBeGreaterThan(0);
+            expect(map.biomes[cell]).toBe(RealmBiome.sea);
+          }
         }else{
           expect(projected).toBe(cell);
           expect(world.tiles[surface].biome).not.toBe('water');

@@ -22,6 +22,7 @@ import {fitStructure,structureFootings,structureForBuilding,structureSite,surfac
 import {buildingPlots,paintPlotOutline,type BuildingPlots} from './buildingPlots';
 import type {RiverCourse} from './riverCourses';
 import {paintRiverCourse} from './riverCourseArt';
+import {cavernFlow,cavernFlowKey} from './realmWater';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {paintTradeRoutes} from './tradeRoutes';
 import {coastalDepth} from './oceanDepth';
@@ -394,7 +395,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     terrainCells:World['terrainCells'];
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
-    detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;season:string;
+    detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;season:string;feederKey:string;
     siteKey:string;occupiedKey:string;street:boolean;regional:boolean;raster:number;draftTree:boolean;cutaway:boolean}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
@@ -470,9 +471,10 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       previousPlots.plots:buildingPlots(world,ground));
     plotCacheRef.current=ground&&plots?{ground,key:plotKey,plots}:null;
     const worker=tiled?rasterWorker.current:null;
+    const feeder=tiled?cavernFlow(world):undefined,feederKey=cavernFlowKey(feeder);
     const rootClearings=worldTreeClearings(world),rootKey=rootClearings.join(',');
     const geometry=[world.settings,world.width,world.height,topography,terrainCells,
-      woodland,season,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands,skylands,world.worldTree,rootKey,cutaway];
+      woodland,season,feederKey,plots,relief,camera.yaw,camera.pitch,sceneryDensity,world.skylands,skylands,world.worldTree,rootKey,cutaway];
     let job=rasterJob.current;
     if(!worker||landChanged||!job||geometry.some((part,i)=>part!==job?.geometry[i])){
       if(job?.result!==displayedRaster.current?.result)job?.result?.bitmap.close();
@@ -483,7 +485,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       rasterBusy.current=true;
       const {width,height,settings,tiles,terrainCells,dayOfYear,woodland,worldTree}=world;
       const message:DepthRasterRequest={id:job.id,world:{width,height,settings,tiles,topography,
-        terrainCells,dayOfYear,woodland,skylands:world.skylands,worldTree,rootClearings},relief,camera,density:sceneryDensity,
+        terrainCells,dayOfYear,woodland,skylands:world.skylands,worldTree,rootClearings,feeder},relief,camera,density:sceneryDensity,
         plots:plots&&{squares:plots.squares,decoratedTiles:plots.decoratedTiles},cutaway,showSkylands:!!skylands};
       try{worker.postMessage(message);}catch{setRasterFailed(true);}
     }
@@ -520,7 +522,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     pickingRef.current=picking;
     if(!stamp||!reusePicking||landChanged||stamp.topography!==world.topography||
       stamp.woodland!==woodland||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||stamp.rootClearings!==rootKey||
-      stamp.terrainCells!==terrainCells||stamp.season!==season||
+      stamp.terrainCells!==terrainCells||stamp.season!==season||stamp.feederKey!==feederKey||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
       stamp.detail!==zoomDetailTier||stamp.showBuildings!==showBuildings||
@@ -537,7 +539,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     stampRef.current={tiles:world.tiles,topography:world.topography,woodland,skylands:world.skylands,worldTree:world.worldTree,rootClearings:rootKey,
       terrainCells,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
-      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,
+      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,feederKey,
       sceneryDensity,showBuildings,siteKey,occupiedKey,street:showResidents,regional,raster,draftTree,cutaway};
     // Only painted residents need animation coordinates. Tracking every agent
     // previously allocated thousands of points on every simulation commit,

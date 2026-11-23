@@ -4,10 +4,10 @@ import {hydrologyForWorld,type Hydrology} from './hydrology';
 import {oceanBasins,shallowCrossing} from './regionalGeography';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 
-export type RiverStopKind='source'|'falls'|'valley'|'ford'|'mouth';
+export type RiverStopKind='source'|'falls'|'valley'|'ford'|'mouth'|'barrier';
 export type RiverStop={kind:RiverStopKind;index:number;label:string};
 export type RiverCourse={mouth:number;outlet:number;name:string;path:readonly number[];
-  stops:readonly RiverStop[];delta:boolean};
+  stops:readonly RiverStop[];delta:boolean;discharge?:number};
 const names=['Alder','Silverrun','Ember','Mosswater','Cairn','High Reed','Willow','Greybank'];
 const cache=new WeakMap<Hydrology,readonly RiverCourse[]>();
 

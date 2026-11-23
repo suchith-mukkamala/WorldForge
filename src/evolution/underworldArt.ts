@@ -31,6 +31,7 @@ const water={
 const reefShards=['#527d98','#749fb4','#8fb6c1','#accaaf'].map(terrainPixel);
 const foam=['#699fab','#92c6c4','#c4e4ce'].map(terrainPixel);
 const paving=['#82756d','#9d8b7e','#af9d87','#c9b69b'].map(terrainPixel);
+const lakeBed=['#837977','#9d907f','#bcaa8e','#cbba9c'].map(terrainPixel);
 const piers=['#796b68','#938278','#a48f7e','#b7a38a'].map(terrainPixel);
 const emberLight=terrainPixel('#ffb06a');
 const abyss=terrainPixel('#171825');
@@ -64,6 +65,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
     if(x<0||y<0||x>=map.width||y>=map.height)continue;
     const natural=map.biomes[i],span=map.bridges.has(i)||day!==undefined&&realmFordOpen(map,i,day);
     const kind=span?ember:natural,road=map.roads.has(i);
+    const shelf=kind===chalk&&map.water?.seasonal.has(i);
     const north=map.biomes[i-map.width],south=map.biomes[i+map.width];
     const west=x>0?map.biomes[i-1]:undefined,east=x<map.width-1?map.biomes[i+1]:undefined;
     const shore=(neighbor:number|undefined)=>neighbor!==undefined&&neighbor!==sea&&neighbor!==lava;
@@ -90,7 +92,7 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
         (dx>=2&&dx<=5&&dy>=2&&dy<=5||
           dy<=2&&northRoad||dy>=5&&southRoad||dx<=2&&westRoad||dx>=5&&eastRoad);
       let color=span?piers[(dx+Math.floor(dy/3))&3]:causeway?paving[level]:
-        step?palette[kind][dy===SIDE-1?0:1]:palette[blend?edge:kind][level];
+        step?palette[kind][dy===SIDE-1?0:1]:shelf?lakeBed[level]:palette[blend?edge:kind][level];
       if(!span&&kind===lava){
         const pulse=terrainNoise(px*.62,py,4,map.seed+664);
         const bank=Math.min(north!==lava?dy:SIDE,south!==lava?SIDE-1-dy:SIDE,
@@ -126,8 +128,9 @@ export function realmFloorPixels(map:RealmMap,day:number|undefined,origin:Point,
         if(fall){
           const run=fall.dx*(dx-3.5)+fall.dy*(dy-3.5);
           const width=Math.abs(fall.dy*(dx-3.5)+fall.dx*(dy-3.5));
-          if(run>=-.5&&width<=1.5)color=foam[(hash>>>25)%3];
-          else if(run>=-1.5&&width<=2.5)color=tintStone(color,foam[0],.3);
+          const reach=fall.flow===2?2.5:fall.flow===1?.5:1.5;
+          if(run>=-.5&&width<=reach)color=foam[(hash>>>25)%3];
+          else if(run>=-1.5&&width<=reach+1)color=tintStone(color,foam[0],.3);
         }
       }
       pixels[(row*SIDE+dy)*iw+col*SIDE+dx]=color;

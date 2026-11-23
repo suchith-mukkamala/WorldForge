@@ -1,13 +1,14 @@
 import {terrainHash,terrainNoise} from './biomeGeneration';
 import type {World} from './engine';
 import {hydrologyForWorld} from './hydrology';
+import {inletSurface} from './realmWater';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {SEA_LEVEL,topographyForWorld} from './topography';
 import {projectWorldLayer,RealmBiome,realmWalkable,type RealmMap} from './underworld';
 
 type Chamber={cell:number;entrance:number;name:string;rx:number;ry:number;vault:number};
 export type Caverns={clearance:Uint8Array;room:Int8Array;chambers:Chamber[];galleries:number[][]};
-export type CaveConnection={kind:'seep'|'fault'|'skylight';surface:number;cell:number};
+export type CaveConnection={kind:'seep'|'fault'|'skylight';surface:number;cell:number;overflow?:boolean};
 
 const {sea,lava,glowroot,crystal,steam,ember}=RealmBiome;
 const plans=new WeakMap<RealmMap,Caverns>();
@@ -102,8 +103,7 @@ export function realmCaverns(map:RealmMap):Caverns{
 export const caveRoomName=(plan:Caverns,cell:number)=>
   plan.chambers[plan.room[cell]]?.name??'Low galleries';
 
-/** Only put an opening over compatible geology. Neither inspection nor
- * rendering creates portals or changes the simulation's drainage. */
+/** Draw the fixed water inlets alongside naturally aligned skylights and faults. */
 export function caveConnections(world:World,map:RealmMap,plan:Caverns):CaveConnection[]{
   const {heights}=topographyForWorld(world),{channel,pondDepth}=hydrologyForWorld(world);
   const connections:CaveConnection[]=[];
@@ -116,24 +116,19 @@ export function caveConnections(world:World,map:RealmMap,plan:Caverns):CaveConne
     }
     connections.push({kind:'fault',surface:link.surface,cell:best<7?cell:link.cell});
   }
-  let seep:CaveConnection|undefined,skylight:CaveConnection|undefined,wetScore=-Infinity,lightScore=-Infinity;
+  const watershed=world.underworld?.watershed;
+  const seep=watershed&&{kind:'seep' as const,surface:inletSurface(watershed.main),cell:watershed.main.cell};
+  const spill=watershed?.spill&&{kind:'seep' as const,surface:inletSurface(watershed.spill),cell:watershed.spill.cell,overflow:true};
+  let skylight:CaveConnection|undefined,lightScore=-Infinity;
   const occupied=new Set([...map.roads,...map.houses.keys(),...map.links.map(link=>link.cell),
     ...map.towns.flatMap(town=>town.berth===undefined?[town.index]:[town.index,town.berth])]);
   const settlements=new Set(world.settlements.map(site=>site.y*world.width+site.x));
   const falls=new Set(map.links.filter(link=>link.kind==='falls').map(link=>link.surface));
-  const pool=(cell:number)=>map.biomes[cell]===sea&&!occupied.has(cell);
   for(let surface=0;surface<world.tiles.length;surface++){
     const {biome}=world.tiles[surface];
-    if(biome==='water'||biome==='volcanic')continue;
+    if(biome==='water'||biome==='volcanic'||surface===seep?.surface||surface===spill?.surface)continue;
     const cell=projectWorldLayer(surface,world,map),kind=map.biomes[cell];
     const roll=terrainHash(surface,142,map.seed),headroom=plan.clearance[cell];
-    if(channel[surface]>0||falls.has(surface)){
-      const outlet=pool(cell)?cell:seaNeighbors(cell,map.width,map.biomes.length).find(pool);
-      if(outlet!==undefined&&connections.every(site=>separation(map,site.cell,outlet)>=3)){
-        const score=channel[surface]*2+plan.clearance[outlet]*.05+roll+(outlet===cell?2:0);
-        if(score>wetScore){wetScore=score;seep={kind:'seep',surface,cell:outlet};}
-      }
-    }
     if(occupied.has(cell)||connections.some(site=>separation(map,site.cell,cell)<3))continue;
     if(headroom<42||kind!==crystal&&kind!==glowroot||channel[surface]>0||
       biome==='forest'||biome==='taiga'||biome==='wetland'||settlements.has(surface)||falls.has(surface))continue;
@@ -143,6 +138,7 @@ export function caveConnections(world:World,map:RealmMap,plan:Caverns):CaveConne
     if(score>lightScore){lightScore=score;skylight={kind:'skylight',surface,cell};}
   }
   if(seep)connections.push(seep);
+  if(spill)connections.push(spill);
   if(skylight)connections.push(skylight);
   return connections;
 }

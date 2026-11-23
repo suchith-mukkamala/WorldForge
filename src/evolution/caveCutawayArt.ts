@@ -126,7 +126,14 @@ export function paintCaveConnections(ctx:CanvasRenderingContext2D,projection:Pro
       ctx.lineTo(b.x+13,b.y);ctx.lineTo(b.x-12,b.y);ctx.closePath();ctx.fill();
       continue;
     }
-    const wet=site.kind==='seep',width=wet?3.4:2.6;
+    const wet=site.kind==='seep';
+    const flow=map.water?.fall?.outlet===site.cell?map.water.fall.flow:0;
+    if(wet&&!flow){
+      ctx.save();ctx.strokeStyle='#96a6b76b';ctx.lineWidth=2;ctx.setLineDash([4,7]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.restore();
+      continue;
+    }
+    const width=wet?(flow===2?7:3.4):2.6;
     const path=[a,between(a,opening,.26),between(a,opening,.62),opening,b];
     for(let n=1;n<path.length-2;n++)path[n].x+=(terrainHash(site.surface,n,seed)-.5)*27;
     for(let n=0;n<path.length-1;n++){
@@ -144,6 +151,7 @@ export function paintCaveLight(ctx:CanvasRenderingContext2D,projection:Projectio
   const {underneath,lower,lowerTop}=projection;
   for(const {kind,cell} of connections){
     if(kind==='fault')continue;
+    if(kind==='seep'&&map.water?.fall?.outlet!==cell)continue;
     const {x,y}=seaPoint(map.width,cell),z=map.heights[cell];
     const point=(dx:number,dy:number)=>drop(underneath(x+dx,y+dy,z),lowerTop);
     const tile=(ink:string,dx:number,dy:number,w:number,h:number)=>

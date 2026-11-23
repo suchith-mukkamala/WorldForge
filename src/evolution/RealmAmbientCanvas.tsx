@@ -9,7 +9,9 @@ export function RealmAmbientCanvas({points,tracks,width,height,unit,hidden}:{poi
     const canvas=ref.current,ctx=canvas?.getContext('2d');
     if(!canvas||!ctx||hidden||!(points.length||tracks.length))return;
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-    const glimmers=points.map(point=>({...point,x:point.x*scale,y:point.y*scale}));
+    const glimmers=points.map(point=>point.kind==='cascade'?
+      {...point,x:point.x*scale,y:point.y*scale,dx:point.dx*scale,dy:point.dy*scale}:
+      {...point,x:point.x*scale,y:point.y*scale});
     const wildlife=tracks.map(track=>({...track,points:track.points.map(point=>
       point&&{x:point.x*scale,y:point.y*scale})}));
     let request=0,visible=true,last=-Infinity;

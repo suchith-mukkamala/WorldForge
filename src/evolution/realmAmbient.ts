@@ -2,7 +2,8 @@ import type {Point} from './motion';
 import type {RealmEffect} from './realmScenery';
 import type {RealmWildlife} from './realmWildlife';
 
-export type RealmGlimmer=Point&Pick<RealmEffect,'kind'|'phase'>;
+export type RealmGlimmer=Point&(Pick<RealmEffect,'kind'|'phase'>|
+  {kind:'cascade';phase:number;dx:number;dy:number;flow:1|2});
 export type RealmTrack=Pick<RealmWildlife,'kind'|'phase'>&{points:(Point|null)[]};
 export const REALM_AMBIENT_STEP=65;
 const rates={spore:.245,spark:.39,foam:.29,steam:.19,gleam:.21,bat:.155};
@@ -15,7 +16,16 @@ export function paintRealmAmbient(ctx:CanvasRenderingContext2D,points:readonly R
     ctx.fillStyle=ink;
     ctx.fillRect(Math.round(x),Math.round(y),Math.max(1,Math.round(w*unit)),Math.max(1,Math.round(h*unit)));
   };
-  for(const {kind,phase,x,y} of points){
+  for(const point of points){
+    const {kind,phase,x,y}=point;
+    if(kind==='cascade'){
+      for(let n=0;n<point.flow*3;n++){
+        const t=(time*(point.flow===2?.0015:.001)+phase+n/(point.flow*3))%1;
+        ctx.globalAlpha=.63-t*.35;
+        rect(n%2?'#c8ede0':'#85c5cc',x+point.dx*t+(n%3-1)*unit,y+point.dy*t,1,2);
+      }
+      continue;
+    }
     const cycle=(time*.001*rates[kind]+phase)%1;
     const drift=Math.sin((phase+cycle)*7.2)*cycle;
     if(kind==='bat'){
