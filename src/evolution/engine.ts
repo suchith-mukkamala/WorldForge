@@ -57,6 +57,7 @@ import {advanceWoodland,initialWoodland,paintWoodland,validWoodland} from './woo
 import {annualGrowthFactor,climateField} from './climate';
 import {advanceClimateEcology} from './climateEcology';
 import {advanceWildlife,seedWildlife,validWildlife,type Herd} from './wildlife';
+import {validFruitHarvest,type FruitHarvest} from './fruitTrees';
 import {LANDFORM_NAMES,settlementGeography,
   type LandformProfile} from './regionalGeography';
 import {advanceTerrainCells,clearTerrainTile,validTerrainCells,type TerrainCells} from './terrainCells';
@@ -160,6 +161,7 @@ export type World={version:2;settings:WorldSettings;width:number;height:number;
   woodland?:string;
   /** Grazers, browsers, waders, flocks and fish. Missing on older saves. */
   wildlife?:Herd[];
+  fruitHarvest?:FruitHarvest;
   terrainCells?:TerrainCells;
   skylands?:Skyland[];
   worldTree?:WorldTree;
@@ -468,6 +470,7 @@ export function stepWorld(previous:World):World{
     ancientSites:previous.ancientSites?.map(s=>({...s,visitors:[...s.visitors],
       lostTopics:s.lostTopics?[...s.lostTopics]:undefined})),
     expeditions:previous.expeditions?.map(e=>({...e}))??[]};
+  delete world.fruitHarvest;
   prepareDevelopment(world);
   advanceUnderworldPopulation(world);
   if(world.settings.terrainCells)advanceTerrainCells(world);
@@ -971,6 +974,7 @@ export function isWorld(value:unknown):value is World{
     t.food>=0&&t.food<=20))return false;
   if(!validWoodland(w as World))return false;
   if(w.wildlife!==undefined&&!validWildlife(w.wildlife,w.tiles.length))return false;
+  if(w.fruitHarvest!==undefined&&!validFruitHarvest(w.fruitHarvest,year,w.tiles.length))return false;
   if(!validTerrainCells(w as World))return false;
   const ids=new Set<number>(),positions=new Map<number,number>();
   const traversableBridges=bridgeTiles(w as World);

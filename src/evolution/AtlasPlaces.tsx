@@ -1,6 +1,6 @@
 import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import type {FocusEvent,KeyboardEvent} from 'react';
-import {SPECIES_INFO,type Settlement,type World} from './engine';
+import {BIOME_INFO,SPECIES_INFO,type Settlement,type World} from './engine';
 import {settlementStage} from './construction';
 import {ancientSiteName,type AncientSite} from './knowledge';
 import type {Point} from './motion';
@@ -9,10 +9,12 @@ import {visibleAtlasSite} from './riverDiscoveries';
 import {skylandName} from './skylands';
 import {chartedTidalCaves} from './tidalCaves';
 import {ventHasGround,volcanicIslandName,volcanoName} from './volcanicGeography';
+import {ANIMAL_NAMES,surfaceAnimals,surfaceHerds,type LandAnimal} from './surfaceLife';
 
-export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,onUnderworld}:{
+export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,onUnderworld,onWildlife}:{
   world:World;onTown:(id:number)=>void;onSite:(x:number,y:number)=>void;
   onSkyland?:(id:number)=>void;onCave:(mouth:number)=>void;onVent?:(index:number)=>void;onUnderworld?:()=>void;
+  onWildlife:(index:number)=>void;
 }){
   const [open,setOpen]=useState(false);
   const [query,setQuery]=useState('');
@@ -54,6 +56,15 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
     .filter(island=>island.age!=='young'&&(matches(volcanicIslandName(island))||matches(volcanicIslandName(island,caldera)))):[];
   const underworld=open&&onUnderworld&&!!world.descent?.realm?.chart.length&&matches('Underworld map');
   const tree=open&&matches('World Tree root grove')?world.worldTree:undefined;
+  const animalSites=open?new Set(surfaceAnimals(world).map(track=>track.home)):null;
+  const seen=new Set<LandAnimal>();
+  const wildlife=animalSites?surfaceHerds(world).flatMap(herd=>{
+    if(herd.kind==='fish'||!animalSites.has(herd.index)||!filter&&seen.has(herd.kind))return [];
+    const name=ANIMAL_NAMES[herd.kind],habitat=BIOME_INFO[world.tiles[herd.index].biome].name;
+    if(!matches(name+' '+habitat+' wildlife '+(herd.variety?.name??'')))return [];
+    seen.add(herd.kind);
+    return [{index:herd.index,name,habitat}];
+  }).slice(0,8):[];
   const chooseTree=()=>{if(tree){close();onSite(tree.x,tree.y);}};
   const surveyed=new Set(world.descent?.surveys?.map(entry=>entry.siteId));
   const chooseTown=(id:number)=>{close();onTown(id);};
@@ -62,6 +73,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
   const chooseVent=(index:number)=>{close();onVent?.(index);};
   const chooseUnderworld=()=>{close();onUnderworld?.();};
   const chooseCave=(mouth:number)=>{close();onCave(mouth);};
+  const chooseWildlife=(index:number)=>{close();onWildlife(index);};
   return <div ref={picker} className="atlas-place-picker" onBlur={blur} onKeyDown={keyDown}>
     <button ref={trigger} type="button" className="atlas-places-toggle"
       aria-expanded={open} aria-controls={open?panelId:undefined}
@@ -79,6 +91,7 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
           else if(vents.length)chooseVent(vents[0].index);
           else if(islands.length)chooseVent(islands[0].index);
           else if(underworld)chooseUnderworld();
+          else if(wildlife.length)chooseWildlife(wildlife[0].index);
         }}/>
       <div className="atlas-places-results">
         {towns.length>0&&<><h3>Settlements</h3><ul>
@@ -127,7 +140,14 @@ export function AtlasPlacePicker({world,onTown,onSite,onSkyland,onCave,onVent,on
             </button>
           </li>)}
         </ul></>}
-        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!vents.length&&!islands.length&&!underworld&&!tree&&!vents.length&&!islands.length&&filter&&<p>No places match your search.</p>}
+        {wildlife.length>0&&<><h3>Wildlife</h3><ul>
+          {wildlife.map(({index,name,habitat})=><li key={index}>
+            <button type="button" onClick={()=>chooseWildlife(index)}>
+              <span aria-hidden="true">◆</span><span>{name}<small>{habitat}</small></span>
+            </button>
+          </li>)}
+        </ul></>}
+        {!towns.length&&!sites.length&&!skylands.length&&!caves.length&&!vents.length&&!islands.length&&!underworld&&!tree&&!wildlife.length&&filter&&<p>No places match your search.</p>}
       </div>
     </div>}
   </div>;

@@ -21,7 +21,8 @@ import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,
 import {pickTerrainFace,terrainRiverEdge,type DepthPicking} from './depthTerrain';
 import {orderedDepthTiles,paintDepthBackdrop,type DepthRasterRequest,type DepthRasterResult} from './depthBackdrop';
 import {AtlasWater} from './AtlasWater';
-import {waterSeason} from './riverSeasons';
+import {fruitCycle,fruitStage} from './fruitTrees';
+import {animalCalendarTime,animalPose,surfaceAnimals,surfaceFruitAt,surfaceLifeObstacles} from './surfaceLife';
 import {surfaceGrid,VISUAL_TERRAIN_SIDE,type SurfaceGrid} from './surfaceGrid';
 import {fitStructure,structureFootings,structureForBuilding,structureSite,surfaceHeightAt,type StructureSite} from './structureGround';
 import {buildingPlots,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -52,7 +53,7 @@ import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,DEPTH_TILE_WIDTH,in
 import {atlasLevel} from './atlasMap';
 import {atlasBuildingBounds,opaqueArtAt,overlappingArt,paintAtlasBuilding,
   type PlacedArt} from './atlasBuildingArt';
-import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
+import {blockAnimal,blockFruitTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
 import {blockBuildingArt,blockSceneryArt,depthBlockView,placeBlockArt,type BlockStamp} from './blockScenery';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
@@ -134,10 +135,11 @@ function renderTerrain(w:World,overlay:MapOverlay,
   exact:DepthRasterResult|undefined,preview:boolean,draftTree:boolean,cutaway:boolean){
   const W=w.width,H=w.height,heights=topographyForWorld(w).heights,seed=w.settings.seed;
   const drainage=overlay==='watersheds'?hydrologyForWorld(w):null;
-  const season=waterSeason(w);
+  const cycle=fruitCycle(w),{season}=cycle;
   const tiled=overlay==='terrain'||overlay==='trade';
   const ocean=tiled?surfaceCoastalDepth(w):null;
   const occupied=overlay==='terrain'?occupiedScenery(w):null;
+  const lifeSites=occupied?surfaceLifeObstacles(w):null;
   const grid=tiled?surfaceGrid(w):undefined,actors:DepthActor[]=[];
   const waterLinks=new Map<number,{other:number;tier:number;downstream:boolean}[]>();
   if(drainage)for(const {from,to,tier} of atlasRivers(drainage,showBuildings||overlay==='watersheds')){
@@ -180,7 +182,9 @@ function renderTerrain(w:World,overlay:MapOverlay,
       const grain=tiled?pixelTerrainHash(x,y,seed):0;
       const scenery=biome==='water'?ocean&&ocean[index]<=2&&grain%8===0:
         showBuildings?showAtlasScenery(biome,x,y,seed,street,cover):grain%8===0;
-      const showScenery=occupied&&!occupied.has(index)&&!plots?.clear.has(index)&&!grid?.treeCover?.has(index)&&scenery;
+      const insideTree=grid?.treeCover?.has(index);
+      const fruit=lifeSites&&!insideTree&&(showBuildings||grain%3===0)?surfaceFruitAt(w,index,lifeSites):undefined;
+      const showScenery=fruit||occupied&&!occupied.has(index)&&!plots?.clear.has(index)&&!insideTree&&scenery;
       if(ocean&&!showScenery)continue;
       const ground=grid?surfaceHeightAt(grid,x,y):height;
       const p=projector.projectSmooth(x,y,ground);
@@ -221,13 +225,15 @@ function renderTerrain(w:World,overlay:MapOverlay,
         const detail=terrainDetailAt(biome,x,y,seed,height,false,cover);
         const natural=upland&&height>=175?'snowstone':terrainBlockProp(detail.motif);
         const prop=plots?.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
-        const tree=isTreeKind(prop);
-        if(prop&&(tree||showBuildings)){
+        const tree=!!fruit||isTreeKind(prop);
+        const model=fruit?blockFruitTree(fruit.kind,fruit.variant,fruitStage(w,fruit,cycle),season):
+          prop&&(tree||showBuildings)?blockProp(prop,detail.variant,season):undefined;
+        if(model){
           const near=!!treeBounds&&p.x>=treeBounds.left-18&&p.x<=treeBounds.right+18&&
             p.y>=treeBounds.top&&p.y<=treeBounds.bottom+25;
-          const sprite=blockSceneryArt(blockProp(prop,detail.variant,season),p,blockView,
+          const sprite=blockSceneryArt(model,p,blockView,
             tree?(showBuildings?1.05:.73):.74,near);
-          if(sprite&&(showBuildings||near))actors.push({order:projector.depth(x,y,ground),sprite,canopy:tree});
+          if(sprite&&(showBuildings||near))actors.push({order:projector.depth(x,y,ground),sprite,canopy:tree,target:fruit});
           else if(sprite){paintFootShadow(ctx,sprite);paintAtlasBuilding(ctx,sprite);}
         }else{
           paintDepthSurfaceDetail(ctx,biome,p,x,y,seed);
@@ -264,7 +270,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
   return actors;
 }
 
-type DepthActor={order:number;sprite:PlacedArt;building?:Building;canopy?:boolean;landmark?:Pt;treeClipped?:boolean};
+type DepthActor={order:number;sprite:PlacedArt;building?:Building;canopy?:boolean;landmark?:Pt;treeClipped?:boolean;target?:Pt};
 /** Geometry and structures are immutable throughout an animation. Build
  * projected actors only when the world or camera changes. */
 function prepareDepthStructures(w:World,
@@ -405,6 +411,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     overlay:MapOverlay;deposits:World['deposits'];seed:number;
     relief:number;yaw:number;pitch:number;roadKey:number;
     detail:DepthArtDetail;sceneryDensity:number;showBuildings:boolean;season:string;feederKey:string;
+    ripe:boolean;fruitHarvest:World['fruitHarvest'];
     siteKey:string;occupiedKey:string;street:boolean;regional:boolean;raster:number;draftTree:boolean;cutaway:boolean}|null>(null);
   const priorRef=useRef<{seed:number;year:number;day:number;
     positions:Map<number,Point>}|null>(null);
@@ -435,7 +442,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   const terrainCells=overlay==='terrain'||overlay==='trade'?world.terrainCells:undefined;
   const density=depthRenderDensity(zoom,size);
   const sceneryDensity=depthSceneryDensity(zoom,size);
-  const season=waterSeason(world);
+  const {season,ripe}=fruitCycle(world);
   const large=world.tiles.length>=16_000;
   const useRasterWorker=large||cutaway;
   const close=fillWidth&&zoom>=7&&overlay==='terrain'&&!orbiting;
@@ -556,6 +563,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     if(!stamp||!reusePicking||landChanged||stamp.topography!==world.topography||
       stamp.woodland!==woodland||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||stamp.rootClearings!==rootKey||
       stamp.terrainCells!==terrainCells||stamp.season!==season||stamp.feederKey!==feederKey||
+      overlay==='terrain'&&(stamp.ripe!==ripe||stamp.fruitHarvest!==world.fruitHarvest)||
       stamp.overlay!==overlay||stamp.seed!==world.settings.seed||
       stamp.relief!==relief||stamp.roadKey!==roadKey||
       stamp.detail!==zoomDetailTier||stamp.showBuildings!==showBuildings||
@@ -572,7 +580,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     stampRef.current={tiles:world.tiles,topography:world.topography,woodland,skylands:world.skylands,worldTree:world.worldTree,rootClearings:rootKey,
       terrainCells,
       overlay,deposits:world.deposits,seed:world.settings.seed,relief,
-      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,feederKey,
+      yaw:camera.yaw,pitch:camera.pitch,roadKey,detail:zoomDetailTier,season,feederKey,ripe,fruitHarvest:world.fruitHarvest,
       sceneryDensity,showBuildings,siteKey,occupiedKey,street:showResidents,regional,raster,draftTree,cutaway};
     // Only painted residents need animation coordinates. Tracking every agent
     // previously allocated thousands of points on every simulation commit,
@@ -638,6 +646,19 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       return sprite?[{order:projector.depth(x,y,h),sprite}]:[];
     });
     let actors:DepthActor[]=[...sceneryActors.current,...structures??[],...ships];
+    if(overlay==='terrain'&&showResidents){
+      const grid=ground??surfaceGrid(world),time=animalCalendarTime(world);
+      for(const track of surfaceAnimals(world)){
+        const {x,y,facing}=animalPose(track,time,false),h=surfaceHeightAt(grid,x,y);
+        const at=projector.projectSmooth(x,y,h);
+        const here=picking.ids[Math.floor(at.y*pickScale)*picking.width+Math.floor(at.x*pickScale)];
+        const index=Math.round(y)*world.width+Math.round(x);
+        if(here&&here!==index+1)continue;
+        const sprite=blockSceneryArt(blockAnimal(track.kind,facing,0,track.variant,track.young),
+          at,blockView,track.young?.64:.91,!!tree);
+        if(sprite)actors.push({order:projector.depth(x,y,h),sprite,target:seaPoint(world.width,track.home)});
+      }
+    }
     if(tree){
       if(treeMasks.current?.tree!==tree)treeMasks.current={tree,actors:new WeakMap()};
       const masks=treeMasks.current.actors;
@@ -742,7 +763,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     frameHandle=requestAnimationFrame(draw);
     return ()=>{cancelAnimationFrame(frameHandle);paintDetail.current=undefined;};
   },[world,overlay,selected,zoomDetailTier,density,sceneryDensity,speed,relief,
-    terrainCells,season,river,camera.yaw,camera.pitch,followId,personId,
+    terrainCells,season,ripe,river,camera.yaw,camera.pitch,followId,personId,
     showBuildings,showResidents,onFollowPosition,orbiting,large,displayScale,rasterVersion,rasterFailed,
     showSkylands,cutaway,close]);
   const apply=(x:number,y:number)=>{
@@ -766,6 +787,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
         if(scene.faded.has(actor)||!opaqueArtAt(actor.sprite,px,py))continue;
         if(actor.landmark){onSelect(actor.landmark.x,actor.landmark.y);return;}
         if(actor.building){onSelect(actor.building.x,actor.building.y);return;}
+        if(actor.target){onSelect(actor.target.x,actor.target.y);return;}
         break;
       }
     }

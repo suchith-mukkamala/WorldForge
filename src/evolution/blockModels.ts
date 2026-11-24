@@ -9,6 +9,8 @@ import type {VisualSeason} from './sceneAtmosphere';
 import type {RegionalBuildingStyle} from './riverArchitecture';
 import type {StructureSite} from './structureGround';
 import type {CloudTone} from './surfaceClouds';
+import {FRUIT,type FruitKind,type FruitStage} from './fruitTrees';
+import type {LandAnimal} from './surfaceLife';
 import type {CaveStone} from './tidalCaves';
 import type {RealmFormationKind} from './realmScenery';
 import type {RealmLink} from './underworld';
@@ -269,6 +271,93 @@ export function blockProp(kind:BlockProp,seed:number,season?:VisualSeason):Block
       if(kind==='fern')grid.box(x-1,y,h-1,3,1,1,stem);
     }
   });
+}
+
+export function blockFruitTree(kind:FruitKind,variant:number,stage:FruitStage,season:VisualSeason):BlockModel{
+  return model(['fruit',kind,variant,stage,season].join(':'),grid=>{
+    if(kind==='baobab'||kind==='mulberry'){
+      regionalTree(grid,kind==='baobab'?'baobab':'willow',variant,season);
+    }else{
+      const bark=kind==='apple'?'#755343':'#865755';
+      grid.box(-1,-1,0,2,2,7,bark);
+      grid.box(-2,0,0,4,1,1,'#624e40');
+      grid.box(-1,-1,2,1,1,4,kind==='apple'?'#98765b':'#ae8070');
+      oakCrown(grid,kind==='cherry'?(variant+1)%4:variant,season);
+    }
+    if(stage==='dormant'||stage==='picked')return;
+    const info=FRUIT[kind],lower=kind==='mulberry'?5:kind==='baobab'?8:6;
+    const colors=stage==='bloom'?[info.flower,'#fff0d5']:stage==='green'?['#829b48','#a7b960']:[info.color,info.light];
+    // Each fruit hangs from an exposed square in the actual canopy. Place a
+    // few on every side so rotating the atlas still reveals the crop.
+    const leaves=[...grid.cells.keys()].flatMap(key=>{
+      const z=Math.floor(key/layer),p=key-z*layer;
+      return z>=lower?[{x:p%stride-16,y:Math.floor(p/stride)-16,z}]:[];
+    });
+    for(const [side,[dx,dy,dz]] of [[-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,1]].entries()){
+      const candidates=leaves.flatMap(({x,y,z})=>{
+        const u=x+dx,v=y+dy,w=z+dz,key=cell(u,v,w);
+        if(grid.cells.has(key))return [];
+        return [{x:u,y:v,z:w,rank:terrainHash(x+z*43,y+side*17,1089+variant*91)}];
+      }).sort((a,b)=>b.rank-a.rank);
+      for(const [i,spot] of candidates.slice(0,dz?3:4).entries()){
+        grid.box(spot.x,spot.y,spot.z,1,1,1,colors[(i+side)%3===0?1:0]);
+      }
+    }
+  });
+}
+
+const ANIMAL_COATS={
+  grazer:['#be8959','#c69d67','#ad774f','#ceae77'],
+  browser:['#986b55','#b18163','#806251','#ae8669'],
+  wader:['#a3b6c3','#a9bbbf','#829ba9','#cad1cb'],
+  flock:['#9b795d','#92675c','#716f91','#a29674'],
+} as const;
+const ANIMAL_TURN:Record<Facing,number>={south:0,west:1,north:2,east:3};
+
+export function blockAnimal(kind:LandAnimal,facing:Facing,stride:0|1|2,variant:number,young:boolean):BlockModel{
+  return model(['animal',kind,facing,stride,variant,+young].join(':'),grid=>{
+    const coat=ANIMAL_COATS[kind][variant&3],dark=tint(coat,'#302b34',.36);
+    if(kind==='grazer'||kind==='browser'){
+      const grazer=kind==='grazer',mane=grazer?'#835d44':'#694838';
+      for(const x of [-2,1])for(const y of [-3,2]){
+        const swing=stride===0?0:(x<0)===(y<0)?stride===1?1:-1:stride===1?-1:1;
+        grid.box(x,y+swing,0,1,1,1,'#4b3a34');
+        grid.box(x,y+swing,1,1,1,3,dark);
+      }
+      grid.box(-2,-3,3,4,6,2,coat);
+      grid.box(-1,-4,4,2,7,2,coat);
+      grid.box(-1,-4,4,2,1,1,'#dfbb91');
+      grid.box(-1,-5,4,1,2,1,mane);
+      grid.box(-1,1,4,2,3,3,coat);
+      grid.box(-1,3,6,2,2,2,coat);
+      grid.box(-1,4,6,2,2,1,'#debb96');
+      grid.box(-1,5,6,2,1,1,'#413237');
+      for(const side of [-1,1]){
+        grid.box(side<0?-2:1,3,7,1,2,1,dark);
+        grid.box(side<0?-2:1,2,7,1,1,2,coat);
+        if(!young){
+          grid.box(side<0?-2:1,3,8,1,1,2,grazer?'#594b40':'#d9bf9a');
+          if(!grazer)grid.box(side<0?-3:2,2,9,1,2,1,'#ccae89');
+        }
+      }
+      if(kind==='browser')for(const x of [-2,1])for(const y of [-2,0])
+        grid.box(x,y,4,1,1,1,'#d0ab89');
+    }else{
+      const wader=kind==='wader',legs=wader?4:2,foot=wader?'#b69060':'#ca9b59';
+      grid.box(-1,-1+(stride===1?1:0),0,1,1,legs,foot);
+      grid.box(1,0-(stride===2?1:0),0,1,1,legs,foot);
+      grid.box(-2,-3,legs,4,5,2,coat);
+      grid.box(-2,-2,legs+1,1,3,2,dark);
+      grid.box(1,-2,legs+1,1,3,2,dark);
+      grid.box(-1,-4,legs+1,2,2,1,dark);
+      grid.box(-1,1,legs+1,2,2,wader?4:2,wader?'#cfdae0':coat);
+      const eye=legs+(wader?4:2);
+      grid.box(-1,2,eye,2,2,1,wader?'#e3e3d8':'#b8a080');
+      grid.box(-1,3,eye,1,wader?3:1,1,'#d69a5d');
+      grid.box(0,3,eye,1,1,1,'#454550');
+      if(wader)grid.box(-1,1,eye,2,1,1,'#56677a');
+    }
+  },ANIMAL_TURN[facing]);
 }
 
 const STONE='#827e78',WOOD='#927353',PLANK='#bd9469',BEAM='#654e41';

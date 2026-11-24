@@ -23,6 +23,8 @@ import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
 import {enableClimateEcology} from './climateEcology';
 import {describeWeather} from './climate';
 import {herdAt,WILDLIFE_LABELS} from './wildlife';
+import {ANIMAL_NAMES,surfaceFruitAt,surfaceHerds} from './surfaceLife';
+import {FRUIT,fruitStatus} from './fruitTrees';
 import {enableTerrainCells,terrainCellsIn} from './terrainCells';
 import {TerrainCellPanel} from './TerrainCellPanel';
 import {DEFAULT_LANDFORMS,settlementGeography} from './regionalGeography';
@@ -790,7 +792,8 @@ export function WorldforgeApp(){
   const treeCover=tile&&woodlandHabitat(tile.biome)?
     woodlandCover(world.woodland,drainageIndex):undefined;
   const climateNote=drainageIndex>=0?describeWeather(world,drainageIndex):undefined;
-  const herd=world.settings.climateEcology&&climateNote?herdAt(world.wildlife,drainageIndex):undefined;
+  const herd=displayed?herdAt(surfaceHerds(world),drainageIndex):undefined;
+  const fruit=displayed?surfaceFruitAt(world,drainageIndex):undefined;
   const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
   const receiving=drainageIndex>=0?drainage?.basin[drainageIndex]??-1:-1;
   const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
@@ -844,6 +847,11 @@ export function WorldforgeApp(){
     if(!place)return;
     if(tab!=='world')setPlaying(false);
     locateAtlasPoint({x:place.x,y:place.y},ATLAS_PEOPLE_ZOOM,true);
+    focusMap();
+  };
+  const findWildlife=(index:number)=>{
+    setOverlay('terrain');
+    locateAtlasPoint({x:index%world.width,y:Math.floor(index/world.width)},ATLAS_PEOPLE_ZOOM,true);
     focusMap();
   };
   const openSettlement=(id:number)=>{
@@ -1293,7 +1301,7 @@ export function WorldforgeApp(){
             <div className="evo-map-actions">
               <AtlasPlacePicker world={world} onTown={findSettlement} onSite={findAncientSite}
                 onSkyland={id=>findSkyland(id,true)} onCave={findCoast} onVent={findCoast}
-                onUnderworld={()=>openUnderworld()}/>
+                onUnderworld={()=>openUnderworld()} onWildlife={findWildlife}/>
               <button type="button" aria-expanded={showRivers} onClick={()=>{
                 setShowRivers(value=>!value);setOverlay('terrain');setBrush({kind:'inspect'});
               }}>Rivers</button>
@@ -1742,14 +1750,14 @@ export function WorldforgeApp(){
                     <small>Food available: {tile.food.toFixed(1)} units
                       {altitude!==null?' · Elevation '+altitude+'/255':''}</small>
                     {treeCover!==undefined&&<small>Tree cover {Math.round(treeCover*100)}%</small>}
+                    {fruit&&<small>{FRUIT[fruit.kind].tree} · {fruitStatus(world,fruit)}</small>}
+                    {herd&&<small>{herd.kind==='fish'?WILDLIFE_LABELS.fish:ANIMAL_NAMES[herd.kind]} · {herd.size}</small>}
                   </div>
                 </div>
                 {climateNote&&<div className="evo-biome-info" role="group" aria-label="Local weather" data-weather={climateNote.kind}>
                   <span className="evo-biome-swatch" style={{background:'#7f9bb5'}}/>
                   <div><strong>{climateNote.title}</strong>
                     <small>{climateNote.detail}</small>
-                    {world.settings.climateEcology&&<small>{herd?WILDLIFE_LABELS[herd.kind]+' · '+herd.size:
-                      'No herd or school on this tile'}</small>}
                   </div>
                 </div>}
                 {selectedTerrain&&displayed&&<TerrainCellPanel key={drainageIndex} cells={selectedTerrain}
