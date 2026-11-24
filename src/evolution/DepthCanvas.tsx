@@ -817,7 +817,7 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
         const x=Math.floor(point.x/size.width*hit.width),y=Math.floor(point.y/size.height*hit.height);
         if(hit.ids[y*hit.width+x]===index+1)return point;
       }}/>}
-    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds world={world}
+    {fillWidth&&overlay==='terrain'&&showClouds&&!orbiting&&<AtlasClouds world={world}
       width={size.width} unit={DEPTH_TILE_WIDTH/(2*VISUAL_TERRAIN_SIDE)}
       view={depthBlockView(camera)} {...cloudProjection}/>}
   </>;
