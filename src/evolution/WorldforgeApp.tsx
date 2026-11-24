@@ -20,7 +20,7 @@ import {visibleAtlasSite} from './riverDiscoveries';
 import {TradePanel} from './TradePanel';
 import {enableLivingBiomes,woodlandCover,woodlandHabitat} from './woodland';
 import {enableClimateEcology} from './climateEcology';
-import {climateField,describeWeather} from './climate';
+import {describeWeather} from './climate';
 import {herdAt,WILDLIFE_LABELS} from './wildlife';
 import {enableTerrainCells,terrainCellsIn} from './terrainCells';
 import {TerrainCellPanel} from './TerrainCellPanel';
@@ -789,10 +789,8 @@ export function WorldforgeApp(){
   const selectedTerrain=displayed?terrainCellsIn(world,drainageIndex):undefined;
   const treeCover=tile&&woodlandHabitat(tile.biome)?
     woodlandCover(world.woodland,drainageIndex):undefined;
-  const climateNote=world.settings.climateEcology&&drainageIndex>=0?
-    describeWeather(climateField(world),drainageIndex,world.dayOfYear??0,
-      world.settings.seed,world.year,world.width):undefined;
-  const herd=climateNote?herdAt(world.wildlife,drainageIndex):undefined;
+  const climateNote=drainageIndex>=0?describeWeather(world,drainageIndex):undefined;
+  const herd=world.settings.climateEcology&&climateNote?herdAt(world.wildlife,drainageIndex):undefined;
   const streamTier=drainageIndex>=0?drainage?.channel[drainageIndex]??0:0;
   const receiving=drainageIndex>=0?drainage?.basin[drainageIndex]??-1:-1;
   const receiverIsWater=receiving>=0&&world.tiles[receiving]?.biome==='water';
@@ -1333,7 +1331,7 @@ export function WorldforgeApp(){
               </button>
 
               {overlay==='terrain'&&<button type="button" className={showClouds?'is-on':''}
-                aria-pressed={showClouds} onClick={()=>setShowClouds(value=>!value)}>Clouds</button>}
+                aria-pressed={showClouds} onClick={()=>setShowClouds(value=>!value)}>Weather</button>}
               {mapView==='depth'&&<button className={advancedView?'is-on':''}
                 aria-expanded={advancedView} aria-controls="evo-camera-panel"
                 onClick={()=>setAdvancedView(v=>!v)}>◌ CAMERA</button>}
@@ -1414,7 +1412,7 @@ export function WorldforgeApp(){
             aria-label="Visual world season">
             <span className="evo-season-icon" aria-hidden="true">✦</span>
             <span><strong>{sceneAtmosphere(world.dayOfYear??0).season.toUpperCase()}</strong>
-              <small>Seasonal light · layered scenery · pixel atmosphere</small></span>
+              <small>Seasonal light · regional weather</small></span>
             <span className="evo-season-dot" aria-hidden="true"/>
           </div>}
           <div className="evo-terrain-upgrade">
@@ -1721,12 +1719,12 @@ export function WorldforgeApp(){
                     {treeCover!==undefined&&<small>Tree cover {Math.round(treeCover*100)}%</small>}
                   </div>
                 </div>
-                {climateNote&&<div className="evo-biome-info">
+                {climateNote&&<div className="evo-biome-info" role="group" aria-label="Local weather" data-weather={climateNote.kind}>
                   <span className="evo-biome-swatch" style={{background:'#7f9bb5'}}/>
                   <div><strong>{climateNote.title}</strong>
                     <small>{climateNote.detail}</small>
-                    <small>{herd?WILDLIFE_LABELS[herd.kind]+' · '+herd.size:
-                      'No herd or school on this tile'}</small>
+                    {world.settings.climateEcology&&<small>{herd?WILDLIFE_LABELS[herd.kind]+' · '+herd.size:
+                      'No herd or school on this tile'}</small>}
                   </div>
                 </div>}
                 {selectedTerrain&&displayed&&<TerrainCellPanel key={drainageIndex} cells={selectedTerrain}

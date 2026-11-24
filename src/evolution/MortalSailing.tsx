@@ -4,7 +4,9 @@ import {useEffect,useRef,useState} from 'react';
 import {AdventureDirections} from './AdventureDirections';
 import {adventureDistance,adventureMapFor,type AdventureMap} from './adventureMap';
 import {calendarDate,MONTH_NAMES} from './calendar';
+import {weatherField,WEATHER_NAMES} from './climate';
 import type {World} from './engine';
+import {LocalWeather} from './LocalWeather';
 import {landShip,landingSites,steerShip} from './mortalSailing';
 import {directionBetween,inFrontOf,type Point} from './motion';
 import {SailingCanvas,SAIL_STEP_MS} from './SailingCanvas';
@@ -96,6 +98,7 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
     else land(landing);
   },escape:()=>setMessage(''),pause:onToggleTime});
   const date=calendarDate(world);
+  const weather=weatherField(world),condition=weather.at(position.x,position.y);
   return <div className="evo-app adventure-shell" data-landscape="coast">
     <header className="adventure-topbar">
       <div className="adventure-brand"><span aria-hidden="true">✦</span> WorldForge</div>
@@ -107,14 +110,16 @@ export function MortalSailing({world,ship,running,notice,onChange,onAscend,onTog
     </header>
     <main className="adventure-main">
       <header className="adventure-heading">
-        <div><p>Sailing {ship.heading}</p><h1>At sea</h1></div>
+        <div><p>Sailing {ship.heading} · <span data-weather={condition.kind}>{WEATHER_NAMES[condition.kind]}</span></p>
+          <h1>At sea</h1></div>
         <time>{MONTH_NAMES[date.month]} {date.day} <span>· Year {date.year}</span></time>
       </header>
       {notice&&<p className="adventure-feedback" role="status">{notice}</p>}
       <div className="adventure-layout">
         <div className="adventure-stage">
           <div className="adventure-picture"><SailingCanvas world={world} ship={ship}
-            landings={landings} caves={sighted} onLand={land}/></div>
+            landings={landings} caves={sighted} onLand={land}/>
+            <LocalWeather sample={condition} wind={weather.wind} seed={weather.seed}/></div>
           <div className="adventure-controls">
             <AdventureDirections controls={controls} action="Sail"/>
             <div className="adventure-controls-main">

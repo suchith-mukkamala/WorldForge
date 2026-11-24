@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.38.0 — Weather Fronts** moves seeded weather across the Surface as the calendar advances. Fair clouds give way to low fog, bright snow clouds, or dark thunderheads with rain and occasional lightning. The atlas, outdoor Descend, and sailing share the same local conditions. Inspect a Surface tile to read its weather or toggle the effects with **Weather** in **Map options**.
+
 - **v2.37.0 — Fine Detail & Reflections** sharpens the raised Surface and Underworld maps at close range, including in **Stacked 3D**. Oaks have branching crowns, buildings have shaded eaves and more detailed walls, and demons and Ash Borne wear distinct outfits. Cave pools catch colored light, and boats leave broken reflections on the water below their sails.
 
 - **v2.36.0 — Light & Materials** adds terrain-cast shadows, banded cliffs, and moving square wave crests to the Surface. Lava, crystals, and glowroot groves light nearby cave floors and water. Descend shares the atlas terrain textures, adds richer street and character detail, and fades scenery when it hides your explorer.

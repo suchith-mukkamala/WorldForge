@@ -638,9 +638,6 @@ export function WorldCanvas({
           brush.kind==='food'?'replenish food':'paint '+brush.biome)+
       '. Arrow keys move the selection; Enter applies the selected brush.'}
     onClick={select} onKeyDown={keyboard}/>
-    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds seed={world.settings.seed}
-      columns={world.width} rows={world.height} width={mapWidth}
-      unit={CELL/(Math.SQRT2*VISUAL_TERRAIN_SIDE)} view={cloudView} project={overheadCloud}/>}
     {fillWidth&&overlay==='terrain'&&
       <AtlasWater world={world} width={mapWidth} height={mapHeight} square={1.1} showFish={atlasLevel(zoom)!=='world'} project={p=>{
         if(skylands&&overheadSkylandHit(skylands,p.x,p.y)!==undefined)return;
@@ -648,5 +645,7 @@ export function WorldCanvas({
           Math.floor(p.y),world.width,world.height,'water',world.settings.seed))return;
         return {x:p.x*CELL,y:p.y*CELL};
       }}/>}
+    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds world={world} width={mapWidth}
+      unit={CELL/(Math.SQRT2*VISUAL_TERRAIN_SIDE)} view={cloudView} project={overheadCloud} ground={overheadCloud}/>}
   </>;
 }
