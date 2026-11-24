@@ -1,4 +1,5 @@
 import type {RasterCrop} from './atlasRaster';
+import type {BuildingArt,PlacedArt} from './atlasBuildingArt';
 import {ATLAS_SEA,highlandColor} from './atlasTerrain';
 import type {BuildingPlots} from './buildingPlots';
 import {paintDepthCells} from './depthCellTerrain';
@@ -17,8 +18,13 @@ export type BackdropWorld=SurfaceWorld&Pick<World,'woodland'>;
 type Projector=ReturnType<typeof createDepthProjector>;
 export type BackdropPaint=Pick<BuildingPlots,'squares'|'decoratedTiles'>;
 export type DepthRasterRequest={id:number;world:BackdropWorld;plots?:BackdropPaint;
-  relief:number;camera:DepthCamera;density:number;cutaway?:boolean;showSkylands?:boolean};
-export type DepthRasterResult={id:number;bitmap:ImageBitmap;hit:DepthPicking};
+  relief:number;camera:DepthCamera;density:number;cutaway?:boolean;showSkylands?:boolean;showTree?:boolean};
+type TreeArt=PlacedArt&{art:BuildingArt&{image:ImageBitmap}};
+export type DepthRasterResult={id:number;bitmap:ImageBitmap;hit:DepthPicking;tree?:{sprite:TreeArt;order:number}};
+
+export function closeDepthRaster({bitmap,tree}:DepthRasterResult){
+  bitmap.close();tree?.sprite.art.image.close();
+}
 
 export function orderedDepthTiles(w:BackdropWorld,projector:Projector,cutaway=false){
   const {width,height,tiles}=w,seed=w.settings.seed;

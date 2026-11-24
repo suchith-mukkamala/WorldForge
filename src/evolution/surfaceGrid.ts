@@ -37,7 +37,7 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const cleared=world.rootClearings??worldTreeClearings(world),clearings=cleared.join(',');
   const previous=cache.get(base);
   if(previous?.season===season&&previous.riverlands===riverlands&&previous.feederKey===feederKey&&previous.skylands===skylands&&
-    previous.worldTree===worldTree&&previous.clearings===clearings)
+    previous.worldTree===worldTree&&previous.outflow===outflow&&previous.clearings===clearings)
     return previous.grid;
   const {width,height,tiles}=world,heights=topographyForWorld(world).heights;
   const columns=width*SIDE,rows=height*SIDE,count=columns*rows;

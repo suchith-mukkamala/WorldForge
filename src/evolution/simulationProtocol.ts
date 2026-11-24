@@ -7,7 +7,8 @@ import type {Tile,World} from './engine';
  * last successfully computed state, saving one structured clone per tick. */
 export type SimulationRequest={kind:'advance';id:number;days:number;world?:World};
 const reusableFields=['settings','tiles','topography','terrainCells','skylands','worldTree','tidalSites','volcanicLayout','volcanism','underworld','settlements','transport',
-  'ancientSites','ruins','trails','deposits','bonds','codex','descent','fruitHarvest'] as const;
+  'ancientSites','ruins','trails','deposits','bonds','codex','descent','fruitHarvest',
+  'lineage','events','history','households','wildlife','demography'] as const;
 type RetainedField=typeof reusableFields[number];
 type SimulationSnapshot=Omit<World,RetainedField>&Partial<Pick<World,RetainedField>>;
 type TileEdit=[index:number,tile:Tile];

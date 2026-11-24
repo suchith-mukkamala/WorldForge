@@ -46,6 +46,18 @@ export function motionFrame(motion:Motion,now:number):Point&{
     facing:motion.facing};
 }
 
+/** A new calendar tick can arrive halfway through a drawn step. Start the
+ * next step where the person is visible, or let the current step finish. */
+export function retargetMotion(from:Point|undefined,to:Point,active:Motion|undefined,
+  now:number,duration:number,facing?:Facing):Motion|undefined{
+  if(!from)return;
+  const frame=active&&motionFrame(active,now);
+  if(samePoint(from,to))return frame?.walking&&active&&samePoint(active.to,to)?active:undefined;
+  if(!canAnimate(from,to)||frame&&samePoint(frame,to))return;
+  const start=frame&&canAnimate(frame,to)?{x:frame.x,y:frame.y}:from;
+  return {from:start,to,start:now,duration,facing:directionBetween(start,to,facing)};
+}
+
 export function visualMotionDuration(speed:number):number{
   return Math.max(35,Math.min(900,1000/Math.max(1,speed)*.85));
 }

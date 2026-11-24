@@ -161,6 +161,7 @@ export function MortalInterior({world,site,position,message,facing='north',marke
   const view={person,life,site,position,facing,active,marked};
   const latest=useRef(view);
   latest.current=view;
+  const refresh=useRef<(()=>void)|undefined>(undefined);
   const nameOf=(id:number)=>personName(world,
     world.lineage.find(p=>p.id===id)??{
       id,species:world.agents.find(a=>a.id===id)?.species??'human'});
@@ -175,30 +176,36 @@ export function MortalInterior({world,site,position,message,facing='north',marke
     const motion:Motion={from:initial.position,to:initial.position,start:0,duration:1,
       facing:initial.facing};
     let frameSize={width:312,height:184},density=3;
+    const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
     const resize=()=>{
       const {width,height}=element.getBoundingClientRect();
       if(width>0&&height>0){
-        frameSize=adventureFrameSize(width,height);
-        density=Math.min(6,Math.max(2,Math.ceil(width/frameSize.width*window.devicePixelRatio)));
+        const next=adventureFrameSize(width,height);
+        const resolution=Math.min(6,Math.max(2,Math.ceil(width/next.width*window.devicePixelRatio)));
+        if(next.width===frameSize.width&&next.height===frameSize.height&&resolution===density)return;
+        frameSize=next;density=resolution;invalidate();
       }
     };
-    const observer=new ResizeObserver(resize);
-    observer.observe(element);resize();
-    let frame=0,lastPaint=-Infinity;
+    let frame=0,lastPaint=-Infinity,dirty=true,wasMoving=false;
     let lastView:typeof view|undefined;
     let lastArt='';
+    const requestPaint=()=>{if(!frame)frame=requestAnimationFrame(paint);};
+    const invalidate=()=>{dirty=true;requestPaint();};
     const paint=(time:number)=>{
-      frame=requestAnimationFrame(paint);
+      frame=0;
       const current=latest.current;
-      if(!current.person)return;
-      if(time-lastPaint<(lastView!==current||motionFrame(motion,time).walking?25:125))return;
+      if(!current.person||!dirty&&lastView===current&&!wasMoving)return;
+      if(time-lastPaint<25){requestPaint();return;}
+      dirty=false;
       lastPaint=time;
       const b=current.site.building,art=b.type+':'+b.culture;
       if(art!==lastArt){drawMortalRoom(staticCtx,b.type,b.culture);lastArt=art;}
       if(!samePoint(motion.to,current.position)){
-        motion.from=motionFrame(motion,time);motion.to=current.position;
+        motion.from=reducedMotion.matches?current.position:motionFrame(motion,time);
+        motion.to=current.position;
         motion.start=time;motion.duration=136;
       }
+      if(reducedMotion.matches)motion.duration=1;
       motion.facing=current.facing;
       const player=motionFrame(motion,time);
       if(element.width!==frameSize.width*density||element.height!==frameSize.height*density){
@@ -236,10 +243,21 @@ export function MortalInterior({world,site,position,message,facing='north',marke
       for(const drawable of drawables.sort((a,b)=>a.y-b.y))drawable.paint();
       ctx.restore();
       lastView=current;
+      wasMoving=player.walking;
+      if(wasMoving)requestPaint();
     };
-    frame=requestAnimationFrame(paint);
-    return ()=>{cancelAnimationFrame(frame);observer.disconnect();};
+    const observer=new ResizeObserver(resize);
+    observer.observe(element);resize();
+    refresh.current=requestPaint;
+    reducedMotion.addEventListener('change',invalidate);
+    requestPaint();
+    return ()=>{
+      refresh.current=undefined;
+      cancelAnimationFrame(frame);observer.disconnect();
+      reducedMotion.removeEventListener('change',invalidate);
+    };
   },[]);
+  useEffect(()=>{refresh.current?.();},[view]);
   return <section className="evo-interior" aria-label="Enterable building interior">
     <header className="evo-interior-header">
       <div>{!compact&&<strong>{BUILDING_LABELS[site.building.type]}</strong>}

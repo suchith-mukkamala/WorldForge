@@ -8,6 +8,7 @@ import {riverCourses} from './riverCourses';
 import {riverLinks} from './riverSeasons';
 import {seaNeighbors,seaPoint} from './shipSave';
 import {compactWorld,readSavedWorld} from './storage';
+import {surfaceGrid} from './surfaceGrid';
 import {SEA_LEVEL} from './topography';
 
 const make=(seed=41)=>createWorld({seed,size:'small',layout:'archipelago',
@@ -59,5 +60,10 @@ describe('Caldera Lake',()=>{
     expect(walkAdventure(landed,region,to.x-actor.x,to.y-actor.y,false).moved).toBe(true);
     expect(calderaRiver(readSavedWorld(compactWorld(next))!)).toEqual(path);
     expect(next.events.filter(event=>event.message.includes('caldera rim'))).toHaveLength(1);
+    const layout=next.volcanicLayout!;
+    const closed=surfaceGrid({...next,volcanicLayout:{...layout,caldera:{...layout.caldera!,drainedAt:undefined}}});
+    const drained=surfaceGrid(next);
+    expect(drained).not.toBe(closed);
+    expect(drained.shore.some((shore,i)=>shore!==closed.shore[i])).toBe(true);
   });
 });

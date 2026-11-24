@@ -33,6 +33,7 @@ import {shipMooring} from './mortalSailing';
 import {seaPoint} from './shipSave';
 import {directionBetween} from './motion';
 import {coastTide,type TidalCave} from './tidalCaves';
+import {calderaRiver} from './caldera';
 
 type Props={world:World;map:AdventureMap;region:AdventureRegion;actor:Agent;facing:Facing;
   marked:Point|null;caves?:readonly TidalCave[];focused?:Point;board?:Point;gather?:Point;landmarks:readonly AncientSite[];
@@ -145,6 +146,7 @@ export function AdventureCanvas(props:Props){
   const canvas=useRef<HTMLCanvasElement>(null);
   const latest=useRef(props);
   latest.current=props;
+  const refresh=useRef<(()=>void)|undefined>(undefined);
   const viewport=useRef({x:0,y:0,width:312,height:184});
   const visibleArt=useRef<{sprites:Scenery[];faded:Set<Scenery>}|null>(null);
   useEffect(()=>{
@@ -165,35 +167,39 @@ export function AdventureCanvas(props:Props){
     let allTracks:readonly AnimalTrack[]|undefined,animals:AnimalTrack[]=[];
     let caveStamp='';
     let frameSize={width:312,height:184},density=1;
-    let frame=0;
+    let frame=0,dirty=true,wasMoving=false,movingAnimals=false;
     const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
     const resize=()=>{
       const {width,height}=element.getBoundingClientRect();
       if(width<=0||height<=0)return;
-      frameSize=adventureFrameSize(width,height);
-      density=Math.min(6,Math.max(3,Math.ceil(width/frameSize.width*window.devicePixelRatio)));
+      const next=adventureFrameSize(width,height);
+      const resolution=Math.min(6,Math.max(3,Math.ceil(width/next.width*window.devicePixelRatio)));
+      if(next.width===frameSize.width&&next.height===frameSize.height&&resolution===density)return;
+      frameSize=next;density=resolution;invalidate();
     };
-    const observer=new ResizeObserver(resize);
-    observer.observe(element);
-    resize();
+    const requestPaint=()=>{if(!frame)frame=requestAnimationFrame(paint);};
+    const invalidate=()=>{dirty=true;requestPaint();};
     const paint=(now:number)=>{
-      frame=requestAnimationFrame(paint);
+      frame=0;
       const view=latest.current,{world,map,region,actor,marked,focused,board,gather}=view;
-      const scene=adventurePlaceKey(region.place);
       const changed=previous!==view;
-      const active=now-actorMotion.start<actorMotion.duration;
       const animate=!reducedMotion.matches;
-      if(now-lastFrame<(active||changed?25:(swimmers.length||animals.length)&&animate?55:125))return;
+      const ambient=animate&&(swimmers.length>0||movingAnimals);
+      if(!dirty&&!changed&&!wasMoving&&!ambient)return;
+      if(now-lastFrame<(dirty||changed||wasMoving?25:55)){requestPaint();return;}
+      dirty=false;
       lastFrame=now;
+      const scene=adventurePlaceKey(region.place);
       actorMotion.facing=view.facing;
       if(scene!==lastKey||!samePoint(actorMotion.to,actor)){
         const from=motionFrame(actorMotion,now);
-        const slide=scene===lastKey&&canAnimate(actorMotion.to,actor);
+        const slide=animate&&scene===lastKey&&canAnimate(actorMotion.to,actor);
         actorMotion.from=slide?from:actor;
         actorMotion.to=actor;
         actorMotion.start=now;
         actorMotion.duration=slide?mortalMovementDelay(actor)*.88:1;
       }
+      if(!animate)actorMotion.duration=1;
       const player=motionFrame(actorMotion,now);
       const {width:nativeWidth,height:nativeHeight}=frameSize;
       if(element.width!==nativeWidth*density||element.height!==nativeHeight*density){
@@ -209,7 +215,8 @@ export function AdventureCanvas(props:Props){
       const cols=Math.ceil(nativeWidth/TILE)+4,rows=Math.ceil(nativeHeight/TILE)+4;
       const cycle=fruitCycle(world),before=previous&&fruitCycle(previous.world);
       const plotsChanged=!plots||previous?.map!==map||previous?.world.topography!==world.topography||
-        previous.world.terrainCells!==world.terrainCells||before?.season!==cycle.season;
+        previous.world.terrainCells!==world.terrainCells||before?.season!==cycle.season||
+        calderaRiver(previous.world)!==calderaRiver(world);
       if(!plots||plotsChanged)plots=buildingPlots(world);
       const caveKeys=view.caves?.length?view.caves.map(cave=>cave.mouth).join(',')+':'+coastTide(world).low:'';
       const ventKeys=world.volcanicLayout?.vents.map(vent=>vent.index+volcanoPhase(world,vent)).join(',');
@@ -243,6 +250,7 @@ export function AdventureCanvas(props:Props){
           const px=home%world.width,py=Math.floor(home/world.width);
           return px>=grid.x-2&&px<grid.x+cols+2&&py>=grid.y-2&&py<grid.y+rows+2;
         });
+        movingAnimals=animals.some(track=>track.points.length>1);
       }
       ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y,cols*TILE,rows*TILE);
       paintVolcanicSquares(ctx,world,TILE,{x,y},{origin,width:cols,height:rows});
@@ -314,10 +322,21 @@ export function AdventureCanvas(props:Props){
       ctx.globalAlpha=1;
       previous=view;
       lastKey=scene;
+      wasMoving=player.walking;
+      if(wasMoving||animate&&(swimmers.length>0||movingAnimals))requestPaint();
     };
-    frame=requestAnimationFrame(paint);
-    return ()=>{observer.disconnect();cancelAnimationFrame(frame);};
+    const observer=new ResizeObserver(resize);
+    observer.observe(element);resize();
+    refresh.current=requestPaint;
+    reducedMotion.addEventListener('change',invalidate);
+    requestPaint();
+    return ()=>{
+      refresh.current=undefined;
+      observer.disconnect();reducedMotion.removeEventListener('change',invalidate);
+      cancelAnimationFrame(frame);
+    };
   },[]);
+  useEffect(()=>{refresh.current?.();},[props]);
   return <canvas className="adventure-canvas" ref={canvas} width={312} height={184}
     aria-label={props.region.name+' exploration map'} role="img"
     onClick={event=>{
@@ -332,6 +351,7 @@ export function AdventureCanvas(props:Props){
         if(target){props.onSelect(target);return;}
         break;
       }
-      props.onSelect({x:Math.floor(x/TILE),y:Math.floor(y/TILE)});
+      const tile={x:Math.floor(x/TILE),y:Math.floor(y/TILE)};
+      if(tile.x>=0&&tile.y>=0&&tile.x<props.map.width&&tile.y<props.map.height)props.onSelect(tile);
     }}/>;
 }

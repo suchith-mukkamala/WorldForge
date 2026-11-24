@@ -1,5 +1,7 @@
 import {terrainHash} from './biomeGeneration';
 import type {BlockModel} from './blockModels';
+import type {BlockView} from './blockScenery';
+import {DEPTH_RISE,DEPTH_TILE_WIDTH,type createDepthProjector} from './depthProjection';
 import type {Biome} from './engine';
 import {surfaceHeightAt} from './structureGround';
 import {surfaceGrid} from './surfaceGrid';
@@ -58,6 +60,15 @@ export function worldTreeModel(world:TreeWorld,grid=surfaceGrid(world),verticalS
     cache.set(key,model);
   }
   return {model,ground,unitScale:1/steps};
+}
+
+export function projectWorldTree(world:TreeWorld,projector:ReturnType<typeof createDepthProjector>,
+  view:BlockView,grid=surfaceGrid(world),preview=false){
+  const tree=world.worldTree!,unit=DEPTH_TILE_WIDTH/2*WORLD_TREE_BLOCK;
+  const verticalScale=projector.riseScale/(DEPTH_RISE*view.rise*unit);
+  const {model,ground,unitScale}=worldTreeModel(world,grid,verticalScale,preview);
+  return {model,at:projector.projectSmooth(tree.x,tree.y,ground),unit:unit*unitScale,
+    order:projector.depth(tree.x,tree.y,ground)};
 }
 
 const overhead=new WeakMap<BlockModel,HTMLCanvasElement>();
