@@ -16,8 +16,9 @@ import {adventureCamera,adventureFrameSize} from './adventureCamera';
 import {paintPerson} from './pixelArt';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
-import {waterSeason} from './riverSeasons';
-import {blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth,blockCrater,blockRealmHouse} from './blockModels';
+import {fruitCycle,fruitStage} from './fruitTrees';
+import {adventureFruitAt,animalCalendarTime,animalPose,surfaceAnimals,surfaceLifeObstacles,type AnimalTrack} from './surfaceLife';
+import {blockAnimal,blockFruitTree,blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth,blockCrater,blockRealmHouse} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -42,6 +43,7 @@ type Scenery={x:number;y:number;depth:number;opacity:number;
 
 function sceneScenery({world,map,region,landmarks,caves}:Props,origin:Point,cols:number,rows:number,plots:BuildingPlots){
   const scenery:Scenery[]=[];
+  const cycle=fruitCycle(world),lifeSites=surfaceLifeObstacles(world);
   const signs=new Map<number,AdventureGate>();
   const caveTiles=new Map(caves?.map(cave=>[cave.mouth,cave]));
   const low=coastTide(world).low;
@@ -113,12 +115,18 @@ function sceneScenery({world,map,region,landmarks,caves}:Props,origin:Point,cols
         const art=blockSceneryArt(model,{x:(x+.5)*TILE,y:(y+.58)*TILE},DESCENT_BLOCK_VIEW,1.5);
         scenery.push({x,y,depth:depth+3,opacity:1,art,target:{x,y}});
       }
-      const natural=!vent&&!hold&&!cave&&!treeCover?.has(index)&&!ruin&&!hub&&!yard&&!plots.clear.has(index)?
-        adventureProp(world,map,region,x,y):undefined;
-      const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
-      if(prop){
-        const art=adventurePropArt(prop,x*TILE,y*TILE,variant,waterSeason(world));
-        if(art)scenery.push({x,y,depth:y*TILE+16,opacity,art,canopy:isTreeKind(prop)});
+      if(!vent&&!hold&&!cave&&!treeCover?.has(index)&&!ruin&&!hub&&!yard){
+        const fruit=adventureFruitAt(world,map,region,index,lifeSites);
+        if(fruit){
+          const model=blockFruitTree(fruit.kind,fruit.variant,fruitStage(world,fruit,cycle),cycle.season);
+          const art=blockSceneryArt(model,{x:(x+.5)*TILE,y:y*TILE+16},DESCENT_BLOCK_VIEW,1.75);
+          scenery.push({x,y,depth:y*TILE+16,opacity,art,canopy:true,target:{x,y}});
+        }else if(!plots.clear.has(index)){
+          const natural=adventureProp(world,map,region,x,y);
+          const prop=plots.fringe.has(index)&&isTreeKind(natural)?'scrub':natural;
+          const art=prop&&adventurePropArt(prop,x*TILE,y*TILE,variant,cycle.season);
+          if(art)scenery.push({x,y,depth:y*TILE+16,opacity,art,canopy:isTreeKind(prop)});
+        }
       }
     }
   }
@@ -153,6 +161,7 @@ export function AdventureCanvas(props:Props){
     let faded=new Set<Scenery>();
     let people:Agent[]=[];
     let swimmers:Fish[]=[];
+    let allTracks:readonly AnimalTrack[]|undefined,animals:AnimalTrack[]=[];
     let caveStamp='';
     let frameSize={width:312,height:184},density=1;
     let frame=0;
@@ -172,7 +181,8 @@ export function AdventureCanvas(props:Props){
       const scene=adventurePlaceKey(region.place);
       const changed=previous!==view;
       const active=now-actorMotion.start<actorMotion.duration;
-      if(now-lastFrame<(active||changed?25:swimmers.length&&!reducedMotion.matches?55:125))return;
+      const animate=!reducedMotion.matches;
+      if(now-lastFrame<(active||changed?25:(swimmers.length||animals.length)&&animate?55:125))return;
       lastFrame=now;
       actorMotion.facing=view.facing;
       if(scene!==lastKey||!samePoint(actorMotion.to,actor)){
@@ -196,13 +206,15 @@ export function AdventureCanvas(props:Props){
       viewport.current={x,y,width:nativeWidth,height:nativeHeight};
       const grid={x:Math.floor(x/TILE)-1,y:Math.floor(y/TILE)-1};
       const cols=Math.ceil(nativeWidth/TILE)+4,rows=Math.ceil(nativeHeight/TILE)+4;
+      const cycle=fruitCycle(world),before=previous&&fruitCycle(previous.world);
       const plotsChanged=!plots||previous?.map!==map||previous?.world.topography!==world.topography||
-        previous.world.terrainCells!==world.terrainCells||waterSeason(previous.world)!==waterSeason(world);
+        previous.world.terrainCells!==world.terrainCells||before?.season!==cycle.season;
       if(!plots||plotsChanged)plots=buildingPlots(world);
       const caveKeys=view.caves?.length?view.caves.map(cave=>cave.mouth).join(',')+':'+coastTide(world).low:'';
       const ventKeys=world.volcanicLayout?.vents.map(vent=>vent.index+volcanoPhase(world,vent)).join(',');
       const entrances=caveKeys+'|'+(ventKeys??'')+'|'+world.underworld?.outpost;
       const restage=!samePoint(grid,origin)||plotsChanged||previous?.region!==region||caveStamp!==entrances;
+      const sceneryChanged=restage||before?.ripe!==cycle.ripe||previous?.world.fruitHarvest!==world.fruitHarvest;
       if(restage){
         caveStamp=entrances;
         origin=grid;
@@ -210,11 +222,11 @@ export function AdventureCanvas(props:Props){
         ground.setTransform(density,0,0,density,0,0);
         paintAdventureGround(ground,world,region,map,origin,cols,rows);
         paintPlotGround(ground,plots,TILE,origin,cols,rows);
-        foreground=sceneScenery(view,origin,cols,rows,plots).sort((a,b)=>a.depth-b.depth||a.x-b.x);
         swimmers=coastalLife(world).fish.filter(fish=>fish.x+fish.width>=grid.x&&
           fish.x<grid.x+cols&&fish.y+fish.height>=grid.y&&fish.y<grid.y+rows);
       }
-      if(restage||previous?.focused?.x!==focused?.x||previous?.focused?.y!==focused?.y){
+      if(sceneryChanged)foreground=sceneScenery(view,origin,cols,rows,plots).sort((a,b)=>a.depth-b.depth||a.x-b.x);
+      if(sceneryChanged||previous?.focused?.x!==focused?.x||previous?.focused?.y!==focused?.y){
         faded=new Set<Scenery>();
         const target=focused&&foreground.find(s=>s.building&&samePoint(s.building,focused));
         if(target?.art)for(const sprite of foreground){
@@ -222,6 +234,14 @@ export function AdventureCanvas(props:Props){
             faded.add(sprite);
         }
         visibleArt.current={sprites:foreground,faded};
+      }
+      const tracks=world===previous?.world&&allTracks?allTracks:surfaceAnimals(world);
+      if(restage||tracks!==allTracks){
+        allTracks=tracks;
+        animals=tracks.filter(({home})=>{
+          const px=home%world.width,py=Math.floor(home/world.width);
+          return px>=grid.x-2&&px<grid.x+cols+2&&py>=grid.y-2&&py<grid.y+rows+2;
+        });
       }
       ctx.drawImage(background,origin.x*TILE-x,origin.y*TILE-y,cols*TILE,rows*TILE);
       paintVolcanicSquares(ctx,world,TILE,{x,y},{origin,width:cols,height:rows});
@@ -238,6 +258,14 @@ export function AdventureCanvas(props:Props){
           region.area.has(a.y*world.width+a.x));
       }
       const sprites:Scenery[]=foreground.slice();
+      const time=animalCalendarTime(world)+(animate?now:0);
+      for(const animal of animals){
+        const pose=animalPose(animal,time,animate);
+        const ground={x:(pose.x+.5)*TILE,y:(pose.y+.73)*TILE};
+        const model=blockAnimal(animal.kind,pose.facing,pose.stride,animal.variant,animal.young);
+        const art=blockSceneryArt(model,ground,DESCENT_BLOCK_VIEW,animal.young?.71:1.08);
+        sprites.push({x:pose.x,y:pose.y,depth:ground.y,opacity:1,art});
+      }
       const marker=(point:Point,kind:'board'|'gather')=>sprites.push({...point,
         depth:point.y*TILE+14,opacity:1,draw:(ctx,px,py)=>paintErrandMarker(ctx,px,py,kind)});
       if(board)marker(board,'board');

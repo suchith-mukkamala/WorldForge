@@ -22,7 +22,9 @@ import {pixelTerrainHash} from './depthWorldArt';
 import {paintTerrainMosaic} from './terrainCellArt';
 import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {AtlasWater} from './AtlasWater';
-import {springFlood,waterSeason} from './riverSeasons';
+import {springFlood} from './riverSeasons';
+import {fruitCycle,fruitStage} from './fruitTrees';
+import {animalCalendarTime,animalPose,surfaceAnimals,surfaceFruitAt,surfaceLifeObstacles} from './surfaceLife';
 import {boardwalkSite} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
 import {paintRiverCourse} from './riverCourseArt';
@@ -37,8 +39,8 @@ import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
 import {personSpriteSize} from './personSpriteScale';
 import {buildingVisualScale} from './depthSprites';
-import {blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp} from './blockModels';
-import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,placeBlockArt,paintBlockContact,
+import {blockAnimal,blockFruitTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp} from './blockModels';
+import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,blockSceneryArt,placeBlockArt,paintBlockContact,
   depthBlockView,paintBlockScenery,type BlockStamp} from './blockScenery';
 import {structureForBuilding,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -46,7 +48,7 @@ import {visibleCoastTile} from './worldOutline';
 import {isMultiIslandLayout} from './worldGeography';
 import {wornPathTiles} from './trailNetwork';
 import {ATLAS_TOWN_ZOOM,atlasLevel,atlasScrollGeometry} from './atlasMap';
-import {atlasBuildingAt,paintAtlasBuilding,type AtlasBuilding} from './atlasBuildingArt';
+import {atlasBuildingAt,opaqueArtAt,paintAtlasBuilding,type AtlasBuilding,type PlacedArt} from './atlasBuildingArt';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
 import {overheadSkylandHit,paintOverheadSkylands} from './skylandArt';
@@ -84,12 +86,13 @@ export function WorldCanvas({
   const cellPixels=VISUAL_TERRAIN_SIDE*Math.max(1,Math.min(zoom>=5?6:zoom>=2?4:2,
     Math.floor(Math.sqrt(16_000_000/(world.width*world.height))/VISUAL_TERRAIN_SIDE)));
   const density=cellPixels/CELL;
-  const season=waterSeason(world);
+  const cycle=fruitCycle(world),{season,ripe}=cycle;
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
   const buildingArtRef=useRef<Map<string,BlockStamp>>(new Map());
   const buildingPlotsRef=useRef<AtlasBuilding[]>([]);
+  const fruitSpritesRef=useRef<(PlacedArt&{target:Point})[]>([]);
   const plotGroundRef=useRef<BuildingPlots|undefined>(undefined);
   const backgroundStamp=useRef<{
     tiles:World['tiles'];topography:World['topography'];woodland:World['woodland'];
@@ -100,6 +103,7 @@ export function WorldCanvas({
     street:boolean;regional:boolean;
     terrainCells:World['terrainCells'];skylands:World['skylands'];worldTree:World['worldTree'];
     width:number;height:number;season:string;feederKey:string;
+    ripe:boolean;fruitHarvest:World['fruitHarvest'];
   }|null>(null);
   const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
   const prior=useRef<{year:number;day:number;seed:number;
@@ -143,6 +147,7 @@ export function WorldCanvas({
     const sceneryChanged=!stamp||landChanged||
       stamp.topography!==world.topography||
       stamp.terrainCells!==terrainCells||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||stamp.season!==season||
+      overlay==='terrain'&&(stamp.ripe!==ripe||stamp.fruitHarvest!==world.fruitHarvest)||
       stamp.woodland!==woodland||stamp.feederKey!==feederKey||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
@@ -161,6 +166,8 @@ export function WorldCanvas({
       ctx.fillRect(0,0,mapWidth,mapHeight);
     }
     const occupied=overlay==='terrain'?occupiedScenery(world):null;
+    const lifeSites=occupied?surfaceLifeObstacles(world):null;
+    const fruitSprites:typeof fruitSpritesRef.current=[];
     const treeCover=occupied&&world.worldTree?surfaceGrid(world).treeCover:undefined;
     const yard=showBuildings&&tiled?buildingPlots(world):undefined;
     plotGroundRef.current=yard;
@@ -210,7 +217,16 @@ export function WorldCanvas({
         tile.biome,overlay==='elevation'?'elevation':'terrain');
       const scenery=tile.biome==='water'?ocean&&ocean[index]<=2&&grain%9===0:
         showBuildings?showAtlasScenery(tile.biome,x,y,world.settings.seed,showResidents,cover):grain%3!==0;
-      if(occupied&&!occupied.has(index)&&!yard?.clear.has(index)&&!treeCover?.has(index)&&scenery){
+      const insideTree=treeCover?.has(index);
+      const fruit=lifeSites&&!insideTree&&(showBuildings||grain%3===0)?surfaceFruitAt(world,index,lifeSites):undefined;
+      if(fruit){
+        const model=blockFruitTree(fruit.kind,fruit.variant,fruitStage(world,fruit,cycle),season);
+        const art=blockSceneryArt(model,{x:px+CELL/2,y:py+CELL/2},OVERHEAD_BLOCK_VIEW,showBuildings?.78:.39);
+        if(art){
+          paintAtlasBuilding(ctx,art);
+          if(showBuildings)fruitSprites.push({...art,target:fruit});
+        }
+      }else if(occupied&&!occupied.has(index)&&!yard?.clear.has(index)&&!insideTree&&scenery){
         const water=tile.biome==='water';
         const shore=y>0&&(world.tiles[index-W].biome==='water')!==water||
           y<H-1&&(world.tiles[index+W].biome==='water')!==water||
@@ -333,13 +349,14 @@ export function WorldCanvas({
     }
     if(overlay==='terrain'&&world.worldTree)paintOverheadWorldTree(ctx,world,CELL);
     buildingPlotsRef.current=plots;
+    fruitSpritesRef.current=fruitSprites;
     backgroundStamp.current={tiles:world.tiles,
       topography:world.topography,settlementKey,
       ruins:world.ruins,deposits:world.deposits,transport:world.transport,
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
       terrainCells,skylands:world.skylands,worldTree:world.worldTree,
-      width:canvas.width,height:canvas.height,season,feederKey};
+      width:canvas.width,height:canvas.height,season,feederKey,ripe,fruitHarvest:world.fruitHarvest};
     }
     else if(stamp)stamp.tiles=world.tiles;
     const current=new Map(world.agents.map(a=>[a.id,
@@ -404,6 +421,11 @@ export function WorldCanvas({
     };
     const animatingCloseup=zoom>=4&&(selected!==null||followId!==null);
     const boats=overlay==='terrain'||overlay==='trade'?activeVessels(world):[];
+    const animalTime=animalCalendarTime(world);
+    const animals=overlay==='terrain'&&showResidents?surfaceAnimals(world).map(track=>{
+      const pose=animalPose(track,animalTime,false);
+      return {...pose,model:blockAnimal(track.kind,pose.facing,0,track.variant,track.young),unit:track.young?.44:.64};
+    }):[];
     const crew=new Set(boats.flatMap(ship=>ship.crew===undefined?[]:[ship.crew]));
     const pedestrians=crew.size?world.agents.filter(a=>!crew.has(a.id)):world.agents;
     let handle=0,lastFrame=-Infinity,previouslyWalking=false;
@@ -439,6 +461,12 @@ export function WorldCanvas({
         const {x,y}=seaPoint(W,ship.at);
         paintBlockScenery(visible,blockSailboat(ship.heading,ship.merchant),
           {x:(x+.5)*CELL,y:(y+.5)*CELL},OVERHEAD_BLOCK_VIEW,.59);
+      }
+      const viewport=animals.length?bounds():null;
+      for(const animal of animals){
+        const {x,y,model,unit}=animal;
+        if(viewport&&(x<viewport.minX||x>viewport.maxX||y<viewport.minY||y>viewport.maxY))continue;
+        paintBlockScenery(visible,model,{x:(x+.5)*CELL,y:(y+.5)*CELL},OVERHEAD_BLOCK_VIEW,unit);
       }
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
@@ -595,7 +623,7 @@ export function WorldCanvas({
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,world.woodland,
     world.settings.regionalGeography,
-    terrainCells,season,density,mapWidth,mapHeight,river,
+    terrainCells,season,ripe,world.fruitHarvest,world.wildlife,density,mapWidth,mapHeight,river,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
     world.topography,world.dayOfYear,world.ancientSites,world.trails,world.skylands,world.worldTree,skylands]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{
@@ -609,6 +637,11 @@ export function WorldCanvas({
     if(brush.kind==='inspect'&&atlasLevel(zoom)!=='world'){
       const building=atlasBuildingAt(buildingPlotsRef.current,px,py);
       if(building){onSelect(building.x,building.y);return;}
+      const fruits=fruitSpritesRef.current;
+      for(let i=fruits.length-1;i>=0;i--){
+        const {target}=fruits[i];
+        if(opaqueArtAt(fruits[i],px,py)){onSelect(target.x,target.y);return;}
+      }
     }
     const x=Math.floor(px/CELL),y=Math.floor(py/CELL);
     if(x<0||x>=world.width||y<0||y>=world.height)return;

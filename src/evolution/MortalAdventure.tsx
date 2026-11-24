@@ -35,6 +35,9 @@ import {coinLabel} from './errandRecords';
 import {reachableLandmarks,surveyLandmark} from './mortalSurveys';
 import {isRiverDiscovery} from './riverDiscoveries';
 import {waterSeason} from './riverSeasons';
+import {FRUIT,fruitStage,fruitStatus,type FruitTree} from './fruitTrees';
+import {gatherFruit} from './fruitForaging';
+import {adventureFruitAt} from './surfaceLife';
 import type {AncientSite} from './knowledge';
 import {directionBetween,samePoint as equal,type Facing,type Point} from './motion';
 import {launchShip,recoverShip,shipMooring} from './mortalSailing';
@@ -93,6 +96,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   const [boardPinned,setBoardPinned]=useState(false);
   const [errandMessage,setErrandMessage]=useState('');
   const [landmarkPin,setLandmarkPin]=useState<number|null>(null);
+  const [fruitPin,setFruitPin]=useState<number|null>(null);
   const [markRiver,setMarkRiver]=useState(false);
   const [cavePin,setCavePin]=useState<number|null>(null);
   const [volcanoPin,setVolcanoPin]=useState<number|null>(null);
@@ -153,6 +157,20 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   const markedLandmark=unsurveyed.find(site=>site.id===landmarkPin);
   const landmark=markedLandmark??unsurveyed[0];
   const closeLandmark=unsurveyed.find(site=>adventureDistance(actor,site)<=1);
+  const fruitAt=(index:number)=>region.area.has(index)?adventureFruitAt(world,map,region,index):undefined;
+  const pin=fruitPin!==null?fruitAt(fruitPin):undefined;
+  const pinnedFruit=pin&&(adventureDistance(actor,pin)<=1||fruitStage(world,pin)!=='picked')?pin:undefined;
+  const localFruit:FruitTree[]=[];
+  if(!interior&&!pinnedFruit){
+    for(let y=Math.max(0,actor.y-3);y<=Math.min(world.height-1,actor.y+3);y++)
+      for(let x=Math.max(0,actor.x-3);x<=Math.min(world.width-1,actor.x+3);x++){
+        const found=fruitAt(y*world.width+x);
+        if(found)localFruit.push(found);
+      }
+    localFruit.sort((a,b)=>adventureDistance(actor,a)-adventureDistance(actor,b));
+  }
+  const fruit=pinnedFruit??localFruit.find(tree=>adventureDistance(actor,tree)<=1&&fruitStage(world,tree)==='ripe')??localFruit[0];
+  const fruitDistance=fruit?adventureDistance(actor,fruit):Infinity;
   const toPoint=(i:number)=>({x:i%world.width,y:Math.floor(i/world.width)});
   const river=region.river;
   const along=river?.path.reduce((nearest,index,step)=>adventureDistance(actor,toPoint(index))<
@@ -189,6 +207,17 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   },[errandMessage,showBoard]);
 
   const clear=()=>{setFocus(null);setBoardOpen(false);setMessage('');};
+  const markFruit=(tree:FruitTree)=>{
+    clear();setWaypoint(null);setBoardPinned(false);setDoorPin(null);setLandmarkPin(null);
+    setCavePin(null);setVolcanoPin(null);setMarkedBerth(false);setMarkRiver(false);
+    setFruitPin(tree.index);
+    setFacing(facing=>directionBetween(actor,tree,facing));
+  };
+  const pickFruit=(tree:FruitTree)=>{
+    const before=current.current,result=gatherFruit(before,tree.index);
+    if(result.world!==before)commit(result.world);
+    markFruit(tree);setMessage(result.message);
+  };
   const exitInterior=()=>{
     const before=current.current,site=occupiedMortalRoom(before);
     if(site)setFacing(directionBetween(site.building,site.entrance));
@@ -217,7 +246,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     else{setWaypoint(null);setLandmarkPin(null);setDoorPin(null);setBoardPinned(value=>!value);}
   };
   const pinGate=(key:string)=>{
-    setBoardPinned(false);setLandmarkPin(null);setDoorPin(null);
+    setBoardPinned(false);setLandmarkPin(null);setDoorPin(null);setFruitPin(null);
     setWaypoint(current=>current===key?null:key);
   };
   const selectLandmark=(site:AncientSite)=>{
@@ -265,7 +294,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     const result=useAdventureGate(before,actual,player,exit);
     if(!result.moved){setMessage(result.reason??'The exit is blocked.');return;}
     commit(result.world);
-    setBoardPinned(false);setLandmarkPin(null);setDoorPin(null);
+    setBoardPinned(false);setLandmarkPin(null);setDoorPin(null);setFruitPin(null);
     const destination=exit.destination;
     const ahead=destination.kind==='route'?
       (adventurePlaceKey(destination.to)===scene?destination.from:destination.to):null;
@@ -339,6 +368,8 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   }:undefined;
   const caveAction:Interaction|undefined=caveNear&&cave?
     {label:tide.low?'Enter sea cave':'Wait for low tide',point:cavePoint,run:()=>exploreCave(cave)}:undefined;
+  const fruitAction:Interaction|undefined=fruit&&fruitDistance<=1&&fruitStage(world,fruit)==='ripe'?
+    {label:'Pick '+FRUIT[fruit.kind].fruit,point:fruit,run:()=>pickFruit(fruit)}:undefined;
   let actions:Interaction[];
   if(interior&&interiorSite){
     const position=interior.position;
@@ -362,6 +393,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
       ...(holdAction?[holdAction]:[]),
       ...(berthDistance<=1?[{label:boatLabel,point:berthPoint,run:boardShip}]:[]),
       ...(workAction?[workAction]:[]),
+      ...(fruitAction?[fruitAction]:[]),
       ...(caveAction?[caveAction]:[]),
       ...(region.place.kind==='wild'?[...surveyActions,...exits]:[...exits,...surveyActions]),
       ...buildings.filter(site=>site.distance===0).map(buildingAction),
@@ -384,7 +416,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     if(interior){
       if(residentTarget!==null)closeRoomDialogue();
       else exitInterior();
-    }else clear();
+    }else{clear();setFruitPin(null);}
   };
   const move=({x,y}:Point)=>{
     const before=current.current;
@@ -472,6 +504,8 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     }
     const person=nearby.find(a=>equal(a,point));
     if(person){selectPerson(person);return;}
+    const tree=fruitAt(index);
+    if(tree)markFruit(tree);
   };
   const name=mortalName(world,actor);
   const regionDetails=region.ends?region.ends.join(' ↔ '):region.settlement?
@@ -527,7 +561,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
             <span data-weather={condition.kind}>{WEATHER_NAMES[condition.kind]}</span></>}</p>
           <h1 aria-live="polite">{interiorSite?interiorTitle(interiorSite.building.type):region.name}</h1>
         </div>
-        <time>{MONTH_NAMES[date.month]} {date.day} <span>· Year {date.year}</span></time>
+        <time>{MONTH_NAMES[date.month]} {date.day} <span>· {waterSeason(world)} · Year {date.year}</span></time>
       </header>
       {notice&&<p className="adventure-feedback" role="status">{notice}</p>}
       <div className="adventure-layout">
@@ -547,7 +581,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
                   (markedBerth?berthPoint:undefined)??(boardPinned?board:undefined)??pinned?.gate.point??markedLandmark??
                   (volcanoPin!==null&&vent?.index===volcanoPin?ventRim:undefined)??
                   (cavePin!==null&&cave?.mouth===cavePin?cavePoint:undefined)??
-                  goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
+                  pinnedFruit??goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
                 onSelect={selectTile}/>
               <LocalWeather sample={condition} wind={weather.wind} seed={weather.seed}/>
               {showBoard?<TownNoticeBoard world={world} journal={journal}
@@ -574,6 +608,17 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
                 <span className="adventure-purse">{coinLabel(journal.coins)}</span>}
             </div>
           </section>
+          {!interior&&fruit&&<section className="adventure-exits" aria-label="Wild fruit">
+            <h2>{FRUIT[fruit.kind].tree}</h2>
+            <p>{fruitStatus(world,fruit)}</p>
+            {fruitDistance>1?<button onClick={()=>pinnedFruit?setFruitPin(null):markFruit(fruit)}
+              aria-pressed={!!pinnedFruit}>
+              <span className="adventure-direction" aria-hidden="true">{directionTo(actor,fruit)}</span>
+              <span><strong>{pinnedFruit?'Unmark tree':'Mark tree'}</strong>
+                <small>{fruitDistance} tiles {directionTo(actor,fruit)}</small></span>
+            </button>:fruitAction&&(primary!==fruitAction||!showAction)&&
+              <button onClick={fruitAction.run}>{fruitAction.label}</button>}
+          </section>}
           {!interior&&berthPoint&&<section className="adventure-exits" aria-label="Shipyard and mooring">
             <h2>{ownBerth?'Sailboat mooring':'Shipyard'}</h2>
             <button onClick={boardShip} aria-pressed={berthDistance>1?markedBerth:undefined}>

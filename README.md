@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.39.0 — Seasonal Fruit & Wildlife** brings mulberries in Bloom, cherries in Highsun, wild apples in Harvest, and baobab pods in Frost. Inspect a fruit tree for its stage, then pick ripe fruit to restore energy while exploring on foot. Antelope, deer, herons, and wild birds roam their habitats in Descend. Open **Places** and choose a wildlife sighting to see the herd up close on the Surface atlas.
+
 - **v2.38.1 — Performance & Fixes** speeds up close-up panning in both realms and reduces simulation work for travel, planning, and lava flows. Manual time advances run in the background and can be cancelled. The settlement controls advance the advertised number of years, and a delayed checkpoint preserves newer browser saves.
 
 - **v2.38.0 — Weather Fronts** moves seeded weather across the Surface as the calendar advances. Fair clouds give way to low fog, bright snow clouds, or dark thunderheads with rain and occasional lightning. The atlas, outdoor Descend, and sailing share the same local conditions. Inspect a Surface tile to read its weather or toggle the effects with **Weather** in **Map options**.
