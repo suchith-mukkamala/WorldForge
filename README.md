@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.40.2 — Faster Terrain Rendering** reuses terrain already loaded by background workers, draws fewer pixels during close-up refreshes, and speeds up the square terrain and scenery rasterizers.
+
 - **v2.40.1 — Smoother Atlas & Movement** draws detailed characters in the visible close-up and builds the World Tree in a background worker. The camera uses a quick terrain preview during rotation. Overhead camera follow now tracks moving people, and paused rooms and trails rest when their scene is still.
 
 - **v2.40.0 — Cube Characters** builds people from shaded cubes in close-up atlas views, on foot, inside buildings, in caves, and in portraits. Hair, clothing, tools, and physical features change with each person. Deer, antelope, herons, and wild birds share the scale of nearby people.

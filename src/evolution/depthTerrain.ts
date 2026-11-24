@@ -26,20 +26,39 @@ type RasterDepth={values:Float32Array;origin:number;dx:number;dy:number};
  * adjacent faces meet without mixing their colors or leaving a seam. */
 export function rasterFace({width,height}:{width:number;height:number},points:readonly Point[],
   pixels:Uint32Array|undefined,color:number,ids?:Uint32Array,id=0,depth?:RasterDepth):void{
-  let top=Infinity,bottom=-Infinity;
-  for(const {y} of points){top=Math.min(top,y);bottom=Math.max(bottom,y);}
+  const count=points.length;
+  let top=Infinity,bottom=-Infinity,peak=0;
+  for(let i=0;i<count;i++){
+    const y=points[i].y;
+    if(y<top){top=y;peak=i;}
+    if(y>bottom)bottom=y;
+  }
+  const firstRow=Math.max(0,Math.ceil(top-.5));
   const lastRow=Math.min(height,Math.ceil(bottom-.5));
-  for(let y=Math.max(0,Math.ceil(top-.5));y<lastRow;y++){
+  if(firstRow>=lastRow)return;
+
+  // Each side of a convex face advances from its peak to its base. Move
+  // along those two chains only when a scanline crosses a vertex.
+  let prev=peak,next=peak;
+  let a=points[peak],b=a,c=a,d=a;
+  let abX=0,abY=1,cdX=0,cdY=1;
+  for(let y=firstRow;y<lastRow;y++){
     const scan=y+.5;
-    let left=Infinity,right=-Infinity;
-    for(let i=0;i<points.length;i++){
-      const a=points[i],b=points[(i+1)%points.length];
-      const upper=a.y<=b.y?a:b,lower=upper===a?b:a;
-      if(scan<upper.y||scan>=lower.y)continue;
-      const x=upper.x+(lower.x-upper.x)*(scan-upper.y)/(lower.y-upper.y);
-      left=Math.min(left,x);right=Math.max(right,x);
+    if(scan>=b.y){
+      do{
+        a=b;prev=prev===0?count-1:prev-1;b=points[prev];
+      }while(scan>=b.y);
+      abX=b.x-a.x;abY=b.y-a.y;
     }
-    const start=Math.max(0,Math.ceil(left-.5)),end=Math.min(width,Math.ceil(right-.5));
+    if(scan>=d.y){
+      do{
+        c=d;next=next+1===count?0:next+1;d=points[next];
+      }while(scan>=d.y);
+      cdX=d.x-c.x;cdY=d.y-c.y;
+    }
+    const xA=a.x+abX*(scan-a.y)/abY,xB=c.x+cdX*(scan-c.y)/cdY;
+    const start=Math.max(0,Math.ceil(Math.min(xA,xB)-.5));
+    const end=Math.min(width,Math.ceil(Math.max(xA,xB)-.5));
     if(start<end){
       const offset=y*width;
       ids?.fill(id,offset+start,offset+end);

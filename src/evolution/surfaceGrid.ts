@@ -19,8 +19,14 @@ export type SurfaceWorld=TerrainSource&Pick<World,'dayOfYear'|'skylands'|'worldT
 const SIDE=VISUAL_TERRAIN_SIDE,UNITS=TERRAIN_ELEVATION_UNITS,SEA=(SEA_LEVEL-9)*UNITS;
 const clamp=(value:number,low:number,high:number)=>Math.min(high,Math.max(low,value));
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
+const offset=Array.from({length:SIDE},(_,i)=>(i+.5)/SIDE-.5);
+const fractions=offset.map(dx=>Math.abs(dx));
+const source=offset.map((_,i)=>{
+  const at=(i+.5)*TERRAIN_CELL_SIDE/SIDE-.5,lo=Math.floor(at);
+  return {lo,weight:at-lo,nearest:Math.round(at)};
+});
 const cache=new WeakMap<TerrainGrid,{season:string;riverlands:boolean;feederKey:string;outflow?:readonly number[];
-  skylands:World['skylands'];worldTree:World['worldTree'];clearings:string;grid:SurfaceGrid}>();
+  feederPlan?:CavernFlow['plan'];skylands:World['skylands'];worldTree:World['worldTree'];clearings:string;grid:SurfaceGrid}>();
 
 export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:number)=>{
   const shore=grid.shore[index];
@@ -33,11 +39,11 @@ export const surfaceHasWater=(grid:Pick<SurfaceGrid,'openWater'|'shore'>,index:n
 export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const base=terrainRenderGrid(world),season=waterSeason(world),riverlands=!!world.settings.riverlands;
   const {skylands,worldTree}=world,outflow=calderaRiver(world);
-  const feeder=world.feeder??cavernFlow(world),feederKey=cavernFlowKey(feeder);
+  const feeder=world.feeder??cavernFlow(world),feederKey=cavernFlowKey(feeder),feederPlan=feederKey?feeder?.plan:undefined;
   const cleared=world.rootClearings??worldTreeClearings(world),clearings=cleared.join(',');
   const previous=cache.get(base);
-  if(previous?.season===season&&previous.riverlands===riverlands&&previous.feederKey===feederKey&&previous.skylands===skylands&&
-    previous.worldTree===worldTree&&previous.outflow===outflow&&previous.clearings===clearings)
+  if(previous?.season===season&&previous.riverlands===riverlands&&previous.feederKey===feederKey&&previous.feederPlan===feederPlan&&
+    previous.skylands===skylands&&previous.worldTree===worldTree&&previous.outflow===outflow&&previous.clearings===clearings)
     return previous.grid;
   const {width,height,tiles}=world,heights=topographyForWorld(world).heights;
   const columns=width*SIDE,rows=height*SIDE,count=columns*rows;
@@ -47,18 +53,20 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
   const {reefs,depths:coast}=coastalLife(world),seed=world.settings.seed;
   const land=Uint8Array.from(tiles,t=>+(t.biome!=='water'));
   const neighbour=(x:number,y:number)=>clamp(y,0,height-1)*width+clamp(x,0,width-1);
-  const offset=Array.from({length:SIDE},(_,i)=>(i+.5)/SIDE-.5);
-  const fractions=offset.map(dx=>Math.abs(dx));
-  const source=offset.map((_,i)=>{
-    const at=(i+.5)*TERRAIN_CELL_SIDE/SIDE-.5,lo=Math.floor(at);
-    return {lo,weight:at-lo,nearest:Math.round(at)};
-  });
+  // The interpolation columns are shared by every row of the map.
+  const sampleLeft=new Int32Array(columns),sampleRight=new Int32Array(columns);
+  for(let x=0;x<columns;x++){
+    const start=Math.floor(x/SIDE)*TERRAIN_CELL_SIDE+source[x%SIDE].lo;
+    sampleLeft[x]=Math.max(0,start);
+    sampleRight[x]=Math.min(base.columns-1,start+1);
+  }
   for(let tile=0;tile<tiles.length;tile++){
     const x=tile%width,y=Math.floor(tile/width),biome=tiles[tile].biome;
+    const dry=land[tile];
     let waterline=SEA,coastal=false,closest=Infinity;
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
       const n=neighbour(x+dx,y+dy);
-      if(land[n]!==land[tile])coastal=true;
+      if(land[n]!==dry)coastal=true;
       const distance=dx*dx+dy*dy;
       if(!land[n]&&distance<closest){
         waterline=heights[n]>SEA_LEVEL?heights[n]*UNITS:SEA;closest=distance;
@@ -66,27 +74,32 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
     }
     const valley=biome==='wetland',cliff=heights[tile]*UNITS-waterline>26*UNITS;
     const channels=links.get(tile);
-    const mouth=!land[tile]&&waterline===SEA?channels?.find(link=>
+    const mouth=!dry&&waterline===SEA?channels?.find(link=>
       link.tier>=2&&land[link.other]&&heights[link.other]<=SEA_LEVEL+18):undefined;
     const bx=x*TERRAIN_CELL_SIDE,by=y*TERRAIN_CELL_SIDE;
+    const left=Math.max(0,x-1),right=Math.min(width-1,x+1),visualX=x*SIDE;
     for(let row=0;row<SIDE;row++){
-      const ry=source[row],dy=offset[row],ny=y+Math.sign(dy),ty=fractions[row];
+      const ry=source[row],dy=offset[row],ty=fractions[row];
+      const adjacentRow=clamp(y+Math.sign(dy),0,height-1)*width;
       const j0=clamp(by+ry.lo,0,base.rows-1)*base.columns;
       const j1=clamp(by+ry.lo+1,0,base.rows-1)*base.columns;
+      const rowStart=(y*SIDE+row)*columns+visualX;
+      const nearestRow=(by+ry.nearest)*base.columns+bx;
       for(let col=0;col<SIDE;col++){
-        const rx=source[col],dx=offset[col],nx=x+Math.sign(dx),tx=fractions[col];
-        const i=(y*SIDE+row)*columns+x*SIDE+col;
-        const nearest=(by+ry.nearest)*base.columns+bx+rx.nearest;
+        const rx=source[col],dx=offset[col],tx=fractions[col],i=rowStart+col;
+        const nearest=nearestRow+rx.nearest;
         material[i]=base.material[nearest];
         water[i]=base.water[nearest];
-        openWater[i]=1-land[tile];
-        const i0=clamp(bx+rx.lo,0,base.columns-1),i1=clamp(bx+rx.lo+1,0,base.columns-1);
-        const slope=lerp(lerp(base.ground[j0+i0],base.ground[j0+i1],rx.weight),
-          lerp(base.ground[j1+i0],base.ground[j1+i1],rx.weight),ry.weight);
-        ground[i]=land[tile]?Math.round(slope):waterline;
+        openWater[i]=1-dry;
+        if(dry){
+          const i0=sampleLeft[visualX+col],i1=sampleRight[visualX+col];
+          ground[i]=Math.round(lerp(lerp(base.ground[j0+i0],base.ground[j0+i1],rx.weight),
+            lerp(base.ground[j1+i0],base.ground[j1+i1],rx.weight),ry.weight));
+        }else ground[i]=waterline;
         if(coastal){
-          const blend=lerp(lerp(land[tile],land[neighbour(nx,y)],tx),
-            lerp(land[neighbour(x,ny)],land[neighbour(nx,ny)],tx),ty);
+          const nx=dx<0?left:right;
+          const blend=lerp(lerp(dry,land[y*width+nx],tx),
+            lerp(land[adjacentRow+x],land[adjacentRow+nx],tx),ty);
           // Keep the macro shore in place and bevel the corners in small steps.
           if(blend<.46){
             ground[i]=waterline;water[i]=0;
@@ -235,6 +248,6 @@ export function surfaceGrid(world:SurfaceWorld):SurfaceGrid{
     }
   }
   const grid={columns,rows,ground,water,material,shore,openWater,coast,shadow,rootRise,treeCover};
-  cache.set(base,{season,riverlands,feederKey,outflow,skylands,worldTree,clearings,grid});
+  cache.set(base,{season,riverlands,feederKey,feederPlan,outflow,skylands,worldTree,clearings,grid});
   return grid;
 }

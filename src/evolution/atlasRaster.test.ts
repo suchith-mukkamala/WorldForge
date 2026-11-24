@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {atlasViewportBounds,closeAtlasCrop,cropBounds,cropContains,cropTileAt,type RasterCrop} from './atlasRaster';
-import {orderedDepthTiles,paintDepthBackdrop,type BackdropWorld} from './depthBackdrop';
+import {depthBackdropInput,orderedDepthTiles,paintDepthBackdrop,receiveBackdropScene,
+  type BackdropWorld,type DepthBackdropView} from './depthBackdrop';
 import {createDepthProjector} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
 import {DEFAULT_SETTINGS} from './engine';
@@ -26,6 +27,26 @@ function matchesWindow(full:DepthPicking,local:DepthPicking,crop:RasterCrop,
 }
 
 describe('Atlas close-up raster',()=>{
+  it('retains worker terrain during a camera turn and drops removed plots',()=>{
+    const world:BackdropWorld={width:1,height:1,settings:DEFAULT_SETTINGS,
+      tiles:[{biome:'plains',food:0}],topography:{version:1,heights:[65]}};
+    const view:DepthBackdropView={world,relief:1,camera:{yaw:0,pitch:30},
+      plots:{squares:new Map(),decoratedTiles:new Set()}};
+    const initial=receiveBackdropScene(structuredClone(depthBackdropInput(view).scene));
+    const turned={...view,camera:{yaw:90,pitch:55}};
+    const turn=depthBackdropInput(turned,view);
+    expect(turn.scene).toEqual({});
+    const retained=receiveBackdropScene(structuredClone(turn.scene),initial);
+    expect(retained.world).toBe(initial.world);
+    expect(retained.plots).toBe(initial.plots);
+    const updated={...turned,plots:undefined,world:{...world,dayOfYear:182}};
+    const next=receiveBackdropScene(structuredClone(depthBackdropInput(updated,turned).scene),retained);
+    expect(next.plots).toBeUndefined();
+    expect(next.world.dayOfYear).toBe(182);
+    expect(next.world.tiles).toBe(initial.world.tiles);
+    expect(next.world.topography).toBe(initial.world.topography);
+  });
+
   it('uses native coordinates for the visible area of a partly hidden layer',()=>{
     const size={width:500,height:400},viewport={left:100,top:50,width:300,height:280};
     const sheet={left:-300,top:-570,width:1000,height:800};

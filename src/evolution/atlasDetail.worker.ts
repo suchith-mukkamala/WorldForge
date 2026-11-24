@@ -1,12 +1,17 @@
-import type {AtlasDetailRequest,AtlasDetailFrame,AtlasDetailSource} from './atlasDetailTypes';
-import {orderedDepthTiles,paintDepthBackdrop} from './depthBackdrop';
+import type {AtlasDetailRequest,AtlasDetailFrame,AtlasDetailUpdate} from './atlasDetailTypes';
+import {orderedDepthTiles,paintDepthBackdrop,receiveBackdropScene} from './depthBackdrop';
 import {createDepthProjector} from './depthProjection';
 import {prepareRealmRelief,rasterizeRealm} from './realmRelief';
 import {topographyForWorld} from './topography';
 
-function prepare(source:AtlasDetailSource){
+let surface:ReturnType<typeof receiveBackdropScene>|undefined;
+let realm:ReturnType<typeof prepareRealmRelief>|undefined;
+function prepare(source:AtlasDetailUpdate){
   if(source.kind==='underworld'){
-    const terrain=prepareRealmRelief(source.map);
+    surface=undefined;
+    if(source.map)realm=prepareRealmRelief(source.map);
+    const terrain=realm;
+    if(!terrain)throw Error('The Underworld close-up needs a map.');
     return (id:number,crop:AtlasDetailRequest['crop'])=>{
       const {pixels,hit}=rasterizeRealm({id,projection:source.projection,crop},terrain);
       const canvas=new OffscreenCanvas(crop.width,crop.height),ctx=canvas.getContext('2d')!;
@@ -15,7 +20,10 @@ function prepare(source:AtlasDetailSource){
     };
   }
 
-  const {world,relief,camera,showSkylands,cutaway,plots}=source.view;
+  realm=undefined;
+  surface=receiveBackdropScene(source.view.scene,surface);
+  const {world,plots}=surface;
+  const {relief,camera,showSkylands,cutaway}=source.view;
   const projector=createDepthProjector({...world,skylands:showSkylands?world.skylands:undefined},
     relief,camera,topographyForWorld(world).heights);
   const tiles=orderedDepthTiles(world,projector,cutaway);

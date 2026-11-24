@@ -1,10 +1,12 @@
 import type {RasterCrop} from './atlasRaster';
-import type {DepthRasterRequest,DepthRasterResult} from './depthBackdrop';
+import type {DepthBackdropInput,DepthBackdropView,DepthRasterResult} from './depthBackdrop';
 import type {DepthCamera} from './depthProjection';
 import type {RealmRasterRequest} from './realmRelief';
 import type {RealmMap} from './underworld';
 
-export type AtlasDetailSource={kind:'surface';view:Omit<DepthRasterRequest,'id'|'density'>}|
-  {kind:'underworld';map:RealmMap;projection:RealmRasterRequest['projection'];camera:DepthCamera};
-export type AtlasDetailRequest={id:number;crop:RasterCrop;source?:AtlasDetailSource};
+type UnderworldSource={kind:'underworld';map:RealmMap;projection:RealmRasterRequest['projection'];camera:DepthCamera};
+export type AtlasDetailSource={kind:'surface';view:DepthBackdropView}|UnderworldSource;
+export type AtlasDetailUpdate={kind:'surface';view:DepthBackdropInput}|
+  (Omit<UnderworldSource,'map'>&{map?:RealmMap});
+export type AtlasDetailRequest={id:number;crop:RasterCrop;source?:AtlasDetailUpdate};
 export type AtlasDetailFrame=DepthRasterResult&{crop:RasterCrop};

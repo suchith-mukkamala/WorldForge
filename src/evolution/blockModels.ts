@@ -56,7 +56,7 @@ function model(key:string,make:(grid:BlockGrid)=>void,quarter=0,
     });
   }
   const compiled={key,faces,feet,footing};
-  if(cache.size>=260)cache.clear();
+  if(cache.size>=260)cache.delete(cache.keys().next().value!);
   cache.set(key,compiled);
   return compiled;
 }
@@ -81,7 +81,7 @@ export function extendBlockFootings(source:BlockModel,depths:readonly number[],
     }
   }
   const grounded={...source,key,faces};
-  if(fittedModels.size>=260)fittedModels.clear();
+  if(fittedModels.size>=260)fittedModels.delete(fittedModels.keys().next().value!);
   fittedModels.set(key,grounded);
   return grounded;
 }
