@@ -1,9 +1,23 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
+import {advanceInBackground} from './advanceInBackground';
+import {advanceWorldDays} from './calendar';
 import {createWorld} from './engine';
 import type {SimulationReply} from './simulationProtocol';
 import {advanceSimulationRequest,deliverSimulationReply} from './simulationTurn';
 
 describe('background simulation replies',()=>{
+  it('yields on a browser without workers and can cancel an advance',async()=>{
+    vi.stubGlobal('Worker',undefined);
+    try{
+      const world=createWorld({seed:345,size:'small'});
+      const controller=new AbortController();
+      const cancelled=advanceInBackground(world,3650,controller.signal);
+      const failure=expect(cancelled).rejects.toMatchObject({name:'AbortError'});
+      controller.abort();
+      await failure;
+      expect(await advanceInBackground(world,35)).toEqual(advanceWorldDays(world,35));
+    }finally{vi.unstubAllGlobals();}
+  });
   it('advances the supplied world and keeps that snapshot if the step throws',()=>{
     const world=createWorld({seed:344,size:'small'});
     const clock={t:10};

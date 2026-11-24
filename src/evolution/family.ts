@@ -48,13 +48,22 @@ export function ancestryLabel(a:Ancestry):string{
   if(parts.length===1)return SPECIES_INFO[parts[0]].name.slice(0,-1);
   return 'Mixed '+parts.slice(0,3).map(s=>SPECIES_INFO[s].name.slice(0,-1)).join(' / ');
 }
-export function traitProfile(a:Ancestry){
+type TraitProfile=Readonly<Record<'lifespan'|'maturity'|'fertility'|'wander'|'metabolism'|
+  'strength'|'speed',number>>;
+const profiles=new WeakMap<Ancestry,{weights:Ancestry;profile:TraitProfile}>();
+
+export function traitProfile(a:Ancestry):TraitProfile{
+  const cached=profiles.get(a),weights=cached?.weights;
+  if(weights&&weights.human===a.human&&weights.elf===a.elf&&weights.dwarf===a.dwarf&&weights.demon===a.demon)
+    return cached.profile;
   const blend=(key:'lifespan'|'maturity'|'fertility'|'wander'|'metabolism'|
     'strength'|'speed')=>
     SPECIES.reduce((sum,s)=>sum+SPECIES_INFO[s][key]*a[s],0);
-  return {lifespan:blend('lifespan'),maturity:blend('maturity'),
+  const profile=Object.freeze({lifespan:blend('lifespan'),maturity:blend('maturity'),
     fertility:blend('fertility'),wander:blend('wander'),
-    metabolism:blend('metabolism'),strength:blend('strength'),speed:blend('speed')};
+    metabolism:blend('metabolism'),strength:blend('strength'),speed:blend('speed')});
+  profiles.set(a,{weights:{...a},profile});
+  return profile;
 }
 const SPECIES_COMPATIBILITY:Record<Species,Record<Species,number>>={
   human:{human:1,elf:.82,dwarf:.78,demon:.57},

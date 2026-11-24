@@ -25,3 +25,15 @@ export function coastalDepth(width:number,height:number,
   }
   return depths;
 }
+
+type Coast={width:number;height:number;tiles:readonly {biome:string}[]};
+const surfaceDepths=new WeakMap<Coast['tiles'],{width:number;height:number;depths:Uint8Array}>();
+
+/** Share depth bands between the atlas, its crops and coastal life. */
+export function surfaceCoastalDepth({width,height,tiles}:Coast):Uint8Array{
+  const saved=surfaceDepths.get(tiles);
+  if(saved?.width===width&&saved.height===height)return saved.depths;
+  const depths=coastalDepth(width,height,i=>tiles[i].biome==='water');
+  surfaceDepths.set(tiles,{width,height,depths});
+  return depths;
+}

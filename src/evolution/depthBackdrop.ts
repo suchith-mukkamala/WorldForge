@@ -6,7 +6,7 @@ import {createDepthProjector,type DepthCamera} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
 import {pixelTerrainHash,surfaceColor} from './depthWorldArt';
 import type {World} from './engine';
-import {coastalDepth,OCEAN_TONES} from './oceanDepth';
+import {surfaceCoastalDepth,OCEAN_TONES} from './oceanDepth';
 import type {SurfaceWorld} from './surfaceGrid';
 import {topographyForWorld} from './topography';
 import {woodlandCover,woodlandHabitat} from './woodland';
@@ -33,8 +33,8 @@ export function orderedDepthTiles(w:BackdropWorld,projector:Projector,cutaway=fa
 export function paintDepthBackdrop(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,
   hit:DepthPicking,w:BackdropWorld,projector:Projector,density:number,ordered:readonly number[],
   plots?:BackdropPaint,sample=1,cutaway=false,crop?:RasterCrop){
-  const {width,height,tiles,settings}=w,heights=topographyForWorld(w).heights;
-  const ocean=coastalDepth(width,height,i=>tiles[i].biome==='water');
+  const {width,tiles,settings}=w,heights=topographyForWorld(w).heights;
+  const ocean=surfaceCoastalDepth(w);
   paintDepthCells(ctx,hit,w,projector,density,ordered,ATLAS_SEA,index=>{
     const x=index%width,y=Math.floor(index/width),biome=tiles[index].biome;
     const grain=pixelTerrainHash(x,y,settings.seed);

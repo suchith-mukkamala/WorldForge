@@ -16,6 +16,7 @@ function prepareBanks(weather:WeatherField,project:Props['project'],ground:Props
   return weatherCloudBanks(weather).map(bank=>{
     const start=project({...bank,height:bank.height-5}),floor=ground(bank);
     const drops:Drop[]=[];
+    let left=Infinity,right=-Infinity,top=Infinity,bottom=-Infinity;
     if(isPrecipitation(bank.weather.kind)){
       const count=Math.round(12+bank.weather.intensity*24);
       for(let i=0;i<count;i++){
@@ -26,12 +27,15 @@ function prepareBanks(weather:WeatherField,project:Props['project'],ground:Props
         const kind=weather.at(x,y).kind;
         if(!isPrecipitation(kind))continue;
         const to=ground({x,y}),p=project({...bank,x,y,height:bank.height-8});
-        drops.push({from:{x:p.x-unit*(1.3+roll(417)),y:Math.min(p.y,to.y-unit*8)},to,
+        const from={x:p.x-unit*(1.3+roll(417)),y:Math.min(p.y,to.y-unit*8)};
+        drops.push({from,to,
           offset:roll(7)*2900,period:kind==='snow'?1900+roll(14)*1400:500+roll(14)*550,snow:kind==='snow'});
+        left=Math.min(left,from.x,to.x);right=Math.max(right,from.x,to.x);
+        top=Math.min(top,from.y,to.y);bottom=Math.max(bottom,from.y,to.y);
       }
     }
     const strike={from:start,to:{x:floor.x+unit*2,y:Math.max(floor.y,start.y+unit*8)}};
-    return {bank,drops,strike};
+    return {bank,drops,strike,rainBounds:{left,right,top,bottom}};
   });
 }
 
@@ -82,7 +86,11 @@ export function AtlasClouds({world,...props}:Props){
       const square=(x:number,y:number,w:number,h:number)=>{
         ctx.fillRect(Math.round(x*density)/density,Math.round(y*density)/density,w,h);
       };
-      for(const {bank,drops} of banks){
+      for(const {bank,drops,rainBounds} of banks){
+        // Projected drop paths stay inside their envelope. Include wobble and
+        // the short trail when deciding whether a bank can enter the viewport.
+        if(rainBounds.right*scale<left-16||rainBounds.left*scale>left+width+16||
+          rainBounds.bottom*scale<top-16||rainBounds.top*scale>top+height+16)continue;
         ctx.globalAlpha=.47+bank.weather.intensity*.27;
         for(const {from,to,offset,period,snow} of drops){
           const t=((now+offset)%period)/period;

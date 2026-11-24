@@ -8,6 +8,7 @@ import {lazy,Suspense,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useSt
 import type {ChangeEvent,SetStateAction} from 'react';
 import {receiveSimulationWorld,shouldAcceptSimulation,type PendingSimulation,
   type SimulationRequest,type SimulationReply} from './simulationProtocol';
+import {advanceInBackground,advanceInSlices} from './advanceInBackground';
 import {WORLD_CELL_SIZE,WorldCanvas,type MapOverlay} from './WorldCanvas';
 import {DepthCanvas} from './DepthCanvas';
 import {CAMERA_PITCHES,RELIEF_LEVELS,
@@ -40,7 +41,7 @@ import {enablePhysicalTerrain,hasPhysicalTerrain,terrainFarmFactor,
   terrainRuggedness} from './terrainPhysics';
 import {elevationAt} from './topography';
 import {hydrologyForWorld} from './hydrology';
-import {advanceWorldDays,calendarDate,MONTH_NAMES,TIME_RATES,
+import {calendarDate,DAYS_PER_YEAR,MONTH_NAMES,TIME_RATES,
   type TimeRate} from './calendar';
 import type {Point} from './motion';
 import {ATLAS_PLACE_ZOOM,ATLAS_PEOPLE_ZOOM,ATLAS_STREET_ZOOM,ATLAS_TOWN_ZOOM,atlasCloseupZoom,atlasLevel,atlasScrollGeometry} from './atlasMap';
@@ -139,37 +140,16 @@ function saveSnapshot(world:World):Promise<void>{
   return pending;
 }
 
-async function growSettlements(world:World):Promise<World>{
-  const days=365*6;
-  let worker:Worker|undefined;
-  try{
-    worker=new Worker(new URL('./simulation.worker.ts',import.meta.url),{type:'module'});
-    const session=worker;
-    return await new Promise<World>((resolve,reject)=>{
-      session.onmessage=(event:MessageEvent<SimulationReply>)=>{
-        const reply=event.data;
-        if(reply.id!==1)return;
-        if(reply.kind==='advanced')resolve(receiveSimulationWorld(world,reply));
-        else reject(Error(reply.message));
-      };
-      session.onerror=reject;
-      const request:SimulationRequest={kind:'advance',id:1,world,days};
-      session.postMessage(request);
-    });
-  }catch{
-    // Same simulated time and world rules in browsers without workers.
-    await new Promise(resolve=>window.setTimeout(resolve,32));
-    return advanceWorldDays(world,days);
-  }finally{worker?.terminate();}
-}
-
 export function WorldforgeApp(){
   const [world,reactSetWorld]=useState<World>(initialWorld);
   // A generation is incremented on EVERY player edit/import/command. A stale
   // worker result must never replace those changes.
   const worldRevision=useRef(0);
+  const manualAdvance=useRef<AbortController|null>(null);
+  const [advancing,setAdvancing]=useState(false);
   const setWorld=useCallback((change:SetStateAction<World>)=>{
     worldRevision.current++;
+    manualAdvance.current?.abort();
     reactSetWorld(change);
   },[]);
   const simulationWorker=useRef<Worker|null>(null);
@@ -195,6 +175,7 @@ export function WorldforgeApp(){
   const playingRef=useRef(false);
   const setPlaying=useCallback((change:SetStateAction<boolean>)=>{
     const next=typeof change==='function'?change(playingRef.current):change;
+    if(next&&manualAdvance.current)return;
     playingRef.current=next;
     reactSetPlaying(next);
   },[]);
@@ -244,7 +225,7 @@ export function WorldforgeApp(){
   const [orbiting,setOrbiting]=useState(false);
   const simulationDays=isMortal?1:playback.days;
   const simulationInterval=isMortal?2000:playback.interval;
-  const simulationEnabled=storageReady&&(isMortal?mortalRunning&&
+  const simulationEnabled=storageReady&&!advancing&&(isMortal?mortalRunning&&
     world.agents.some(a=>a.id===world.descent?.agentId):playing&&(inAtlas||tab==='settlements'));
   simulationActive.current=simulationEnabled;
   playbackDaysRef.current=simulationDays;
@@ -262,13 +243,17 @@ export function WorldforgeApp(){
   const [notice,setNotice]=useState('');
   const [saveWarning,setSaveWarning]=useState('');
   const [savedDate,setSavedDate]=useState<ReturnType<typeof calendarDate>|null>(null);
+  const checkpointSequence=useRef(0);
   const holdAutosave=useRef(false);
   const checkpoint=useCallback((current:World)=>{
     if(holdAutosave.current)return;
+    const sequence=++checkpointSequence.current;
     void saveSnapshot(current).then(()=>{
+      if(sequence!==checkpointSequence.current)return;
       setSavedDate(calendarDate(current));
       setSaveWarning('');
     }).catch(()=>{
+      if(sequence!==checkpointSequence.current)return;
       setSaveWarning('Autosave failed');
       setNotice('Autosave failed. Export World JSON to keep your progress.');
     });
@@ -566,7 +551,7 @@ export function WorldforgeApp(){
         return;
       }
       const open=tabRef.current;
-      if(open!=='world'&&open!=='settlements')return;
+      if(open!=='world'&&open!=='stacked'&&open!=='underworld'&&open!=='settlements')return;
       const current=currentWorld.current;
       if(!current.agents.length||current.year>=9999)return;
       event.preventDefault();
@@ -637,6 +622,7 @@ export function WorldforgeApp(){
   // remains authoritative for edits; stale worker results are discarded.
   // Missing/crashed workers safely fall back to the exact same calendar code.
   useEffect(()=>{
+    if(!simulationEnabled)return;
     if(typeof Worker==='undefined'){setWorkerMode('fallback');return;}
     let worker:Worker;
     try{
@@ -684,6 +670,9 @@ export function WorldforgeApp(){
     worker.onerror=()=>{
       fallback('Background worker unavailable; continuing with safe playback.');
     };
+    worker.onmessageerror=()=>{
+      fallback('Background worker could not return its snapshot; continuing with safe playback.');
+    };
     return ()=>{
       worker.terminate();
       if(simulationWorker.current===worker)simulationWorker.current=null;
@@ -691,17 +680,19 @@ export function WorldforgeApp(){
       preparedSimulation.current=null;
       workerSyncedRevision.current=-1;
     };
-  },[requestSimulation,publishPrepared]);
+  },[simulationEnabled,simulationDays,simulationInterval,isMortal,requestSimulation,publishPrepared]);
   useEffect(()=>{
     if(!simulationEnabled)return;
     playbackDeadlineReached.current=false;
     preparedSimulation.current=null;
+    const fallbackClock=new AbortController();
+    let fallbackPending=false;
     // Start the expensive calculation at the beginning of the display period,
     // rather than waiting until the exact moment the next frame is due.
     requestSimulation();
     const timer=window.setInterval(()=>{
       const current=currentWorld.current;
-      if(!current.agents.length||current.year>=9999)return;
+      if(!simulationActive.current||!current.agents.length||current.year>=9999)return;
       const worker=simulationWorker.current;
       if(worker){
         playbackDeadlineReached.current=true;
@@ -712,15 +703,23 @@ export function WorldforgeApp(){
         }else requestSimulation();
         return;
       }
-      const start=performance.now();
-      setWorld(w=>{
-        if(!w.agents.length||w.year>=9999)return w;
-        const next=advanceWorldDays(w,simulationDays);
+      if(fallbackPending)return;
+      fallbackPending=true;
+      const start=performance.now(),revision=worldRevision.current;
+      void advanceInSlices(current,simulationDays,fallbackClock.signal).then(next=>{
+        if(fallbackClock.signal.aborted||!simulationActive.current||
+          worldRevision.current!==revision||currentWorld.current!==current)return;
         lastSimulationMs.current=Math.max(0,performance.now()-start);
-        return next;
-      });
+        currentWorld.current=next;
+        setWorld(next);
+      }).catch(error=>{
+        if(fallbackClock.signal.aborted)return;
+        setNotice(error instanceof Error?error.message:'Unable to advance time.');
+        if(isMortal)setMortalRunning(false);else setPlaying(false);
+      }).finally(()=>{fallbackPending=false;});
     },simulationInterval);
     return ()=>{
+      fallbackClock.abort();
       window.clearInterval(timer);
       playbackDeadlineReached.current=false;
       preparedSimulation.current=null;
@@ -729,8 +728,9 @@ export function WorldforgeApp(){
       // snapshot after a pause or rate change, never its speculative state.
       workerSyncedRevision.current=-1;
     };
-  },[simulationEnabled,simulationDays,simulationInterval,isMortal,setWorld,
+  },[simulationEnabled,simulationDays,simulationInterval,isMortal,setWorld,setPlaying,
     requestSimulation,publishPrepared]);
+  useEffect(()=>()=>manualAdvance.current?.abort(),[]);
   useEffect(()=>{if(!isMortal)setMortalRunning(true);},[isMortal]);
   useEffect(()=>{
     if(playing&&(!world.agents.length||world.year>=9999))setPlaying(false);
@@ -1032,12 +1032,32 @@ export function WorldforgeApp(){
       setNotice('Loaded saved world, year '+obj.year+'.');
     }catch(error){setNotice(error instanceof Error?error.message:'Unable to open world file.');}
   };
-  const step=(days:number)=>{
-    if(currentWorld.current.descent?.mode==='mortal'){
+  const step=async(days:number)=>{
+    const before=currentWorld.current;
+    if(before.descent?.mode==='mortal'){
       setNotice('Use P or the mortal HUD to pause or resume lived time.');
       return;
     }
-    setPlaying(false);setWorld(w=>advanceWorldDays(w,days));
+    if(manualAdvance.current||before.year>=9999)return;
+    const job=new AbortController(),revision=worldRevision.current;
+    manualAdvance.current=job;
+    simulationActive.current=false;
+    setPlaying(false);setAdvancing(true);
+    try{
+      const next=await advanceInBackground(before,days,job.signal);
+      if(!job.signal.aborted&&worldRevision.current===revision&&currentWorld.current===before){
+        manualAdvance.current=null;
+        setAdvancing(false);
+        setWorld(next);
+      }
+    }catch(error){
+      if(!job.signal.aborted)setNotice(error instanceof Error?error.message:'Unable to advance time.');
+    }finally{
+      if(manualAdvance.current===job){
+        manualAdvance.current=null;
+        setAdvancing(false);
+      }
+    }
   };
   const navigate=(next:Tab)=>{
     if(next!=='settlements')setPlaying(false);
@@ -1054,8 +1074,9 @@ export function WorldforgeApp(){
   const createDescent=async(options:MortalCreation,settledStart:boolean,shipyard?:number)=>{
     const before=currentWorld.current;
     try{
+      manualAdvance.current?.abort();
       setStartingDescent(true);
-      const startingWorld=settledStart?await growSettlements(before):before;
+      const startingWorld=settledStart?await advanceInBackground(before,DAYS_PER_YEAR*6):before;
       if(currentWorld.current!==before||tabRef.current!=='descent')return;
       const result=createMortal(startingWorld,options,descentRiver??undefined,shipyard,descentTree,descentCrater??undefined);
       setPlaying(false);setTab('world');setNotice('');
@@ -1139,13 +1160,13 @@ export function WorldforgeApp(){
     tab==='settlements'?<Suspense fallback={<main className="evo-history-page" role="status">
       Opening the settlement atlas…</main>}><SettlementView world={world}
       selectedId={selectedSettlementId} onFindOnMap={findSettlement}
-      playing={playing} onTogglePlay={()=>{
+      playing={playing} advancing={advancing} onCancelAdvance={()=>manualAdvance.current?.abort()} onTogglePlay={()=>{
         if(world.descent?.mode==='mortal'){
           setNotice('Return to god mode before advancing the world clock.');return;
         }
         setPlaying(v=>!v);
       }}
-      onAdvance={step}/></Suspense>:
+      onAdvance={years=>void step(years*DAYS_PER_YEAR)}/></Suspense>:
     tab==='family'?<WorldFamily world={world} focusId={selectedAgentId}
       onChoose={focusPerson} onShowOnMap={findOnMap}
       onFavorite={favoritePerson} onRename={giveName}/>:
@@ -1177,19 +1198,21 @@ export function WorldforgeApp(){
           <button className="evo-new-world-button" onClick={()=>navigate('creator')}>
             ✧ NEW WORLD</button>
           <button type="button" className={playing?'playing evo-play-main':'evo-play-main'}
-            disabled={!world.agents.length||world.year>=9999||
+            disabled={advancing||!world.agents.length||world.year>=9999||
               world.descent?.mode==='mortal'}
             aria-pressed={playing} aria-keyshortcuts="P"
             title="Play or pause (P)"
             onClick={()=>setPlaying(v=>!v)}>{playing?'■ PAUSE':'▶ PLAY'}</button>
-          <button onClick={()=>step(365)} title="Advance one year">+YEAR</button>
+          <button onClick={()=>void step(DAYS_PER_YEAR)} disabled={advancing||world.year>=9999}
+            title="Advance one year">+YEAR</button>
           <details className="evo-time-settings">
             <summary>Time settings</summary>
             <div className="evo-time-settings-panel">
               <div role="group" aria-label="Advance the world clock">
                 <small>Advance</small>
-                {([[1,'+DAY'],[7,'+WEEK'],[30,'+MONTH'],[3650,'+10Y']] as const)
-                  .map(([days,label])=><button key={days} onClick={()=>step(days)}>
+                {([[1,'+DAY'],[7,'+WEEK'],[30,'+MONTH'],[DAYS_PER_YEAR*10,'+10Y']] as const)
+                  .map(([days,label])=><button key={days} disabled={advancing||world.year>=9999}
+                    onClick={()=>void step(days)}>
                     {label}</button>)}
               </div>
               <div role="group" aria-label="Playback pace">
@@ -1201,8 +1224,10 @@ export function WorldforgeApp(){
               </div>
             </div>
           </details>
+          {advancing&&<button type="button" onClick={()=>manualAdvance.current?.abort()}>Cancel advance</button>}
         </div>
       </header>
+      {advancing&&<p className="evo-notice" role="status">Advancing time…</p>}
       <WorldLayerSwitch view={stacked?'stacked':below?'underworld':'surface'} onChange={next=>{
         if(next==='stacked'){if(!stacked){rememberSurfaceCamera();setTab(next);}return;}
         if(next==='underworld'){if(!below)openUnderworld(selectedVent?.rim??(displayed?drainageIndex:undefined));return;}
@@ -1529,7 +1554,7 @@ export function WorldforgeApp(){
             aria-label="WorldForge performance diagnostics">
             <strong>PERFORMANCE & WORLD HEALTH</strong>
             <span>SIMULATION: {workerMode==='worker'?'Background worker':
-              workerMode==='starting'?'Initializing':'Main-thread fallback'}
+              workerMode==='starting'?'Ready on play':'Main-thread fallback'}
               {' · '+(lastSimulationMs.current===null?'not sampled':
                 lastSimulationMs.current.toFixed(1)+' ms / tick')}</span>
             <span>WORKER MESSAGE: {lastTransferMs.current===null?'not sampled':

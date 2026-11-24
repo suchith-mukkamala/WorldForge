@@ -155,6 +155,7 @@ export type DayContext={occupied:Map<number,number[]>;capacities:Uint8Array;
   bridges:Set<number>;homes:Map<number,Household>;
   dependents:Map<number,number>;
   workplaces:Map<number,World['settlements'][number]>;
+  indexById:Map<number,number>;
   /** Owned copies within one advanceWorldDays call. Never persisted. */
   ownedAgents:Map<number,Agent>};
 export function createDayContext(w:World):DayContext{
@@ -168,6 +169,7 @@ export function createDayContext(w:World):DayContext{
       .map(b=>b.index)??[]),
     homes:new Map((w.households??[]).map(h=>[h.id,h])),dependents,
     workplaces:new Map(w.settlements.map(s=>[s.id,s])),
+    indexById:new Map(w.agents.map((agent,i)=>[agent.id,i])),
     ownedAgents:new Map()};
 }
 type Motivation={purpose:Purpose;score:number;reasons:string[];
@@ -540,10 +542,11 @@ export function advanceMindDay(previous:World,day:number,
   // Copy on write: idle people retain their existing immutable snapshots.
   // Previously *every* person and full cognition tree was cloned each day,
   // even when no plan was due. That cost grows with population × calendar days.
-  const scheduled=new Set<number>();
+  const scheduled:number[]=[];
   const agents=[...previous.agents];
-  const indexById=new Map(agents.map((agent,i)=>[agent.id,i]));
-  const byId=new Map(agents.map(agent=>[agent.id,agent]));
+  const {indexById}=dayContext;
+  const byId=new Map<number,Agent>();
+  for(const agent of agents)byId.set(agent.id,agent);
   const own=(id:number):Agent|undefined=>{
     const old=byId.get(id);if(!old)return;
     if(dayContext.ownedAgents.get(id)===old)return old;
@@ -554,13 +557,14 @@ export function advanceMindDay(previous:World,day:number,
     byId.set(id,copy);
     return copy;
   };
-  for(const old of previous.agents){
+  for(let i=0;i<agents.length;i++){
+    const old=agents[i];
     if(controlsMortal(previous.descent,old.id))
       continue;
     const active=old.cognition?.agenda.some(p=>p.status==='active');
     const due=day%7===1||!!active||!!urgency(old);
     if(due&&old.development&&!old.work?.tradeId){
-      scheduled.add(old.id);
+      scheduled.push(i);
       own(old.id);
     }
   }
@@ -569,8 +573,8 @@ export function advanceMindDay(previous:World,day:number,
   const {occupied,capacities,bridges,homes,dependents,workplaces}=dayContext;
   const context:MindContext={live:byId,homes,dependents,workplaces};
   let tiles=previous.tiles;
-  for(const a of agents){
-    if(!scheduled.has(a.id))continue;
+  for(const index of scheduled){
+    const a=agents[index];
     reviewMind(w,a,day,context);
     const c=a.cognition!,active=c.agenda.find(p=>p.status==='active');
     if(!active){c.today={year:w.year,day,action:'idle',
