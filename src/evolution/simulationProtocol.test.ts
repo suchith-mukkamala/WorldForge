@@ -36,6 +36,21 @@ describe('v1.8 background simulation safety',()=>{
     const edited={...next,tiles:next.tiles.map((tile,i)=>i===0?{...tile,biome:'volcanic' as const}:tile)};
     expect(packSimulationWorld(next,edited).retained).not.toContain('topography');
   });
+  it('sends sparse tile changes and keeps the full map for widespread edits',()=>{
+    const world=createWorld({seed:344,size:'small'});
+    const tiles=world.tiles.slice(),next={...world,tiles};
+    const index=tiles.findIndex(tile=>tile.food>1);
+    tiles[index]={...tiles[index],food:tiles[index].food-1};
+    const packed=packSimulationWorld(world,next);
+    expect(packed.world.tiles).toBeUndefined();
+    expect(packed.tileEdits).toEqual([[index,tiles[index]]]);
+    const received=receiveSimulationWorld(world,structuredClone({kind:'advanced',id:1,elapsedMs:0,...packed}));
+    expect(received).toEqual(next);
+    expect(received.tiles[index+1]).toBe(world.tiles[index+1]);
+    const broad=packSimulationWorld(world,{...world,tiles:tiles.map(tile=>({...tile}))});
+    expect(broad.tileEdits).toBeUndefined();
+    expect(broad.world.tiles?.length).toBe(world.tiles.length);
+  });
   it('retains the underground map when its population changes and refreshes it for a new causeway',()=>{
     const world=createWorld({seed:41,size:'small',volcanicWorld:true});
     const state=world.underworld!,map=underworldMap(world);

@@ -475,23 +475,40 @@ export function recoverStoredWorld(storage:Pick<Storage,'getItem'>|null):
     return legacy?{kind:'export',world:legacy}:{kind:'none'};
   }catch{return {kind:'none'};}
 }
+type SnapshotStorage=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
+const localWrites=new WeakMap<SnapshotStorage,number>();
+let snapshotSequence=0;
+
 export async function commitBrowserSnapshot(
-  raw:string,savedAt:number,storage:Pick<Storage,'setItem'|'removeItem'>,
+  raw:string,savedAt:number,storage:SnapshotStorage,
   saveDatabase:(raw:string,savedAt:number,canonical:boolean)=>Promise<void>,
 ):Promise<void>{
+  const sequence=++snapshotSequence;
   const local=writeBrowserSnapshot(storage,raw,savedAt);
+  if(local==='stored')localWrites.set(storage,sequence);
+  const newerLocalCopy=()=>{
+    // A newer checkpoint can save locally while this database transaction is
+    // still pending. Sequence handles same-millisecond writes in this tab.
+    if((localWrites.get(storage)??0)>sequence)return true;
+    try{return finiteTime(storage.getItem(WORLD_STORAGE_TIME_KEY))>savedAt;}
+    catch{return false;}
+  };
   try{await saveDatabase(raw,savedAt,true);}
   catch(error){
-    if(local==='stored')return;
-    if(writeBrowserSnapshot(storage,raw,savedAt,true)==='stored')return;
+    if(local==='stored'||newerLocalCopy())return;
+    if(writeBrowserSnapshot(storage,raw,savedAt,true)==='stored'){
+      localWrites.set(storage,sequence);
+      return;
+    }
     throw error;
   }
   // The database has this world. Drop a stale local copy that would
   // otherwise look current the next time IndexedDB does not open.
-  if(local!=='stored')writeOmittedLocalSnapshot(storage,savedAt);
+  if(local!=='stored'&&!newerLocalCopy()&&writeOmittedLocalSnapshot(storage,savedAt))
+    localWrites.set(storage,sequence);
 }
 export function persistBrowserWorld(
-  world:World,storage:Pick<Storage,'setItem'|'removeItem'>,
+  world:World,storage:SnapshotStorage,
   saveDatabase:(raw:string,savedAt:number,canonical:boolean)=>Promise<void>,
   savedAt=Date.now(),
 ):Promise<void>{

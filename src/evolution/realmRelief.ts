@@ -13,7 +13,7 @@ import {realmFloorPixels} from './underworldArt';
 export type RealmRasterRequest={id:number;projection:RealmProjection;map?:RealmMap;crop?:RasterCrop};
 export type RealmRasterResult={id:number;pixels:Uint32Array<ArrayBuffer>;hit:DepthPicking};
 type PreparedRealm={map:RealmMap;palette:Uint32Array;columns:number;rows:number;
-  elevations:Float32Array;falls:Int8Array;fallWidths:Uint8Array};
+  elevations:Float32Array;falls:Int8Array;fallWidths:Uint8Array;highest:number};
 const SIDE=VISUAL_TERRAIN_SIDE;
 const cataract=['#5d98a8','#96cfcb','#bae0cd','#83bbc3'].map(terrainPixel);
 export function realmRasterSize(width:number,height:number){
@@ -45,7 +45,8 @@ export function prepareRealmRelief(map:RealmMap):PreparedRealm{
     elevations[i]=Math.round((level*.54+slope*.46)*4)/4;
     palette[i]=shadeTerrainPixel(palette[i],lighting[tile]);
   }
-  return {map,palette,columns,rows,elevations,falls,fallWidths};
+  return {map,palette,columns,rows,elevations,falls,fallWidths,
+    highest:heights.reduce((max,height)=>Math.max(max,height),0)};
 }
 
 function paintRealmCrust(projection:RealmProjection,hit:DepthPicking,pixels:Uint32Array,map:RealmMap,crop?:RasterCrop){
@@ -73,11 +74,19 @@ function paintCliff(hit:DepthPicking,pixels:Uint32Array,face:readonly Point[],ti
   if(drop>13)seam(.24,Math.min(2,drop*.08),1.17);
 }
 
+function columnSpan(origin:number,step:number,min:number,max:number,columns:number):[number,number]{
+  if(Math.abs(step)<1e-8)
+    return origin>=min-1&&origin<=max+1?[0,columns]:[0,0];
+  const a=(min-origin)/step,b=(max-origin)/step;
+  // Widen by a column to cover the different floating-point sum in rasterization.
+  return [Math.max(0,Math.floor(Math.min(a,b))),Math.min(columns,Math.ceil(Math.max(a,b))+1)];
+}
+
 /** Project the same square heightfield into both atlas views. The floor
  * palette stays valid as time advances, while temporary fords have their
  * own overlay. Each opaque terrain face writes its exact picking ID. */
 export function rasterizeRealm({id,projection,crop}:RealmRasterRequest,
-  {map,palette,columns,rows,elevations,falls,fallWidths}:PreparedRealm):RealmRasterResult{
+  {map,palette,columns,rows,elevations,falls,fallWidths,highest}:PreparedRealm):RealmRasterResult{
   const {width,height}=crop??realmRasterSize(projection.width,projection.height);
   const densityX=crop?.density??width/projection.width,densityY=crop?.density??height/projection.height;
   const hit={width,height,ids:new Uint32Array(width*height)},pixels=new Uint32Array(width*height);
@@ -90,10 +99,18 @@ export function rasterizeRealm({id,projection,crop}:RealmRasterRequest,
   const ux=east.x*densityX/SIDE,uy=east.y*densityY/SIDE;
   const vx=south.x*densityX/SIDE,vy=south.y*densityY/SIDE;
   const rise=projection.rise*densityY,spanX=Math.abs(ux)+Math.abs(vx),spanY=Math.abs(uy)+Math.abs(vy);
+  const step=frontX<0?-1:1;
   for(let row=0;row<rows;row++){
     const y=frontY<0?rows-row-1:row;
-    for(let col=0;col<columns;col++){
-      const x=frontX<0?columns-col-1:col;
+    let first=0,last=columns;
+    if(crop){
+      const [left,right]=columnSpan(ox+y*vx,ux,-spanX,width+spanX,columns);
+      const [top,bottom]=columnSpan(oy+y*vy,uy,-spanY,height+spanY+highest*rise,columns);
+      first=Math.max(left,top);last=Math.min(right,bottom);
+      if(first>=last)continue;
+    }
+    const end=step===1?last:first-1;
+    for(let x=step===1?first:last-1;x!==end;x+=step){
       const i=y*columns+x,z=elevations[i],ink=palette[i];
       a.x=ox+x*ux+y*vx;a.y=oy+x*uy+y*vy-z*rise;
       if(crop&&(a.x+spanX<0||a.x-spanX>width||a.y+spanY+z*rise<0||a.y-spanY>height))continue;

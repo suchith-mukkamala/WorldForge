@@ -200,6 +200,20 @@ describe('save snapshots stay lossless and do not revive stale copies',()=>{
     expect(failed.getItem(WORLD_STORAGE_KEY)).toBe('small-save');
   });
 
+  it.each([true,false])('keeps a newer local save when an older database write succeeds=%s',async succeeds=>{
+    const storage=memory();
+    let finish:(()=>void)|undefined;
+    const slow=new Promise<void>((resolve,reject)=>{
+      finish=succeeds?()=>resolve():()=>reject(Error('database down'));
+    });
+    const older=commitBrowserSnapshot('x'.repeat(LOCAL_SNAPSHOT_LIMIT),80,storage,()=>slow);
+    await commitBrowserSnapshot('latest-world',80,storage,async()=>{});
+    finish!();
+    await older;
+    expect(storage.getItem(WORLD_STORAGE_KEY)?.slice(0,60)).toBe('latest-world');
+    expect(storage.getItem(WORLD_STORAGE_TIME_KEY)).toBe('80');
+  });
+
   it('retries a local snapshot once after dropping the legacy key',()=>{
     const storage=memory();
     storage.setItem(LEGACY_STORAGE_KEY,'legacy');

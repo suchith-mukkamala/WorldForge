@@ -65,23 +65,30 @@ export function temperamentSummary(t:Temperament):string{
 
 /** Fractional preference used to break ties between equally proven ambitions.
  * A value below 1 cannot invent an ambition from a single success. */
-export function ambitionLean(t:Temperament):Record<AmbitionPurpose,number>{
+function leanWeight(t:Temperament,purpose:string):number{
   const w=t.warmth/100,d=t.drive/100,o=t.openness/100,s=t.steadiness/100;
-  const raw:Record<AmbitionPurpose,number>={
-    learn:o*.75+d*.25,
-    explore:o*.55+(1-s)*.45,
-    connect:w*.8+(1-s)*.1,
-    care:w*.6+s*.3,
-    work:d*.5+s*.45,
-    create:d*.45+o*.45,
-    reflect:s*.4+(1-d)*.35+(1-o)*.15,
+  let weight:number;
+  switch(purpose){
+    case 'learn':weight=o*.75+d*.25;break;
+    case 'explore':weight=o*.55+(1-s)*.45;break;
+    case 'connect':weight=w*.8+(1-s)*.1;break;
+    case 'care':weight=w*.6+s*.3;break;
+    case 'work':weight=d*.5+s*.45;break;
+    case 'create':weight=d*.45+o*.45;break;
+    case 'reflect':weight=s*.4+(1-d)*.35+(1-o)*.15;break;
+    default:return 0;
+  }
+  return Math.round(weight*1000)/1000;
+}
+export function ambitionLean(t:Temperament):Record<AmbitionPurpose,number>{
+  return {
+    learn:leanWeight(t,'learn'),explore:leanWeight(t,'explore'),
+    connect:leanWeight(t,'connect'),care:leanWeight(t,'care'),
+    work:leanWeight(t,'work'),create:leanWeight(t,'create'),reflect:leanWeight(t,'reflect'),
   };
-  return Object.fromEntries(AMBITION_PURPOSES.map(p=>[p,
-    Math.round(raw[p]*1000)/1000])) as Record<AmbitionPurpose,number>;
 }
 export function temperamentNudge(t:Temperament,purpose:string):number{
-  if(!(AMBITION_PURPOSES as readonly string[]).includes(purpose))return 0;
-  return Math.round((ambitionLean(t)[purpose as AmbitionPurpose]??0)*3*100)/100;
+  return Math.round(leanWeight(t,purpose)*3*100)/100;
 }
 
 export type SpareActivity='rest'|'work'|'forage'|'study'|'care'|'socialize'|

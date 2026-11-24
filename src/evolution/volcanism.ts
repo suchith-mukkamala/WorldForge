@@ -73,9 +73,11 @@ function eruption(world:World,vents:readonly Volcano[],cells:readonly LavaCell[]
   const {width,height,tiles}=world,columns=width*SIDE,rows=height*SIDE;
   const heights=topographyForWorld(world).heights,seed=world.settings.seed;
   const blocked=protectedGround(world),magma=new Map<number,LavaCell>();
-  const active=new Set<number>(),blockedTiles=new Map<number,boolean>();
+  const active=new Set<number>(),owned=new Set<number>(),blockedTiles=new Map<number,boolean>();
+  const floors=new Map<number,number>();
+  const count=columns*rows;
   for(const saved of cells){
-    magma.set(saved[0],[...saved]);
+    magma.set(saved[0],saved);
     if(saved[2]>0)active.add(saved[0]);
   }
   const sources=vents.flatMap(vent=>{
@@ -94,21 +96,26 @@ function eruption(world:World,vents:readonly Volcano[],cells:readonly LavaCell[]
     return !deny;
   };
   const floor=(index:number)=>{
-    const tile=tileOf(index,width),x=tile%width,y=Math.floor(tile/width);
-    const [n,e,s,w]=seaNeighbors(tile,width,tiles.length).map(i=>heights[i]??heights[tile]);
+    const existing=floors.get(index);
+    if(existing!==undefined)return existing;
+    const tile=tileOf(index,width),neighbors=seaNeighbors(tile,width,tiles.length);
+    const [n,e,s,w]=neighbors.map(i=>heights[i]??heights[tile]);
     const sx=(index%SIDE+.5)/SIDE-.5,sy=(Math.floor(index/columns)%SIDE+.5)/SIDE-.5;
     const grain=terrainHash(index,417,seed)*3-1;
     const sea=tiles[tile].biome==='water';
-    const deeper=sea&&seaNeighbors(tile,width,tiles.length).every(i=>i<0||tiles[i].biome==='water');
+    const deeper=sea&&neighbors.every(i=>i<0||tiles[i].biome==='water');
     const bed=sea?Math.min(SEA_LEVEL-1,heights[tile])-(deeper?10:0):
       Math.max(SEA_LEVEL,heights[tile]+sx*(e-w)*.43+sy*(s-n)*.43);
-    return Math.max(0,Math.min(MAX_FLOOR,Math.round(bed*UNIT+grain)));
+    const level=Math.max(0,Math.min(MAX_FLOOR,Math.round(bed*UNIT+grain)));
+    floors.set(index,level);
+    return level;
   };
   const obtain=(i:number)=>{
     const existing=magma.get(i);
-    if(existing)return existing;
-    const cell:LavaCell=[i,floor(i),0,0];
-    magma.set(i,cell);
+    if(existing&&owned.has(i))return existing;
+    // Only flowing or newly reached cells need a private copy for this day.
+    const cell:LavaCell=existing?[...existing]:[i,floor(i),0,0];
+    magma.set(i,cell);owned.add(i);
     return cell;
   };
   const cool=(cell:LavaCell,amount:number)=>{
@@ -135,14 +142,23 @@ function eruption(world:World,vents:readonly Volcano[],cells:readonly LavaCell[]
       const source=magma.get(index)!;
       if(source[2]<2)continue;
       const level=cellHeight(source);
-      const slopes=seaNeighbors(index,columns,columns*rows).filter(canFlow)
-        .map(next=>({next,drop:level-(magma.has(next)?cellHeight(magma.get(next)!):floor(next))}))
-        .filter(option=>option.drop>2)
-        .sort((a,b)=>b.drop-a.drop||a.next-b.next);
+      let first=-1,second=-1,firstDrop=2,secondDrop=2;
+      // Flow into at most two cells. Keep the old downhill/index tie order.
+      for(const next of seaNeighbors(index,columns,count)){
+        if(!canFlow(next))continue;
+        const into=magma.get(next),drop=level-(into?cellHeight(into):floor(next));
+        if(drop>firstDrop||drop===firstDrop&&next<first){
+          second=first;secondDrop=firstDrop;first=next;firstDrop=drop;
+        }else if(drop>secondDrop||drop===secondDrop&&next<second){
+          second=next;secondDrop=drop;
+        }
+      }
       // Viscous lava leaves a film in the sending cell. Draining every
       // square in a single step makes adjoining pools oscillate.
       let available=Math.max(1,Math.floor(source[2]*.68));
-      for(const {next,drop} of slopes.slice(0,2)){
+      for(let rank=0;rank<2;rank++){
+        const next=rank===0?first:second,drop=rank===0?firstDrop:secondDrop;
+        if(next<0)break;
         const amount=Math.min(available,Math.floor(drop*.27),29);
         if(amount<1)break;
         available-=amount;
@@ -160,12 +176,12 @@ function eruption(world:World,vents:readonly Volcano[],cells:readonly LavaCell[]
     for(const index of active){
       const cell=magma.get(index)!;
       if(tiles[tileOf(index,width)].biome==='water'&&cell[1]+cell[3]<SEA)
-        cool(cell,Math.ceil(cell[2]*.8));
+        cool(obtain(index),Math.ceil(cell[2]*.8));
     }
   }
   for(const index of active){
     const cell=magma.get(index)!;
-    cool(cell,Math.max(1,Math.ceil(cell[2]*(sources.length?.14:.31))));
+    cool(obtain(index),Math.max(1,Math.ceil(cell[2]*(sources.length?.14:.31))));
   }
   return [...magma.values()].filter(cell=>cell[2]||cell[3]).sort((a,b)=>a[0]-b[0]);
 }

@@ -2,7 +2,7 @@ import {SEA_LEVEL,topographyForWorld} from './topography';
 import {terrainHash,terrainNoise,terrainTemperature} from './biomeGeneration';
 import {hydrologyForWorld,type Hydrology} from './hydrology';
 import type {Point} from './motion';
-import {coastalDepth} from './oceanDepth';
+import {surfaceCoastalDepth} from './oceanDepth';
 import {oceanBasins} from './regionalGeography';
 import type {TerrainSource} from './terrainCells';
 
@@ -20,7 +20,7 @@ export function coastalLife(world:TerrainSource):CoastalLife{
   const drainage=hydrologyForWorld(world),cached=cache.get(drainage);
   if(cached)return cached;
   const {width,height,tiles}=world,{seed}=world.settings;
-  const depths=coastalDepth(width,height,i=>tiles[i].biome==='water');
+  const depths=surfaceCoastalDepth(world);
   const sea=oceanBasins(world,drainage),reefs=new Uint8Array(tiles.length);
   const scale=Math.max(6,Math.min(width,height));
   const beds=world.settings.volcanicWorld?topographyForWorld(world).heights:undefined;

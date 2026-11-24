@@ -30,7 +30,7 @@ import {paintRiverCourse} from './riverCourseArt';
 import {cavernFlow,cavernFlowKey} from './realmWater';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {paintTradeRoutes} from './tradeRoutes';
-import {coastalDepth} from './oceanDepth';
+import {surfaceCoastalDepth} from './oceanDepth';
 import {paintDepthRoads,paintDepthSurfaceDetail,depthRoadSignature,depthRoadTiles,
   pixelTerrainHash} from './depthWorldArt';
 import {paintFootShadow} from './depthForm';
@@ -136,7 +136,7 @@ function renderTerrain(w:World,overlay:MapOverlay,
   const drainage=overlay==='watersheds'?hydrologyForWorld(w):null;
   const season=waterSeason(w);
   const tiled=overlay==='terrain'||overlay==='trade';
-  const ocean=tiled?coastalDepth(W,H,i=>w.tiles[i].biome==='water'):null;
+  const ocean=tiled?surfaceCoastalDepth(w):null;
   const occupied=overlay==='terrain'?occupiedScenery(w):null;
   const grid=tiled?surfaceGrid(w):undefined,actors:DepthActor[]=[];
   const waterLinks=new Map<number,{other:number;tier:number;downstream:boolean}[]>();

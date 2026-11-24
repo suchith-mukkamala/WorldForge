@@ -22,7 +22,8 @@ import {VISUAL_TERRAIN_SIDE} from './surfaceGrid';
 import {settlementSanitation} from './publicHealth';
 
 type Props={world:World;selectedId:number|null;onFindOnMap:(id:number)=>void;
-  playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void};
+  playing:boolean;onTogglePlay:()=>void;onAdvance:(years:number)=>void;
+  advancing?:boolean;onCancelAdvance?:()=>void};
 const CELL=26,VIEW=19,HALF=Math.floor(VIEW/2);
 const STAGE_LABELS={encampment:'Encampment',hamlet:'Hamlet',village:'Village',
   town:'Town',city:'City'};
@@ -357,7 +358,7 @@ function LocalMap({world,settlement,ruin,onChoose,chosen,zoom}:{world:World;
 }
 
 export function SettlementView({world,selectedId,onFindOnMap,playing,
-  onTogglePlay,onAdvance}:Props){
+  onTogglePlay,onAdvance,advancing,onCancelAdvance}:Props){
   const [focusedId,setFocusedId]=useState<number|null>(selectedId);
   const [chosenBuilding,setChosenBuilding]=useState<number|null>(null);
   const [zoom,setZoom]=useState(1);
@@ -404,12 +405,14 @@ export function SettlementView({world,selectedId,onFindOnMap,playing,
       <div className="evo-city-header-actions">
         <div className="evo-city-header-stat"><b>{world.settlements.length}</b>
           <span>living settlements</span></div>
-        <button disabled={!world.agents.length||world.year>=9999}
+        <button disabled={advancing||!world.agents.length||world.year>=9999}
           onClick={onTogglePlay}>{playing?'■ PAUSE':'▶ PLAY WORLD'}</button>
-        <button onClick={()=>onAdvance(1)}>+1 YEAR</button>
-        <button onClick={()=>onAdvance(10)}>+10 YEARS</button>
+        <button disabled={advancing||world.year>=9999} onClick={()=>onAdvance(1)}>+1 YEAR</button>
+        <button disabled={advancing||world.year>=9999} onClick={()=>onAdvance(10)}>+10 YEARS</button>
+        {advancing&&<button type="button" onClick={onCancelAdvance}>Cancel advance</button>}
       </div>
     </header>
+    {advancing&&<p className="evo-notice" role="status">Advancing time…</p>}
     <div className="evo-city-layout">
       <aside className="evo-section-card evo-city-list">
         <div className="evo-card-heading"><strong>SETTLEMENTS & RUINS</strong>

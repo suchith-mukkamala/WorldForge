@@ -17,7 +17,7 @@ import {isTreeKind} from './biomeTrees';
 import {woodlandCover,woodlandHabitat} from './woodland';
 import {ATLAS_SEA,atlasRivers,highlandColor,occupiedScenery,overheadTerrainColor,
   paintRiverSegment,showAtlasScenery} from './atlasTerrain';
-import {coastalDepth} from './oceanDepth';
+import {surfaceCoastalDepth} from './oceanDepth';
 import {pixelTerrainHash} from './depthWorldArt';
 import {paintTerrainMosaic} from './terrainCellArt';
 import {surfaceGrid,VISUAL_TERRAIN_SIDE} from './surfaceGrid';
@@ -173,7 +173,7 @@ export function WorldCanvas({
     const drainage=overlay==='terrain'||overlay==='watersheds'?
       hydrologyForWorld(world):null;
     const multiShore=isMultiIslandLayout(world.settings.layout);
-    const ocean=tiled?coastalDepth(W,H,i=>world.tiles[i].biome==='water'):null;
+    const ocean=tiled?surfaceCoastalDepth(world):null;
     if(ocean)paintTerrainMosaic(ctx,world,CELL,index=>{
       const {biome}=world.tiles[index],x=index%W,y=Math.floor(index/W);
       if(!multiShore&&!visibleCoastTile(x,y,W,H,biome,world.settings.seed))return;

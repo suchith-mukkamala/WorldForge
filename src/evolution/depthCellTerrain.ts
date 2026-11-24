@@ -4,7 +4,7 @@ import type {createDepthProjector} from './depthProjection';
 import {DEPTH_RISE} from './depthProjection';
 import {pickTerrainFace,type DepthPicking} from './depthTerrain';
 import {TERRAIN_ELEVATION_UNITS} from './terrainCells';
-import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE,type SurfaceWorld} from './surfaceGrid';
+import {surfaceGrid,Shore,VISUAL_TERRAIN_SIDE,type SurfaceGrid,type SurfaceWorld} from './surfaceGrid';
 import {cellPixel,firstTerrainSquare,shadeTerrainPixel,terrainPixel,
   terrainSwatches} from './terrainCellArt';
 import {CONTACT_SHADE,insetEdge,RIM_LIGHT,stampSegment,waterCrest} from './depthForm';
@@ -13,6 +13,45 @@ import {surfaceLight} from './surfaceLight';
 
 type Projector=ReturnType<typeof createDepthProjector>;
 const SIDE=VISUAL_TERRAIN_SIDE;
+const BOARDWALK_LIFT=2*TERRAIN_ELEVATION_UNITS;
+type PlotSquares=BuildingPlots['squares'];
+const boardwalks=new WeakMap<PlotSquares,{count:number;levels?:Uint8Array}>();
+const tileCeilings=new WeakMap<SurfaceGrid,Uint16Array>();
+
+function boardwalkLevels(squares:PlotSquares,count:number){
+  const cached=boardwalks.get(squares);
+  if(cached?.count===count)return cached.levels;
+  let levels:Uint8Array|undefined;
+  for(const [index,plot] of squares){
+    if(plot.kind==='boardwalk'){
+      levels??=new Uint8Array(count);
+      levels[index]=BOARDWALK_LIFT;
+    }
+  }
+  boardwalks.set(squares,{count,levels});
+  return levels;
+}
+
+/** A crop can skip even a tall cliff when its highest square is below it. */
+function terrainCeilings(grid:SurfaceGrid){
+  const cached=tileCeilings.get(grid);
+  if(cached)return cached;
+  const {columns,rows,ground,water,rootRise}=grid,tileWidth=columns/SIDE;
+  const heights=new Uint16Array(tileWidth*rows/SIDE);
+  for(let row=0;row<rows;row++){
+    const start=row*columns,tileRow=Math.floor(row/SIDE)*tileWidth;
+    for(let x=0;x<columns;x+=SIDE){
+      const tile=tileRow+x/SIDE;
+      let highest=heights[tile];
+      for(let i=start+x;i<start+x+SIDE;i++)
+        highest=Math.max(highest,ground[i]+water[i]+(rootRise?.[i]??0));
+      heights[tile]=highest;
+    }
+  }
+  tileCeilings.set(grid,heights);
+  return heights;
+}
+
 function paintPlotSquare(base:number,color:string){
   const paint=terrainPixel(color.slice(0,7));
   if(color.length===7)return paint;
@@ -34,10 +73,8 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   if(!cutaway)pixels.fill(terrainPixel(sea));
   const grid=surfaceGrid(w),{columns,rows,ground,water,shore,rootRise}=grid;
   const light=surfaceLight(w);
-  const decks=plots&&new Uint8Array(ground.length);
-  if(decks)for(const [i,plot] of plots.squares){
-    if(plot.kind==='boardwalk')decks[i]=2*TERRAIN_ELEVATION_UNITS;
-  }
+  const decks=plots&&boardwalkLevels(plots.squares,ground.length);
+  const ceilings=crop&&terrainCeilings(grid),deckLift=decks?BOARDWALK_LIFT:0;
   const {frontX,frontY}=projector;
   const step=1/SIDE;
   const origin=projector.projectSmooth(-.5,-.5,0);
@@ -76,9 +113,9 @@ export function paintDepthCells(ctx:CanvasRenderingContext2D|OffscreenCanvasRend
   for(const index of tiles){
     const first=firstTerrainSquare(w.width,columns,index);
     const baseX=first%columns,baseY=Math.floor(first/columns);
-    if(crop){
+    if(ceilings){
       const x=ox+baseX*ux+baseY*vx,y=oy+baseX*uy+baseY*vy;
-      const highest=(255*TERRAIN_ELEVATION_UNITS+255)*rise;
+      const highest=(ceilings[index]+deckLift)*rise;
       if(x+spanX<0||x-spanX>width||y+spanY<0||y-spanY-highest>height)continue;
     }
     const paint=tilePaint(index),palette=terrainSwatches(paint.color,paint.water);
