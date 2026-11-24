@@ -22,10 +22,15 @@ export function depthBlockView({yaw,pitch}:DepthCamera):BlockView{
 export const OVERHEAD_BLOCK_VIEW=depthBlockView({yaw:315,pitch:70});
 export const DESCENT_BLOCK_VIEW=depthBlockView({yaw:318,pitch:50});
 
-const colorCache=new Map<string,number>();
+const colorCache=new Map<string,Map<number,number[]>>();
 function faceColor(color:string,light:number,tone:number):number{
-  const key=color+':'+light+':'+tone;
-  const cached=colorCache.get(key);
+  let shades=colorCache.get(color);
+  if(!shades){shades=new Map();colorCache.set(color,shades);}
+  let tones=shades.get(light);
+  if(!tones){tones=[];shades.set(light,tones);}
+  // The sculpted tree uses the half-step between tones one and two.
+  const index=tone===1.5?4:tone;
+  const cached=tones[index];
   if(cached)return cached;
   const base=parseInt(color.slice(1),16),factor=light*(.94+.04*tone);
   const cool=Math.max(0,1-light);
@@ -33,7 +38,7 @@ function faceColor(color:string,light:number,tone:number):number{
   const channel=(shift:number,grade:number)=>Math.min(255,Math.round((base>>shift&255)*(factor+grade)));
   const result=(255<<24|channel(0,cool*.19-warm*.095)<<16|
     channel(8,cool*.05)<<8|channel(16,warm*.11-cool*.11))>>>0;
-  colorCache.set(key,result);
+  tones[index]=result;
   return result;
 }
 
@@ -83,10 +88,17 @@ function rasterBlock(frame:{width:number;height:number},pixels:Uint32Array,
   block:ReturnType<typeof projectBlock>,p:Point,
   trackDepth=false){
   const depths=trackDepth?new Float32Array(pixels.length).fill(-Infinity):undefined;
+  const quad=Array.from({length:4},()=>({x:0,y:0}));
+  const plane=depths&&{values:depths,origin:0,dx:0,dy:0};
   for(const {points,color,depth} of block.projected){
-    if(depths&&!depth)continue;
-    rasterFace(frame,points.map(({x,y})=>({x:x+p.x,y:y+p.y})),pixels,color,undefined,0,
-      depths&&depth?{...depth,values:depths,origin:depth.origin-depth.dx*p.x-depth.dy*p.y}:undefined);
+    if(plane){
+      if(!depth)continue;
+      plane.dx=depth.dx;plane.dy=depth.dy;plane.origin=depth.origin-depth.dx*p.x-depth.dy*p.y;
+    }
+    for(let i=0;i<quad.length;i++){
+      quad[i].x=points[i].x+p.x;quad[i].y=points[i].y+p.y;
+    }
+    rasterFace(frame,quad,pixels,color,undefined,0,plane);
   }
   return depths;
 }

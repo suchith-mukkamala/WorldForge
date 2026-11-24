@@ -1,6 +1,7 @@
 import {useEffect,useRef} from 'react';
-import type {AtlasDetailFrame,AtlasDetailRequest,AtlasDetailSource} from './atlasDetailTypes';
+import type {AtlasDetailFrame,AtlasDetailRequest,AtlasDetailSource,AtlasDetailUpdate} from './atlasDetailTypes';
 import {closeAtlasCrop,cropContains} from './atlasRaster';
+import {depthBackdropInput} from './depthBackdrop';
 
 export type AtlasDetailPatch={frame:AtlasDetailFrame;source:AtlasDetailSource;ctx:CanvasRenderingContext2D};
 type Props={width:number;height:number;baseDensity:number;source?:AtlasDetailSource;
@@ -63,7 +64,13 @@ export function AtlasDetailCanvas(props:Props){
       if(!requested){hide();return;}
       if(pending||shown?.source===source&&cropContains(shown.frame.crop,requested.visible))return;
       const id=++serial;
-      const request:AtlasDetailRequest={id,crop:requested.crop,source:lastSource===source?undefined:source};
+      let update:AtlasDetailUpdate|undefined;
+      if(lastSource!==source){
+        update=source.kind==='surface'?{kind:'surface',
+          view:depthBackdropInput(source.view,lastSource?.kind==='surface'?lastSource.view:undefined)}:
+          {...source,map:lastSource?.kind==='underworld'&&lastSource.map===source.map?undefined:source.map};
+      }
+      const request:AtlasDetailRequest={id,crop:requested.crop,source:update};
       try{
         if(!worker){
           worker=new Worker(new URL('./atlasDetail.worker.ts',import.meta.url),{type:'module'});

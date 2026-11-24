@@ -1,11 +1,15 @@
-import {orderedDepthTiles,paintDepthBackdrop,type DepthRasterRequest,type DepthRasterResult} from './depthBackdrop';
+import {orderedDepthTiles,paintDepthBackdrop,receiveBackdropScene,
+  type DepthRasterRequest,type DepthRasterResult} from './depthBackdrop';
 import {createDepthProjector} from './depthProjection';
 import {topographyForWorld} from './topography';
 import {createBlockBitmap,depthBlockView,placeBlockArt} from './blockScenery';
 import {projectWorldTree} from './worldTreeArt';
 
+let scene:ReturnType<typeof receiveBackdropScene>|undefined;
 self.onmessage=({data}:MessageEvent<DepthRasterRequest>)=>{
-  const {id,world,relief,camera,density,plots,cutaway,showSkylands,showTree}=data;
+  const {id,relief,camera,density,cutaway,showSkylands,showTree}=data;
+  scene=receiveBackdropScene(data.scene,scene);
+  const {world,plots}=scene;
   const projector=createDepthProjector({...world,skylands:showSkylands?world.skylands:undefined},
     relief,camera,topographyForWorld(world).heights);
   const width=projector.size.width*density,height=projector.size.height*density;

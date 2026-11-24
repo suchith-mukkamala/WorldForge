@@ -48,4 +48,19 @@ describe('raised atlas terrain',()=>{
       ...new Array(n).fill(0xff00cfff),...new Array(6-n).fill(0xffffb600),
     ]));
   });
+
+  it('keeps clipped convex faces at the same pixels in either winding',()=>{
+    const size={width:5,height:4};
+    const face=[{x:0,y:-2},{x:2,y:-2},{x:4,y:2},{x:4,y:3.5},{x:0,y:3.5}];
+    for(const points of [face,[...face].reverse()]){
+      const pixels=new Uint32Array(size.width*size.height);
+      rasterFace(size,points,pixels,9);
+      expect([...pixels]).toEqual([
+        9,9,9,0,0,
+        9,9,9,9,0,
+        9,9,9,9,0,
+        0,0,0,0,0,
+      ]);
+    }
+  });
 });
