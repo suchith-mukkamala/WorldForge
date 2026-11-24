@@ -12,7 +12,8 @@ import {boardRealmBoat,landRealmBoat,leaveUnderworld,moveUnderworld,occupiedUnde
   realmBerth,realmLandings,realmWadingBank,wadeRealmBank} from './mortalUnderworld';
 import {canAnimate,directionBetween,inFrontOf,motionFrame,samePoint,type Facing,type Motion,type Point} from './motion';
 import {mortalName} from './MortalHUD';
-import {paintPerson} from './pixelArt';
+import {paintVoxelPerson} from './personArt';
+import {DESCENT_PERSON_UNIT} from './personSpriteScale';
 import {PixelPortrait} from './PixelPortrait';
 import {paintRealmAmbient,paintRealmWildlife,REALM_AMBIENT_STEP,realmEffectLift,
   type RealmGlimmer,type RealmTrack} from './realmAmbient';
@@ -129,7 +130,7 @@ function RealmCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void}
       actors.push({depth:p.y,paint:()=>{
         if(atSea)paintBlockScenery(ctx,blockSailboat(ship.heading,true),
           {x:p.x,y:p.y-4},DESCENT_BLOCK_VIEW,1.45,waterAt);
-        else paintPerson(ctx,actor,Math.round(p.x-8),Math.round(p.y-20),facing,
+        else paintVoxelPerson(ctx,actor,p,DESCENT_BLOCK_VIEW,DESCENT_PERSON_UNIT,facing,
           position.stride,position.walking?'walk':'idle');
       }});
       actors.sort((a,b)=>a.depth-b.depth);

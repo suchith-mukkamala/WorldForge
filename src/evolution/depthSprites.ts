@@ -1,11 +1,11 @@
 import {SPECIES_INFO,type Agent} from './engine';
 import {DEPTH_FOOTPRINT} from './spatialDetails';
 import {INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
-import {paintPerson,PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH,
-  spriteKey} from './pixelArt';
-import type {Facing} from './motion';
+import {actionPose,type Facing} from './motion';
+import type {BlockView} from './blockScenery';
+import {paintVoxelPerson} from './personArt';
 import type {BuildingType} from './construction';
-import {ATLAS_PERSON_SIZE} from './personSpriteScale';
+import {ATLAS_PERSON_SIZE,DEPTH_PERSON_UNIT} from './personSpriteScale';
 
 type Point={x:number;y:number};
 type Painter=CanvasRenderingContext2D;
@@ -33,7 +33,6 @@ export const buildingVisualScale=(type:BuildingType):number=>
   type==='house'||type==='shelter' ? .59 :
   type==='well' ? .68 : type==='farm' ? .72 :
   type==='communal' ? .82 : .76;
-export type PersonSpriteCache=Map<string,HTMLCanvasElement>;
 // Characters have a fixed footprint in world coordinates. Zoom magnifies the
 // entire canvas uniformly; crossing detail thresholds must not inflate people.
 export const DEPTH_PERSON_SIZE=ATLAS_PERSON_SIZE;
@@ -45,25 +44,11 @@ const draw=(ctx:Painter,color:string,x:number,y:number,w:number,h:number)=>{
  * and outfits when the player zooms in. The simulated tile size is unchanged. */
 export function paintDepthPerson(ctx:Painter,a:Agent,
   p:Point,walking=false,showGlow=false,
-  cache?:PersonSpriteCache,facing:Facing='south',stride:0|1|2|3=0):void{
-  if(cache){
-    const key=[spriteKey(a),facing,walking?stride:'idle'].join(':');
-    let image=cache.get(key);
-    if(!image){
-      image=document.createElement('canvas');
-      image.width=PERSON_SPRITE_WIDTH;image.height=PERSON_SPRITE_HEIGHT;
-      const painter=image.getContext('2d');
-      if(painter)paintPerson(painter,a,0,0,facing,walking?stride:0,
-        walking?'walk':'idle');
-      if(cache.size>2600)cache.clear();
-      cache.set(key,image);
-    }
+  view?:BlockView,facing:Facing='south',stride:0|1|2|3=0):void{
+  if(view){
     const {width:w,height:h}=DEPTH_PERSON_SIZE;
-    ctx.imageSmoothingEnabled=false;
-    // The high-density foreground supplies sub-pixel movement in world
-    // coordinates. Rounding here used to make each footstep visibly snap
-    // across a full terrain pixel, even during smooth motion interpolation.
-    ctx.drawImage(image,p.x-w/2,p.y-h+1,w,h);
+    const pose=walking?'walk':actionPose(a.cognition?.today?.action??a.dailyLife?.activity);
+    paintVoxelPerson(ctx,a,p,view,DEPTH_PERSON_UNIT,facing,walking?stride:0,pose);
     if(showGlow&&a.awakening&&a.innateTrait){
       const color=TRAIT_DOMAIN_INFO[INNATE_TRAIT_INFO[a.innateTrait].domain].color;
       draw(ctx,color,p.x-w/2-2,p.y-h,2,2);

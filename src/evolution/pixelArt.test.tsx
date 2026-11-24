@@ -5,7 +5,7 @@ import {createWorld,isWorld} from './engine';
 import {PixelPortrait} from './PixelPortrait';
 import {PeopleDirectory} from './PeopleDirectory';
 import {WorldFamily} from './WorldFamily';
-import {appearanceFor,paintPerson,paintTerrain,spriteKey} from './pixelArt';
+import {appearanceFor,paintTerrain,pixelRectsFor,spriteKey} from './pixelArt';
 import {blockBuilding,blockProp} from './blockModels';
 import {biomeTreeAt,TREE_KINDS} from './biomeTrees';
 import {BUILDING_TYPES,prepareInfrastructure} from './construction';
@@ -44,7 +44,7 @@ describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
     const portrait=renderToStaticMarkup(createElement(PixelPortrait,
       {person:a,name:'A character'}));
     expect(portrait).toContain('Pixel-art portrait of A character');
-    expect(portrait).toContain('width="16" height="22"');
+    expect(portrait).toContain('width="48" height="66"');
     const page=renderToStaticMarkup(createElement(PeopleDirectory,{world:w,
       selectedId:a.id,onOpen:()=>{},onFavorite:()=>{},onRename:()=>{},
       onFindOnMap:()=>{}}));
@@ -65,12 +65,11 @@ describe('WorldForge v1.1 — faithful, detailed pixel art',()=>{
     }};
     const fake=recorder as unknown as CanvasRenderingContext2D;
     const original=JSON.stringify(w);
-    for(const a of w.agents.slice(0,4))paintPerson(fake,a);
-    const spritePixels=pixels.length;
+    const spritePixels=w.agents.slice(0,4).flatMap(a=>pixelRectsFor(a)).length;
     expect(spritePixels).toBeGreaterThan(65);
     paintTerrain(fake,'forest','#337252',2,3,w.settings.seed);
     paintTerrain(fake,'water','#295f80',3,3,w.settings.seed);
-    expect(pixels.length).toBeGreaterThan(spritePixels+4);
+    expect(pixels.length).toBeGreaterThan(4);
     const b={id:1,type:'market' as const,x:12,y:15,culture:'human' as const,
       stage:'complete' as const,progress:100,condition:100,started:0,
       spent:{wood:11,stone:8,clay:7},labor:19};

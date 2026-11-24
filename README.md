@@ -6,6 +6,8 @@ Worldforge began as Evolution Lab (Lab 04) in [CircuitBuilder](https://github.co
 
 ## What you can do
 
+- **v2.40.0 — Cube Characters** builds people from shaded cubes in close-up atlas views, on foot, inside buildings, in caves, and in portraits. Hair, clothing, tools, and physical features change with each person. Deer, antelope, herons, and wild birds share the scale of nearby people.
+
 - **v2.39.0 — Seasonal Fruit & Wildlife** brings mulberries in Bloom, cherries in Highsun, wild apples in Harvest, and baobab pods in Frost. Inspect a fruit tree for its stage, then pick ripe fruit to restore energy while exploring on foot. Antelope, deer, herons, and wild birds roam their habitats in Descend. Open **Places** and choose a wildlife sighting to see the herd up close on the Surface atlas.
 
 - **v2.38.1 — Performance & Fixes** speeds up close-up panning in both realms and reduces simulation work for travel, planning, and lava flows. Manual time advances run in the background and can be cancelled. The settlement controls advance the advertised number of years, and a delayed checkpoint preserves newer browser saves.

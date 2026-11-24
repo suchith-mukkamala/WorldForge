@@ -232,6 +232,7 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
   const source=useMemo<AtlasDetailSource|undefined>(()=>zoom>=7&&current?
     {kind:'underworld',map,projection,camera}:undefined,[map,key,current,zoom>=7]);
   const openFords=useMemo(()=>[...map.fords].filter(i=>realmFordOpen(map,i,day)),[map,day]);
+  const residentView=useMemo(()=>depthBlockView(camera),[camera.yaw,camera.pitch]);
   const fordKey=openFords.join(',');
   const shown=!!displayed;
   const glimmers=useMemo(()=>current&&displayed?reliefGlimmers(map,projection,camera,displayed.hit):[],
@@ -305,13 +306,13 @@ export function RealmReliefCanvas({map,projection,camera,day,onSelect,selected,s
       if(!visibleGround(p,resident.index,hit,hit.width/projection.width,hit.height/projection.height))return null;
       const unit=REALM_ATLAS_PERSON_UNIT*projection.blockScale;
       const depth=realmDrawOrder(resident.index,map.width,projection);
-      const top=p.y-REALM_ATLAS_PERSON_HEIGHT*projection.blockScale;
+      const top=p.y-REALM_ATLAS_PERSON_HEIGHT*projection.blockScale-unit*7;
       const foreground=scenery.filter(({order,bounds})=>order>=depth&&
-        bounds.right>p.x-unit*6&&bounds.left<p.x+unit*6&&bounds.bottom>top&&bounds.top<p.y+unit*3)
+        bounds.right>p.x-unit*8&&bounds.left<p.x+unit*8&&bounds.bottom>top&&bounds.top<p.y+unit*4)
         .map(({sprite})=>sprite);
       return <RealmAtlasResident key={resident.id} resident={resident}
         point={{x:p.x/projection.width,y:p.y/projection.height}}
-        scale={unit/projection.width}
+        scale={unit/projection.width} view={residentView}
         foreground={foreground.length?{at:p,unit,shapes:foreground}:undefined}/>;
     })}
     {showSelection&&pin&&<span className="strata-selection" aria-hidden="true"

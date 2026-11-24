@@ -38,8 +38,9 @@ import {paintFootShadow} from './depthForm';
 import {populationScene,renderedPopulation,
   type PopulationScene} from './populationVisibility';
 import {buildingVisualScale,depthArtDetail,depthRenderDensity,depthSceneryDensity,
-  paintDepthPerson,
-  type DepthArtDetail,type PersonSpriteCache} from './depthSprites';
+  paintDepthPerson,type DepthArtDetail} from './depthSprites';
+import {animalSprite} from './personArt';
+import {DEPTH_PERSON_UNIT} from './personSpriteScale';
 import {depthStructureSignature,uncrowdedDistrictBuildings,
   visibleDistrictBuildings} from './depthPerformance';
 import {settlementStage,type Building} from './construction';
@@ -53,7 +54,7 @@ import {createDepthProjector,DEFAULT_DEPTH_CAMERA,DEPTH_RISE,DEPTH_TILE_WIDTH,in
 import {atlasLevel} from './atlasMap';
 import {atlasBuildingBounds,opaqueArtAt,overlappingArt,paintAtlasBuilding,
   type PlacedArt} from './atlasBuildingArt';
-import {blockAnimal,blockFruitTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
+import {blockFruitTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp,type BlockModel} from './blockModels';
 import {blockBuildingArt,blockSceneryArt,depthBlockView,placeBlockArt,type BlockStamp} from './blockScenery';
 import {activeVessels} from './vessels';
 import {seaPoint} from './shipSave';
@@ -319,7 +320,7 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
   positions:Map<number,Point>,walking:Set<number>,projector:Projector,
   structures:DepthActor[],tree:DepthActor|undefined,faded:ReadonlySet<DepthActor>,plotSelected:boolean,
   visibleAgents:readonly Agent[],
-  sprites:PersonSpriteCache,
+  blockView:SceneryView|undefined,grid:SurfaceGrid|undefined,
   facing:Map<number,Facing>,stride:Map<number,0|1|2|3>):void{
   const heights=topographyForWorld(w).heights;
   const people:{order:number;paint:()=>void}[]=[];
@@ -328,12 +329,13 @@ function paintInhabitants(ctx:CanvasRenderingContext2D,w:World,
     // Both the horizontal position and the changing elevation must advance
     // continuously. Sampling only the destination tile used to make people
     // leap vertically as soon as a step onto a slope began.
-    const ground=interpolatedGroundHeight(heights,w.width,w.height,pos.x,pos.y);
+    const ground=grid?surfaceHeightAt(grid,pos.x,pos.y):
+      interpolatedGroundHeight(heights,w.width,w.height,pos.x,pos.y);
     const p=projector.projectSmooth(pos.x,pos.y,ground);
     const order=projector.depth(pos.x,pos.y,ground)+.1;
     const paint=()=>paintDepthPerson(ctx,a,p,walking.has(a.id),
       zoom>=2||!!selected&&selected.x===a.x&&selected.y===a.y,
-      sprites,facing.get(a.id)??'south',stride.get(a.id)??0);
+      blockView,facing.get(a.id)??'south',stride.get(a.id)??0);
     if(tree&&treeCovers(tree,p.x,p.y-4,order+2))paint();
     else people.push({order,paint});
   }
@@ -397,7 +399,6 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   const inspectActors=useRef<{actors:DepthActor[];faded:ReadonlySet<DepthActor>}|null>(null);
   const plotCacheRef=useRef<{ground:SurfaceGrid;key:string;plots:BuildingPlots}|null>(null);
   const buildingSpritesRef=useRef<Map<string,BlockStamp>>(new Map());
-  const personSpritesRef=useRef<PersonSpriteCache>(new Map());
   const populationSceneRef=useRef<{signature:string;seed:number;
     width:number;height:number;scene:PopulationScene}|null>(null);
   const structureCacheRef=useRef<{signature:string;
@@ -649,13 +650,12 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
     if(overlay==='terrain'&&showResidents){
       const grid=ground??surfaceGrid(world),time=animalCalendarTime(world);
       for(const track of surfaceAnimals(world)){
-        const {x,y,facing}=animalPose(track,time,false),h=surfaceHeightAt(grid,x,y);
+        const pose=animalPose(track,time,false),{x,y}=pose,h=surfaceHeightAt(grid,x,y);
         const at=projector.projectSmooth(x,y,h);
         const here=picking.ids[Math.floor(at.y*pickScale)*picking.width+Math.floor(at.x*pickScale)];
         const index=Math.round(y)*world.width+Math.round(x);
         if(here&&here!==index+1)continue;
-        const sprite=blockSceneryArt(blockAnimal(track.kind,facing,0,track.variant,track.young),
-          at,blockView,track.young?.64:.91,!!tree);
+        const sprite=animalSprite(track,pose,at,blockView,DEPTH_PERSON_UNIT,!!tree);
         if(sprite)actors.push({order:projector.depth(x,y,h),sprite,target:seaPoint(world.width,track.home)});
       }
     }
@@ -725,7 +725,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
       }
       if(selectedPlot)paintPlotOutline(painter,selectedPlot,projector.projectSmooth,.48);
       paintInhabitants(painter,world,selected,zoom,interpolated,walking,
-        projector,actors,tree,faded,!!selectedPlot?.outline.length,visibleAgents,personSpritesRef.current,
+        projector,actors,tree,faded,!!selectedPlot?.outline.length,visibleAgents,
+        showResidents&&!orbiting?blockView:undefined,ground,
         facingRef.current,strides);
       if(skyArt)paintSkylandArt(painter,skyArt);
     };

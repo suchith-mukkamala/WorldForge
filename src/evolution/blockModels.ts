@@ -2,7 +2,8 @@ import {terrainHash} from './biomeGeneration';
 import {ARCHITECTURE,buildingTier,type Building,type SettlementStage} from './construction';
 import type {Species} from './engine';
 import type {AncientKind} from './knowledge';
-import type {Facing,Point} from './motion';
+import type {Facing,Point,SpritePose} from './motion';
+import type {PixelAppearance} from './pixelArt';
 import type {TerrainMotif} from './terrainDetails';
 import type {TreeKind} from './biomeTrees';
 import type {VisualSeason} from './sceneAtmosphere';
@@ -28,12 +29,13 @@ export type BlockModel={key:string;faces:readonly Face[];feet:readonly Point[];f
 const stride=32,layer=stride*stride;
 const cell=(x:number,y:number,z:number)=>x+16+(y+16)*stride+z*layer;
 const models=new Map<string,BlockModel>();
+const characterModels=new Map<string,BlockModel>();
 
 /** Build the exposed faces of a lattice of unit cubes. Covered faces are
  * discarded, so a solid house costs about as much to project as a hollow one. */
 function model(key:string,make:(grid:BlockGrid)=>void,quarter=0,
-  footing:BlockModel['footing']='stone'):BlockModel{
-  const cached=models.get(key);
+  footing:BlockModel['footing']='stone',cache=models):BlockModel{
+  const cached=cache.get(key);
   if(cached)return cached;
   const grid=new BlockGrid(quarter);
   make(grid);
@@ -54,8 +56,8 @@ function model(key:string,make:(grid:BlockGrid)=>void,quarter=0,
     });
   }
   const compiled={key,faces,feet,footing};
-  if(models.size>=260)models.clear();
-  models.set(key,compiled);
+  if(cache.size>=260)cache.clear();
+  cache.set(key,compiled);
   return compiled;
 }
 
@@ -312,7 +314,7 @@ const ANIMAL_COATS={
   wader:['#a3b6c3','#a9bbbf','#829ba9','#cad1cb'],
   flock:['#9b795d','#92675c','#716f91','#a29674'],
 } as const;
-const ANIMAL_TURN:Record<Facing,number>={south:0,west:1,north:2,east:3};
+const FACING_TURN:Record<Facing,number>={south:0,west:1,north:2,east:3};
 
 export function blockAnimal(kind:LandAnimal,facing:Facing,stride:0|1|2,variant:number,young:boolean):BlockModel{
   return model(['animal',kind,facing,stride,variant,+young].join(':'),grid=>{
@@ -357,7 +359,105 @@ export function blockAnimal(kind:LandAnimal,facing:Facing,stride:0|1|2,variant:n
       grid.box(0,3,eye,1,1,1,'#454550');
       if(wader)grid.box(-1,1,eye,2,1,1,'#56677a');
     }
-  },ANIMAL_TURN[facing]);
+  },FACING_TURN[facing]);
+}
+
+export type CharacterLook=PixelAppearance&{people:Species|'ash-borne';hairStyle:number;job?:string};
+type Gait=0|1|2|3;
+export function characterModelKey(c:CharacterLook,facing:Facing,step:Gait,pose:SpritePose):string{
+  return ['person',c.people,c.ageLook,c.skin,c.hair,c.eyes,c.outfit,c.trim,c.boots,
+    c.accent,c.secondary,c.hairStyle,c.job,facing,step,pose].join(':');
+}
+
+/** Articulated square bodies. Faces, sleeves and equipment turn with the same
+ * geometry as the rest of the world, while foot contact stays on the lattice. */
+export function blockCharacter(c:CharacterLook,facing:Facing='south',step:Gait=0,
+  pose:SpritePose='idle'):BlockModel{
+  return model(characterModelKey(c,facing,step,pose),grid=>{
+    const {people,ageLook,skin,hair,eyes,outfit,trim,boots,accent,hairStyle,job}=c;
+    const child=ageLook==='young',dwarf=people==='dwarf',elf=people==='elf',ash=people==='ash-borne',demon=people==='demon';
+    const hip=child?4:dwarf?5:7;
+    const shoulder=hip+(elf&&!child?5:4),neck=shoulder+1;
+    const chest=dwarf&&!child?8:6,arm=chest/2;
+    const head=neck+(pose==='rest'?0:1),crown=head+5;
+    const trousers=tint(outfit,'#303843',.70),sleeve=tint(outfit,'#252a3b',.22);
+    const lining=tint(outfit,trim,.28),leather='#4b3b38',sun=tint(skin,'#ffe4b5',.28);
+    const legs=step===1?[1,-1]:step===3?[-1,1]:step===2?[0,1]:[0,0];
+    for(const [side,x] of [-3,1].entries()){
+      const swing=legs[side],lift=step===2&&side===1?1:0;
+      grid.box(x,swing-1,lift,2,3,2,boots);
+      grid.box(x,swing+1,lift+1,2,1,1,tint(boots,trim,.28));
+      grid.box(x,swing-1,lift+2,2,2,2,trousers);
+      grid.box(x,-1,3,2,2,hip-2,trousers);
+    }
+    grid.box(-arm,-2,hip,chest,4,shoulder-hip,outfit);
+    grid.box(1-arm,-1,shoulder,chest-2,3,1,lining);
+    grid.box(-arm,-2,hip+1,chest,4,1,leather);
+    grid.box(0,1,hip+1,1,1,1,trim);
+    grid.box(-1,1,hip+2,1,1,shoulder-hip-1,ash?trim:lining);
+    if(c.secondary||ash)grid.box(arm-2,1,shoulder-1,2,1,1,accent);
+    if(elf||ash)grid.box(1-arm,-3,hip+1,chest-2,1,shoulder-hip-1,lining);
+    if(job==='artisan')grid.box(-2,2,hip,4,1,3,'#b99786');
+    if(job==='trader'||pose==='explore'){
+      grid.box(arm-2,-3,hip,3,2,4,'#a58162');
+      grid.box(arm-2,-4,hip+2,2,1,1,trim);
+    }
+    for(const [side,x] of [-arm-1,arm-1].entries()){
+      const swing=legs[1-side],gesture=pose==='study'||side===1&&(pose==='talk'||pose==='work'||pose==='explore');
+      const hand=hip+(gesture?2:0),reach=gesture?2:swing;
+      grid.box(x,-1,shoulder-2,2,3,2,sleeve);
+      grid.box(x,reach-1,hand,2,2,Math.max(1,shoulder-hand-1),sleeve);
+      if(gesture)grid.box(x,0,hand+1,2,3,2,sleeve);
+      grid.box(x,reach,hand-1,2,2,2,skin);
+      grid.box(x,reach-1,hand+1,2,2,1,trim);
+    }
+
+    grid.box(-1,-1,shoulder,2,2,3,skin);
+    grid.box(-2,-1,head,4,3,1,skin);
+    grid.box(-3,-2,head+1,6,4,4,skin);
+    grid.box(-1,2,head+1,2,1,1,sun);
+    if(pose!=='rest')for(const eye of [-2,1])grid.box(eye,1,head+2,1,1,1,eyes);
+    grid.box(-3,-2,crown-1,6,4,1,hair);
+    grid.box(-2,-2,crown,4,3,1,tint(hair,'#e2c9bb',.15));
+    grid.box(-3,-3,head+2,6,2,3,hair);
+    if(hairStyle===1)grid.box(-2,-1,crown,3,3,1,hair);
+    else if(hairStyle===2)grid.box(-2,-3,head-2,4,2,5,hair);
+    else grid.box(-3,0,head+3,2,2,1,hair);
+    if(elf)for(const x of [-4,3]){
+      grid.box(x,0,head+2,1,1,2,sun);
+      grid.box(x<0?x-1:x+1,0,head+3,1,1,1,accent);
+    }
+    if(dwarf&&!child){
+      grid.box(-3,1,head,6,2,2,hair);grid.box(-2,2,head-1,4,1,2,hair);
+      grid.box(-1,3,head-1,2,1,1,tint(hair,trim,.2));
+    }
+    if(demon){
+      for(const x of [-3,2]){
+        grid.box(x,0,crown-1,1,2,2,'#b58d83');
+        grid.box(x,1,crown+1,1,1,child?1:2,'#ead6b5');
+      }
+      grid.box(1,-4,hip,1,2,2,tint(skin,'#473048',.44));
+      grid.box(2,-5,hip+1,2,2,1,skin);
+    }
+    if(ash){
+      grid.box(-3,1,head+1,1,1,1,'#e3a174');
+      grid.box(2,1,head+3,1,1,1,'#d39172');
+    }
+    if(job==='farmer'||job==='miner'||job==='builder'){
+      const straw=job==='farmer';
+      grid.box(-3,-2,crown,6,4,1,straw?'#b99a60':'#b88551');
+      grid.box(-2,-2,crown+1,4,3,1,straw?'#d7bc80':'#e4bd79');
+      if(straw)grid.box(-4,-3,crown,8,6,1,'#ae9258');
+      if(job==='miner')grid.box(-1,2,crown,2,1,1,'#ffde9b');
+    }
+    if(pose==='study'){
+      grid.box(-4,2,hip+2,4,2,1,'#805e48');grid.box(-4,2,hip+3,4,2,1,'#ead6a4');
+    }else if(pose==='work'){
+      grid.box(arm,3,hip,1,1,5,'#987055');grid.box(arm-1,3,hip+4,3,1,1,'#aec4bd');
+    }else if(pose==='explore'){
+      grid.box(arm,3,hip+1,1,1,3,'#b18c65');grid.box(arm,3,hip+3,1,1,1,'#f6d18d');
+    }
+  },FACING_TURN[facing],'stone',characterModels);
 }
 
 const STONE='#827e78',WOOD='#927353',PLANK='#bd9469',BEAM='#654e41';

@@ -2,6 +2,8 @@ import {terrainNoise} from './biomeGeneration';
 import type {PlacedArt} from './atlasBuildingArt';
 import {blockSceneryArt,DESCENT_BLOCK_VIEW,paintBlockContact} from './blockScenery';
 import type {Point} from './motion';
+import {paintVoxelCharacter} from './personArt';
+import {DESCENT_PERSON_UNIT} from './personSpriteScale';
 import {litCavernPixel,realmLight} from './realmLight';
 import {realmScenery,type RealmFormation} from './realmScenery';
 import {realmPropAt} from './realmSceneryArt';
@@ -41,9 +43,6 @@ const lavaCrust=['#39233c','#5d2f3c','#873b41'].map(terrainPixel);
 const mineralSpecks=['#b38fc9','#76c2c9','#e6af79'].map(terrainPixel);
 const fungusLight=['#75e3c7','#e6a9e0','#aee6a0'].map(terrainPixel);
 const steamLight=terrainPixel('#9cd1b7');
-const rect=(ctx:CanvasRenderingContext2D,color:string,x:number,y:number,w:number,h:number)=>{
-  ctx.fillStyle=color;ctx.fillRect(x,y,w,h);
-};
 
 function tintStone(ink:number,tint:number,strength:number){
   const mix=(shift:number)=>Math.round((ink>>>shift&255)*(1-strength)+(tint>>>shift&255)*strength);
@@ -184,33 +183,11 @@ const ashCoats=[['#785c68','#c79e89'],['#516c69','#8cba9a'],
 const demonCoats=[['#625e87','#a49ac6'],['#6d4258','#b57888'],
   ['#43667b','#86b6bd'],['#61564b','#b19b73']] as const;
 
-export function paintRealmResident(ctx:CanvasRenderingContext2D,resident:RealmResident,x:number,y:number){
-  const ash=resident.people==='ash-borne',skin=ash?'#8d8584':'#c58582';
-  const [coat,trim]=(ash?ashCoats:demonCoats)[Math.floor(resident.id/2)%ashCoats.length];
-  rect(ctx,'#191b2b88',x-6,y-1,12,2);rect(ctx,'#222030bf',x-4,y,8,2);
-  rect(ctx,'#403747',x-3,y-4,2,4);rect(ctx,'#403747',x+1,y-4,2,4);
-  rect(ctx,'#937486',x-3,y-1,2,1);rect(ctx,'#685364',x+1,y-1,2,1);
-  rect(ctx,'#423947',x-4,y-8,8,5);
-  rect(ctx,coat,x-3,y-9,6,6);
-  rect(ctx,trim,x-4,y-8,2,2);rect(ctx,trim,x+2,y-8,2,1);
-  rect(ctx,skin,x-4,y-4,1,1);rect(ctx,skin,x+3,y-4,1,1);
-  rect(ctx,'#473947',x-2,y-4,4,1);rect(ctx,'#d0a67d',x,y-4,1,1);
-  rect(ctx,trim,x-1,y-7,1,2);
-
-  rect(ctx,skin,x-3,y-15,6,6);
-  rect(ctx,ash?'#b2aaa2':'#dfa596',x-3,y-14,1,4);
-  rect(ctx,ash?'#625d65':'#985c6c',x+2,y-13,1,4);
-  rect(ctx,ash?'#a5a1a4':'#714558',x-3,y-16,6,2);
-  if(ash){
-    rect(ctx,'#d8c8b6',x-2,y-16,3,1);
-    rect(ctx,'#dc9774',x-3,y-14,2,1);
-    rect(ctx,'#f3b879',x-3,y-13,1,1);
-    rect(ctx,'#d9926e',x+2,y-11,1,1);
-  }else{
-    rect(ctx,'#9a766f',x-4,y-17,2,2);rect(ctx,'#9a766f',x+2,y-17,2,2);
-    rect(ctx,'#dfc7a9',x-4,y-18,1,2);rect(ctx,'#dfc7a9',x+3,y-18,1,2);
-    rect(ctx,'#bc8d76',x-4,y-15,1,1);rect(ctx,'#bc8d76',x+3,y-15,1,1);
-  }
-  rect(ctx,'#f6dbaa',x-2,y-12,1,1);rect(ctx,'#f6dbaa',x+1,y-12,1,1);
-  rect(ctx,ash?'#bca293':'#a67b73',x-1,y-10,2,1);
+export function paintRealmResident(ctx:CanvasRenderingContext2D,resident:RealmResident,x:number,y:number,
+  view=DESCENT_BLOCK_VIEW,unit=DESCENT_PERSON_UNIT){
+  const ash=resident.people==='ash-borne';
+  const [outfit,trim]=(ash?ashCoats:demonCoats)[Math.floor(resident.id/2)%ashCoats.length];
+  paintVoxelCharacter(ctx,{people:resident.people,skin:ash?'#9a8b88':'#c58582',
+    hair:ash?'#cbc0b6':'#714558',eyes:'#f6dbaa',outfit,trim,boots:'#42364c',
+    accent:ash?'#e8a578':trim,ageLook:'adult',hairStyle:ash?2:resident.id%3},{x,y},view,unit);
 }

@@ -6,8 +6,7 @@ import type {KeyboardEvent,MouseEvent} from 'react';
 import {BIOME_INFO,SPECIES_INFO,type Brush,type World} from './engine';
 import {settlementStage} from './construction';
 import {RESOURCE_COLORS} from './resources';
-import {paintDeposit,paintPerson,paintTerrain,paintRelief,spriteKey,
-  PERSON_SPRITE_HEIGHT,PERSON_SPRITE_WIDTH} from './pixelArt';
+import {paintDeposit,paintTerrain,paintRelief} from './pixelArt';
 import {populationScene,renderedPopulation} from './populationVisibility';
 import {topographyForWorld} from './topography';
 import {hydrologyForWorld} from './hydrology';
@@ -37,11 +36,12 @@ import {mortalWorldPoint} from './spatialDetails';
 import {mortalMovementDelay} from './mortalGameplay';
 import {innateTrait,INNATE_TRAIT_INFO,TRAIT_DOMAIN_INFO} from './innateTraits';
 import {updateAtmosphereLayer} from './sceneAtmosphere';
-import {personSpriteSize} from './personSpriteScale';
+import {OVERHEAD_PERSON_UNIT} from './personSpriteScale';
+import {animalSprite,paintVoxelPerson} from './personArt';
 import {buildingVisualScale} from './depthSprites';
-import {blockAnimal,blockFruitTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp} from './blockModels';
+import {blockFruitTree,blockLandmark,blockProp,blockSailboat,blockSettlement,terrainBlockProp} from './blockModels';
 import {OVERHEAD_BLOCK_VIEW,blockBuildingArt,blockSceneryArt,placeBlockArt,paintBlockContact,
-  depthBlockView,paintBlockScenery,type BlockStamp} from './blockScenery';
+  depthBlockView,paintBlockScenery,paintPlacedBlock,type BlockStamp} from './blockScenery';
 import {structureForBuilding,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
 import {visibleCoastTile} from './worldOutline';
@@ -105,7 +105,6 @@ export function WorldCanvas({
     width:number;height:number;season:string;feederKey:string;
     ripe:boolean;fruitHarvest:World['fruitHarvest'];
   }|null>(null);
-  const spriteCache=useRef<Map<string,HTMLCanvasElement>>(new Map());
   const prior=useRef<{year:number;day:number;seed:number;
     positions:Map<number,Point>}|null>(null);
   const facing=useRef<Map<number,Facing>>(new Map());
@@ -368,7 +367,7 @@ export function WorldCanvas({
     if(!previous||previous.seed!==world.settings.seed||
       world.year<previous.year||world.year-previous.year>1||
       world.year===previous.year&&day<previous.day){
-      motions.current.clear();facing.current.clear();spriteCache.current.clear();
+      motions.current.clear();facing.current.clear();
     }else if(world.year>previous.year||day!==previous.day||
       [...current].some(([id,to])=>{
         const from=previous.positions.get(id);
@@ -396,7 +395,6 @@ export function WorldCanvas({
     }
     prior.current={year:world.year,day,seed:world.settings.seed,positions:current};
     for(const id of [...facing.current.keys()])if(!current.has(id))facing.current.delete(id);
-    if(spriteCache.current.size>6500)spriteCache.current.clear();
     // Presentation-only visibility data, cached for this world update.
     const scene=populationScene(world);
     const atmosphere=atmosphereRef.current??document.createElement('canvas');
@@ -424,7 +422,8 @@ export function WorldCanvas({
     const animalTime=animalCalendarTime(world);
     const animals=overlay==='terrain'&&showResidents?surfaceAnimals(world).map(track=>{
       const pose=animalPose(track,animalTime,false);
-      return {...pose,model:blockAnimal(track.kind,pose.facing,0,track.variant,track.young),unit:track.young?.44:.64};
+      const at={x:(pose.x+.5)*CELL,y:(pose.y+.5)*CELL};
+      return {pose,sprite:animalSprite(track,pose,at,OVERHEAD_BLOCK_VIEW,OVERHEAD_PERSON_UNIT)};
     }):[];
     const crew=new Set(boats.flatMap(ship=>ship.crew===undefined?[]:[ship.crew]));
     const pedestrians=crew.size?world.agents.filter(a=>!crew.has(a.id)):world.agents;
@@ -463,10 +462,9 @@ export function WorldCanvas({
           {x:(x+.5)*CELL,y:(y+.5)*CELL},OVERHEAD_BLOCK_VIEW,.59);
       }
       const viewport=animals.length?bounds():null;
-      for(const animal of animals){
-        const {x,y,model,unit}=animal;
+      for(const {pose:{x,y},sprite} of animals){
         if(viewport&&(x<viewport.minX||x>viewport.maxX||y<viewport.minY||y>viewport.maxY))continue;
-        paintBlockScenery(visible,model,{x:(x+.5)*CELL,y:(y+.5)*CELL},OVERHEAD_BLOCK_VIEW,unit);
+        if(sprite)paintPlacedBlock(visible,sprite);
       }
       // Visible footprints come from actual adjacent positions in the world,
       // never a guessed line between two distant yearly snapshots.
@@ -525,20 +523,8 @@ export function WorldCanvas({
         const stride=frame?.stride??(resting&&Math.floor(timestamp/650)%4===1?2:0);
         const pose=frame?.walking?'walk':actionPose(
           a.cognition?.today?.action??a.dailyLife?.activity);
-        const key=spriteKey(a)+':'+direction+':'+stride+':'+pose;
-        let sprite=spriteCache.current.get(key);
-        if(!sprite){
-          sprite=document.createElement('canvas');
-          sprite.width=PERSON_SPRITE_WIDTH;sprite.height=PERSON_SPRITE_HEIGHT;
-          const painter=sprite.getContext('2d');
-          if(painter)paintPerson(painter,a,0,0,direction,stride,pose);
-          spriteCache.current.set(key,sprite);
-        }
-        // Far away: cheap map symbols. Close up: recognizable pixel people.
-        // The atlas is cached by identity, direction and animation frame, so
-        // changing zoom only alters blit size, not animation or simulation.
-        const {width,height}=personSpriteSize(zoom,focus);
-        visible.drawImage(sprite,px+3-Math.floor(width/2),py+5-height,width,height);
+        paintVoxelPerson(visible,a,{x:px+CELL/2,y:py+CELL/2},OVERHEAD_BLOCK_VIEW,OVERHEAD_PERSON_UNIT,
+          direction,stride,pose);
         if(a.awakening){
           // Tiny, non-colliding pixel motes show awakened gifts without making
           // a person the size of a whole tile or changing map selection.
