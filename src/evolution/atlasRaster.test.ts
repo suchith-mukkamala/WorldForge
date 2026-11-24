@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {closeAtlasCrop,cropContains,cropTileAt,type RasterCrop} from './atlasRaster';
+import {atlasViewportBounds,closeAtlasCrop,cropBounds,cropContains,cropTileAt,type RasterCrop} from './atlasRaster';
 import {orderedDepthTiles,paintDepthBackdrop,type BackdropWorld} from './depthBackdrop';
 import {createDepthProjector} from './depthProjection';
 import type {DepthPicking} from './depthTerrain';
@@ -26,6 +26,14 @@ function matchesWindow(full:DepthPicking,local:DepthPicking,crop:RasterCrop,
 }
 
 describe('Atlas close-up raster',()=>{
+  it('uses native coordinates for the visible area of a partly hidden layer',()=>{
+    const size={width:500,height:400},viewport={left:100,top:50,width:300,height:280};
+    const sheet={left:-300,top:-570,width:1000,height:800};
+    expect(atlasViewportBounds(size,sheet,viewport)).toEqual({left:200,top:310,right:350,bottom:400});
+    expect(atlasViewportBounds(size,{...sheet,top:-750},viewport)).toBeUndefined();
+    expect(cropBounds({left:400,top:620,width:300,height:180,density:2}))
+      .toEqual({left:200,top:310,right:350,bottom:400});
+  });
   it('keeps the buffer bounded and reuses it through a short pan',()=>{
     const size={width:2200,height:1500};
     const sheet={left:-8100,top:-2100,width:22_000,height:15_000};

@@ -91,7 +91,8 @@ function rasterBlock(frame:{width:number;height:number},pixels:Uint32Array,
   return depths;
 }
 
-function paintBlockRaster(ctx:CanvasRenderingContext2D,block:ReturnType<typeof projectBlock>,p:Point,
+function paintBlockRaster(ctx:CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D,
+  block:ReturnType<typeof projectBlock>,p:Point,
   trackDepth=false){
   const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
   const depth=rasterBlock(image,new Uint32Array(image.data.buffer),block,p,trackDepth);
@@ -126,25 +127,35 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
   if(cached)return cached;
   const art=createBlockStamp(model,view,unit,trackDepth);
   if(!art)return;
-  if(cache.size>=(model.sculpted||art.density===1?5:200))cache.clear();
+  if(cache.size>=(model.sculpted||art.density===1?5:200))cache.delete(cache.keys().next().value!);
   cache.set(key,art);
   return art;
 }
 
-export function createBlockStamp(model:BlockModel,view:BlockView,unit:number,trackDepth=false):BlockStamp|undefined{
+function stampBlock<Canvas extends HTMLCanvasElement|OffscreenCanvas>(model:BlockModel,view:BlockView,
+  unit:number,trackDepth:boolean,canvas:()=>Canvas){
   const density=model.sculpted?3:unit>=10?1:STAMP_DENSITY;
   const block=projectBlock(model,view,unit*density,trackDepth);
   // Size the sprite to the real projected geometry, including extended
   // footings and shore decks beyond their original fixed-size canvas.
   const anchor={x:1-Math.floor(block.left),y:1-Math.floor(block.top)};
-  const image=document.createElement('canvas');
+  const image=canvas();
   image.width=Math.ceil(block.right)+anchor.x+1;
   image.height=Math.ceil(block.bottom)+anchor.y+1;
-  const painter=image.getContext('2d');
+  const painter=image.getContext('2d') as CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D|null;
   if(!painter)return;
   const raster=paintBlockRaster(painter,block,anchor,trackDepth);
   const bounds={left:0,top:0,right:image.width,bottom:image.height};
   return {image,anchor,...raster,bounds,density};
+}
+
+export function createBlockStamp(model:BlockModel,view:BlockView,unit:number,trackDepth=false):BlockStamp|undefined{
+  return stampBlock(model,view,unit,trackDepth,()=>document.createElement('canvas'));
+}
+
+export function createBlockBitmap(model:BlockModel,view:BlockView,unit:number,trackDepth=false){
+  const art=stampBlock(model,view,unit,trackDepth,()=>new OffscreenCanvas(1,1));
+  return art&&{...art,image:art.image.transferToImageBitmap()};
 }
 
 export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
@@ -156,7 +167,7 @@ export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
 }
 
 export function paintPlacedBlock(ctx:CanvasRenderingContext2D,{art:{image},x,y,scale}:
-  Pick<PlacedArt,'x'|'y'|'scale'>&{art:Pick<BlockImage,'image'>}){
+  Pick<PlacedArt,'x'|'y'|'scale'>&{art:Pick<BuildingArt,'image'>}){
   ctx.drawImage(image,x,y,image.width*scale,image.height*scale);
 }
 
@@ -165,7 +176,7 @@ export function blockSceneryArt(model:BlockModel,p:Point,view:BlockView,unit:num
   return art&&placeBlockArt(art,p,1);
 }
 
-export function placeBlockArt<T extends BlockImage>(art:T,p:Point,unit:number){
+export function placeBlockArt<T extends Pick<BlockImage,'anchor'|'density'>>(art:T,p:Point,unit:number){
   const scale=unit/art.density;
   return {art,x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale,scale};
 }

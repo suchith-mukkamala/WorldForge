@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {cameraScrollTarget,canAnimate,directionBetween,motionFrame,
+import {cameraScrollTarget,canAnimate,directionBetween,motionFrame,retargetMotion,
   visualMotionDuration} from './motion';
 import {createWorld,isWorld} from './engine';
 import {pixelRectsFor} from './pixelArt';
@@ -36,6 +36,14 @@ describe('WorldForge v1.2 — motion belongs to presentation, never simulation',
     expect(canAnimate({x:1,y:1},{x:1,y:1})).toBe(false);
     expect(canAnimate({x:1,y:1},{x:10,y:10})).toBe(false);
     expect(visualMotionDuration(16)).toBeLessThan(visualMotionDuration(1));
+  });
+  it('continues onscreen walks when the calendar advances mid-step',()=>{
+    const first={from:{x:1,y:1},to:{x:3,y:1},start:0,duration:200,facing:'east' as const};
+    expect(retargetMotion(first.to,first.to,first,100,200)).toBe(first);
+    expect(retargetMotion(first.to,{x:4,y:1},first,100,200)).toMatchObject({from:{x:2,y:1},facing:'east'});
+    expect(retargetMotion(first.to,first.to,first,200,200)).toBeUndefined();
+    expect(retargetMotion(first.to,first.from,first,0,200)).toBeUndefined();
+    expect(retargetMotion(first.to,{x:30,y:1},first,100,200)).toBeUndefined();
   });
   it('centers and clamps tracking without moving or changing an actual person',()=>{
     const w=createWorld({size:'small',seed:162});

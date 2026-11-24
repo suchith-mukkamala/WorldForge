@@ -51,6 +51,17 @@ describe('v1.8 background simulation safety',()=>{
     expect(broad.tileEdits).toBeUndefined();
     expect(broad.world.tiles?.length).toBe(world.tiles.length);
   });
+  it('reuses unchanged history and wildlife without dropping updates across time steps',()=>{
+    let world=createWorld({seed:345,size:'small',climateEcology:true});
+    for(const days of [1,7,28,365]){
+      const client=structuredClone(world),next=advanceWorldDays(world,days);
+      const packet=packSimulationWorld(world,next);
+      if(days===1)expect(packet.retained).toEqual(expect.arrayContaining(['lineage','events','history','wildlife']));
+      const received=receiveSimulationWorld(client,structuredClone({kind:'advanced',id:1,elapsedMs:0,...packet}));
+      expect(received).toEqual(next);
+      world=next;
+    }
+  });
   it('retains the underground map when its population changes and refreshes it for a new causeway',()=>{
     const world=createWorld({seed:41,size:'small',volcanicWorld:true});
     const state=world.underworld!,map=underworldMap(world);

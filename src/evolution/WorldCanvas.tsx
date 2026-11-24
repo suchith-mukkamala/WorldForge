@@ -28,9 +28,10 @@ import {boardwalkSite} from './riverArchitecture';
 import type {RiverCourse} from './riverCourses';
 import {paintRiverCourse} from './riverCourseArt';
 import {cavernFlow,cavernFlowKey} from './realmWater';
+import {calderaRiver} from './caldera';
 import {visibleAtlasSite} from './riverDiscoveries';
 import {paintTradeRoutes} from './tradeRoutes';
-import {actionPose,canAnimate,directionBetween,motionFrame,visualMotionDuration,
+import {actionPose,motionFrame,retargetMotion,visualMotionDuration,
   type Facing,type Motion,type Point} from './motion';
 import {mortalWorldPoint} from './spatialDetails';
 import {mortalMovementDelay} from './mortalGameplay';
@@ -87,6 +88,7 @@ export function WorldCanvas({
     Math.floor(Math.sqrt(16_000_000/(world.width*world.height))/VISUAL_TERRAIN_SIDE)));
   const density=cellPixels/CELL;
   const cycle=fruitCycle(world),{season,ripe}=cycle;
+  const outflow=calderaRiver(world);
   const backgroundRef=useRef<HTMLCanvasElement|null>(null);
   const atmosphereRef=useRef<HTMLCanvasElement|null>(null);
   const terrainAtlasRef=useRef<HTMLCanvasElement|null>(null);
@@ -102,7 +104,7 @@ export function WorldCanvas({
     transport:World['transport'];sceneryTier:number;overlay:string;seed:number;
     street:boolean;regional:boolean;
     terrainCells:World['terrainCells'];skylands:World['skylands'];worldTree:World['worldTree'];
-    width:number;height:number;season:string;feederKey:string;
+    width:number;height:number;season:string;feederKey:string;outflow:readonly number[]|undefined;
     ripe:boolean;fruitHarvest:World['fruitHarvest'];
   }|null>(null);
   const prior=useRef<{year:number;day:number;seed:number;
@@ -147,7 +149,7 @@ export function WorldCanvas({
       stamp.topography!==world.topography||
       stamp.terrainCells!==terrainCells||stamp.skylands!==world.skylands||stamp.worldTree!==world.worldTree||stamp.season!==season||
       overlay==='terrain'&&(stamp.ripe!==ripe||stamp.fruitHarvest!==world.fruitHarvest)||
-      stamp.woodland!==woodland||stamp.feederKey!==feederKey||
+      stamp.woodland!==woodland||stamp.feederKey!==feederKey||stamp.outflow!==outflow||
       stamp.settlementKey!==settlementKey||stamp.ruins!==world.ruins||
       stamp.ancientSites!==world.ancientSites||
       overlay==='deposits'&&stamp.deposits!==world.deposits||stamp.transport!==world.transport||
@@ -355,7 +357,7 @@ export function WorldCanvas({
       ancientSites:world.ancientSites,
       woodland,sceneryTier,overlay,seed:world.settings.seed,street:showResidents,regional,
       terrainCells,skylands:world.skylands,worldTree:world.worldTree,
-      width:canvas.width,height:canvas.height,season,feederKey,ripe,fruitHarvest:world.fruitHarvest};
+      width:canvas.width,height:canvas.height,season,feederKey,outflow,ripe,fruitHarvest:world.fruitHarvest};
     }
     else if(stamp)stamp.tiles=world.tiles;
     const current=new Map(world.agents.map(a=>[a.id,
@@ -375,20 +377,14 @@ export function WorldCanvas({
       })){
       const duration=visualMotionDuration(speed);
       const nextMotions=new Map<number,Motion>();
-      const agentsById=new Map(world.agents.map(a=>[a.id,a]));
+      const mortalId=world.descent?.mode==='mortal'?world.descent.agentId:undefined;
+      const mortal=mortalId!==undefined?world.agents.find(a=>a.id===mortalId):undefined;
       for(const [id,to] of current){
-        const isMortal=world.descent?.mode==='mortal'&&id===world.descent.agentId;
-        const old=motions.current.get(id);
-        const from=isMortal&&old?.to&&previous.positions.has(id)?
-          motionFrame(old,now):previous.positions.get(id);
-        if(!from)continue;
-        if(canAnimate(from,to)){
-          const direction=directionBetween(from,to,facing.current.get(id));
-          facing.current.set(id,direction);
-          nextMotions.set(id,{from,to,start:now,
-            duration:isMortal&&agentsById.has(id)?
-              mortalMovementDelay(agentsById.get(id)!)+25:duration,
-            facing:direction});
+        const motion=retargetMotion(previous.positions.get(id),to,motions.current.get(id),now,
+          mortal?.id===id?mortalMovementDelay(mortal)+25:duration,facing.current.get(id));
+        if(motion){
+          facing.current.set(id,motion.facing);
+          nextMotions.set(id,motion);
         }
       }
       motions.current=nextMotions;
@@ -427,9 +423,10 @@ export function WorldCanvas({
     }):[];
     const crew=new Set(boats.flatMap(ship=>ship.crew===undefined?[]:[ship.crew]));
     const pedestrians=crew.size?world.agents.filter(a=>!crew.has(a.id)):world.agents;
+    const motionPreference=window.matchMedia('(prefers-reduced-motion: reduce)');
     let handle=0,lastFrame=-Infinity,previouslyWalking=false;
     let cachedVisible:ReturnType<typeof renderedPopulation>|null=null;
-    let lastFollowX=NaN,lastFollowY=NaN;
+    let lastFollow:Point|undefined;
     let lastReport=-Infinity;
     const draw=(timestamp:number)=>{
       // Animation is presentation-only and capped to limit large-world GPU work.
@@ -502,7 +499,7 @@ export function WorldCanvas({
       let active=false;
       for(const a of ordered){
         const movement=motions.current.get(a.id);
-        const frame=movement?motionFrame(movement,timestamp):null;
+        const frame=movement&&!motionPreference.matches?motionFrame(movement,timestamp):null;
         const destination=current.get(a.id);
         const x=frame?.x??destination?.x??a.x;
         const y=frame?.y??destination?.y??a.y;
@@ -519,7 +516,7 @@ export function WorldCanvas({
         }
         const direction=frame?.facing??facing.current.get(a.id)??'south';
         const focus=selected?.x===a.x&&selected?.y===a.y||followId===a.id;
-        const resting=focus&&!frame?.walking&&animatingCloseup;
+        const resting=focus&&!frame?.walking&&animatingCloseup&&!motionPreference.matches;
         const stride=frame?.stride??(resting&&Math.floor(timestamp/650)%4===1?2:0);
         const pose=frame?.walking?'walk':actionPose(
           a.cognition?.today?.action??a.dailyLife?.activity);
@@ -581,9 +578,9 @@ export function WorldCanvas({
       }
       if(followId!==null){
         const tracked=positions.get(followId);
-        if(tracked&&(Math.abs(tracked.x-lastFollowX)>.06||
-          Math.abs(tracked.y-lastFollowY)>.06)){
-          lastFollowX=tracked.x;lastFollowY=tracked.y;
+        if(tracked&&(!lastFollow||Math.abs(tracked.x-lastFollow.x)>.06||
+          Math.abs(tracked.y-lastFollow.y)>.06)){
+          lastFollow=tracked;
           onFollowPosition?.(tracked.x,tracked.y);
         }
       }
@@ -602,14 +599,16 @@ export function WorldCanvas({
     const onScroll=()=>{cachedVisible=null;
       if(!handle)handle=requestAnimationFrame(draw);};
     scrollParent?.addEventListener('scroll',onScroll,{passive:true});
+    motionPreference.addEventListener('change',onScroll);
     return ()=>{
       scrollParent?.removeEventListener('scroll',onScroll);
+      motionPreference.removeEventListener('change',onScroll);
       cancelAnimationFrame(handle);
     };
   },[world.year,world.agents,world.tiles,world.settlements,world.ruins,
     world.deposits,world.transport,world.shipments,world.settings.seed,world.woodland,
     world.settings.regionalGeography,
-    terrainCells,season,ripe,world.fruitHarvest,world.wildlife,density,mapWidth,mapHeight,river,
+    terrainCells,season,ripe,outflow,world.fruitHarvest,world.wildlife,world.volcanism,density,mapWidth,mapHeight,river,
     overlay,selected,zoom,speed,followId,personId,fillWidth,onFollowPosition,onDiagnostics,
     world.topography,world.dayOfYear,world.ancientSites,world.trails,world.skylands,world.worldTree,skylands]);
   const select=(event:MouseEvent<HTMLCanvasElement>)=>{

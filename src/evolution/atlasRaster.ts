@@ -1,4 +1,5 @@
 import type {DepthPicking} from './depthTerrain';
+import type {ArtBounds} from './atlasBuildingArt';
 import type {Point} from './motion';
 
 export type RasterCrop={left:number;top:number;width:number;height:number;density:number};
@@ -7,8 +8,8 @@ type Rect=Size&{left:number;top:number};
 const PAD=72;
 const MAX_PIXELS=1_850_000;
 
-export function closeAtlasCrop(size:Size,sheet:Rect,viewport:Rect,
-  pixelRatio:number,baseDensity:number):{crop:RasterCrop;visible:RasterCrop}|undefined{
+/** Map the actually visible part of a scrolled sheet to native scene pixels. */
+export function atlasViewportBounds(size:Size,sheet:Rect,viewport:Rect):ArtBounds|undefined{
   const sx=sheet.width/size.width,sy=sheet.height/size.height;
   if(sx<=0||sy<=0)return;
   const left=Math.max(0,viewport.left-sheet.left)/sx;
@@ -16,6 +17,18 @@ export function closeAtlasCrop(size:Size,sheet:Rect,viewport:Rect,
   const right=Math.min(sheet.width,viewport.left+viewport.width-sheet.left)/sx;
   const bottom=Math.min(sheet.height,viewport.top+viewport.height-sheet.top)/sy;
   if(right<=left||bottom<=top)return;
+  return {left,top,right,bottom};
+}
+
+export function cropBounds({left,top,width,height,density}:RasterCrop):ArtBounds{
+  return {left:left/density,top:top/density,right:(left+width)/density,bottom:(top+height)/density};
+}
+
+export function closeAtlasCrop(size:Size,sheet:Rect,viewport:Rect,
+  pixelRatio:number,baseDensity:number):{crop:RasterCrop;visible:RasterCrop}|undefined{
+  const visible=atlasViewportBounds(size,sheet,viewport);
+  if(!visible)return;
+  const {left,top,right,bottom}=visible,sx=sheet.width/size.width,sy=sheet.height/size.height;
   const x0=Math.max(0,left-PAD/sx),x1=Math.min(size.width,right+PAD/sx);
   const y0=Math.max(0,top-PAD/sy),y1=Math.min(size.height,bottom+PAD/sy);
   const area=(x1-x0)*(y1-y0);
