@@ -5,6 +5,8 @@ import type {Agent,Species} from './engine';
 import {traitProfile} from './family';
 import {RESOURCE_COLORS,type ResourceKind} from './resources';
 import type {Facing,SpritePose} from './motion';
+import {blockCharacter,type CharacterLook} from './blockModels';
+import {blockRasterPixels,depthBlockView} from './blockScenery';
 
 export const PERSON_SPRITE_WIDTH=16;
 export const PERSON_SPRITE_HEIGHT=22;
@@ -72,148 +74,44 @@ export function spriteKey(person:PixelPerson):string{
     .join(':');
 }
 
-const spriteShades=new Map<string,string>();
-function spriteShade(color:string,level:number):string{
-  const key=color+':'+level,cached=spriteShades.get(key);
-  if(cached)return cached;
-  const value=parseInt(color.slice(1),16);
-  const rgb=[16,8,0].map(shift=>Math.min(255,Math.round((value>>shift&255)*level)));
-  const tone='rgb('+rgb.join(',')+')';
-  spriteShades.set(key,tone);
-  return tone;
-}
+export const PERSON_PORTRAIT_VIEW=depthBlockView({yaw:336,pitch:33});
+export const PERSON_PORTRAIT_UNIT=.77;
+export const PERSON_PORTRAIT_FEET={x:8,y:19};
 
-/** Draw at native 16 × 22 pixel resolution; scale with nearest-neighbor only. */
-export function paintPerson(ctx:CanvasRenderingContext2D,person:PixelPerson,
-  ox=0,oy=0,facing:Facing='south',stride:0|1|2|3=0,
-  pose:SpritePose='idle'):void{
-  const c=appearanceFor(person),p=(color:string,x:number,y:number,w:number,h:number)=>{
-    ctx.fillStyle=color;ctx.fillRect(ox+x,oy+y,w,h);
-  };
-  const short=person.species==='dwarf'?2:c.ageLook==='young'?3:0;
-  const top=short>=3?7:4;
-  const skin=c.skin,ink='#252a39';
-  // Cast shadow, feet and garment silhouette; independent of camera scale.
-  p('#26304047',2,20,12,2);p('#20293687',4,20,8,1);
-  p(ink,4,17,4,4);p(ink,9,17,4,4);
-  p(c.boots,4,19,4,2);p(c.boots,9,19,4,2);
-  if(person.species==='demon'){
-    p('#4f394f',12,16,2,3);p('#9b6273',14,17,1,2);
+const looks=new WeakMap<PixelPerson,CharacterLook>();
+export function personBlockLook(person:PixelPerson):CharacterLook{
+  let look=looks.get(person);
+  if(!look){
+    look={...appearanceFor(person),people:person.species,
+      hairStyle:person.appearance?.hairStyle??hash(person.id+1949)%3,job:person.work?.job};
+    looks.set(person,look);
   }
-  if(person.species==='elf'){
-    p('#2f5c4e',3,11,10,8);p('#81b999',3,17,2,2);p('#81b999',11,17,2,2);
-  }
-  p(ink,3,10,10,9-short);p(c.outfit,4,11,8,7-short);
-  p(ink,2,12,2,5-short);p(ink,12,12,2,5-short);
-  p(spriteShade(c.outfit,1.10),3,12,2,4-short);
-  p(spriteShade(c.outfit,.80),11,12,2,4-short);
-  p(spriteShade(c.outfit,1.19),5,11,5,1);
-  p(spriteShade(c.outfit,.84),8,13,3,Math.max(1,4-short));
-  p(skin,3,16-short,2,2);p(skin,11,16-short,2,2);
-  p(c.trim,6,12,1,5-short);p('#433d4b',5,17-short,7,1);
-  p('#edcd91',9,17-short,2,1);p('#fdedbc',9,17-short,1,1);
-  // Neck, distinctive face and hairline.
-  p(ink,4,top+1,8,7);p(skin,5,top+2,6,6);
-  p(spriteShade(skin,1.14),5,top+3,1,4);
-  p(spriteShade(skin,.87),10,top+3,1,4);
-  p('#b77b69',7,top+7,2,1);p(c.eyes,6,top+5,1,1);p(c.eyes,9,top+5,1,1);
-  if(person.species==='human'){
-    p(c.hair,4,top,8,3);p(c.hair,4,top+2,2,3);
-    p(c.hair,11,top+2,1,2);
-  }else if(person.species==='elf'){
-    p(c.hair,4,top,8,3);p(c.hair,4,top+2,1,5);
-    p(skin,2,top+5,3,2);p(skin,11,top+5,3,2);
-    p(c.accent,2,top+5,1,1);p(c.accent,13,top+5,1,1);
-    p('#d4edcb',6,top+1,4,1);
-  }else if(person.species==='dwarf'){
-    p(c.hair,4,top,8,3);
-    p(c.hair,4,top+6,8,4);p(c.hair,6,top+10,4,2);
-    p('#f0c997',7,top+8,2,1);p(c.trim,5,top,6,1);
-  }else{
-    p(c.hair,4,top,8,3);p('#4d3b56',4,top+2,2,2);
-    p(ink,3,top-2,3,4);p(ink,10,top-2,3,4);
-    p('#d4a4a7',4,top-2,1,3);p('#d4a4a7',11,top-2,1,3);
-    p('#faac84',6,top+5,1,1);p('#faac84',9,top+5,1,1);
-  }
-  if(person.appearance?.hairStyle===1){
-    // Cropped sides and a high crown, retained across every facing.
-    p(c.hair,5,top-1,6,2);p(c.hair,4,top+1,2,1);
-  }else if(person.appearance?.hairStyle===2){
-    // Longer hair forms a separate outline behind the neck and shoulders.
-    p(c.hair,3,top+2,2,9);p(c.hair,11,top+2,2,9);
-    p('#282e3e',3,top+10,1,2);p('#282e3e',12,top+10,1,2);
-  }
-  if(c.ageLook==='young'){
-    p(skin,5,top+7,6,2);p(c.outfit,4,16,8,2);
-  }
-  if(person.work?.job==='miner'||person.work?.job==='builder'){
-    p('#e5bd76',5,top-1,6,2);
-    if(person.work.job==='miner')p('#fff0aa',7,top-1,2,2);
-  }else if(person.work?.job==='farmer'){
-    p('#a99457',3,top+1,10,1);p('#c0a76b',5,top-1,6,3);
-  }else if(person.work?.job==='trader'){
-    p('#e4c58f',12,15-short,3,4);p('#59495a',13,16-short,1,1);
-  }else if(person.work?.job==='artisan'){
-    p('#c8a7a3',6,14,5,4-short);p('#6f526d',8,15,1,2);
-  }
-  // A mixed-heritage accent is inherited visually, never re-rolled by zoom.
-  if(c.secondary)p(c.accent,10,12,2,2);
-  if(facing==='north'){
-    // No eyes from behind: hairstyle, cloak and shoulder straps reveal the back.
-    p(ink,4,top+1,8,8);p(c.hair,5,top+1,6,7);
-    p('#374556',5,12,6,6-short);p(c.outfit,7,12,2,5-short);
-    p(spriteShade(c.outfit,1.11),7,12,3,1);
-    p(spriteShade(c.hair,1.19),6,top+2,2,3);
-    p(c.trim,6,12,1,5-short);
-  }else if(facing==='east'||facing==='west'){
-    // A single visible eye and a side silhouette distinguish left and right.
-    const side=facing==='east'?1:-1;
-    p(skin,5,top+3,6,5);
-    p(c.hair,side===1?5:9,top+2,2,5);
-    p(c.eyes,side===1?9:6,top+5,1,1);
-    p('#a36f67',side===1?11:4,top+7,1,1);
-    p(c.trim,side===1?11:4,13,1,4-short);
-  }
-  if(stride===1||stride===3){
-    // Four-step gait: alternating foot contact and arm counter-swing.
-    p('#282d3a',4,18,4,3);p(c.boots,3,19,4,2);
-    p('#282d3a',9,17,4,3);p(c.boots,10,18,4,2);
-    p(skin,2,15-short,2,2);p(skin,12,17-short,2,2);
-  }
-  if(stride===2){
-    p(ink,4,17,4,3);p(c.boots,5,19,4,2);
-    p(ink,9,18,4,3);p(c.boots,8,19,4,2);
-    p(skin,3,17-short,2,2);p(skin,11,15-short,2,2);
-  }
-  if(stride===3){
-    p(c.boots,4,19,4,2);p(c.boots,11,19,3,2);
-    p(skin,3,17-short,2,2);
-  }
-  if(pose==='study'){
-    p('#3e536e',2,13,5,5);p('#e8d6a3',3,13,3,4);
-    p('#a28e6a',5,14,1,2);
-  }else if(pose==='work'){
-    p('#b4a3a0',13,12,2,7);p('#e9c58b',12,11,4,3);
-  }else if(pose==='talk'){
-    p(skin,12,12,2,4);p('#f7ebc2',14,top+1,2,2);
-  }else if(pose==='rest'){
-    p(c.hair,5,top+3,7,2);p('#a36e67',6,top+6,4,1);
-  }else if(pose==='explore'){
-    p(skin,12,12,2,3);p('#f7d79a',13,11,2,2);
-  }
+  return look;
 }
 
 export type PixelRect={x:number;y:number;width:number;height:number;color:string};
-/** Native SVG can use the same sprite commands without bitmap upscaling. */
+
+/** The settlement plan and the canvas render the same cube bodies. */
 export function pixelRectsFor(person:PixelPerson,facing:Facing='south',
   stride:0|1|2|3=0,pose:SpritePose='idle'):PixelRect[]{
-  const pixels:PixelRect[]=[];
-  const recorder={fillStyle:'',fillRect(x:number,y:number,width:number,height:number){
-    pixels.push({x,y,width,height,color:recorder.fillStyle});
-  }};
-  paintPerson(recorder as unknown as CanvasRenderingContext2D,
-    person,0,0,facing,stride,pose);
-  return pixels;
+  const {x,y}=PERSON_PORTRAIT_FEET;
+  const width=PERSON_SPRITE_WIDTH,height=PERSON_SPRITE_HEIGHT;
+  const cells=blockRasterPixels(blockCharacter(personBlockLook(person),facing,stride,pose),
+    PERSON_PORTRAIT_VIEW,PERSON_PORTRAIT_UNIT,width,height,{x,y});
+  const rects:PixelRect[]=[{x:x-3,y,width:6,height:1,color:'#26304070'}];
+  for(let row=0;row<height;row++){
+    for(let col=0;col<width;){
+      const color=cells[row*width+col];
+      let end=col+1;
+      while(end<width&&cells[row*width+end]===color)end++;
+      if(color){
+        const rgb=((color&255)<<16)|(color&0xff00)|((color>>>16)&255);
+        rects.push({x:col,y:row,width:end-col,height:1,color:'#'+rgb.toString(16).padStart(6,'0')});
+      }
+      col=end;
+    }
+  }
+  return rects;
 }
 
 export function paintTerrain(ctx:CanvasRenderingContext2D,biome:string,

@@ -1,7 +1,9 @@
 import {useEffect,useRef,type ReactNode} from 'react';
 import type {World} from './engine';
 import {ARCHITECTURE,BUILDING_LABELS} from './construction';
-import {paintPerson} from './pixelArt';
+import {paintVoxelPerson} from './personArt';
+import {DESCENT_BLOCK_VIEW} from './blockScenery';
+import {DESCENT_PERSON_UNIT} from './personSpriteScale';
 import {personName} from './identity';
 import {lifeStage} from './development';
 import {livingHousehold} from './livingHouseholds';
@@ -148,7 +150,7 @@ export function MortalInterior({world,site,position,message,facing='north',marke
   onTalk?:(action:MortalAction)=>void;onCloseConversation?:()=>void;
   onExit:()=>void;children?:ReactNode}){
   const canvas=useRef<HTMLCanvasElement>(null);
-  const camera=useRef<Point>({x:0,y:0});
+  const camera=useRef({x:0,y:0,width:312,height:184});
   const person=world.agents.find(a=>a.id===world.descent?.agentId);
   const household=site.building.householdId===undefined?undefined:
     world.households?.find(h=>h.id===site.building.householdId);
@@ -172,10 +174,13 @@ export function MortalInterior({world,site,position,message,facing='north',marke
     const initial=latest.current;
     const motion:Motion={from:initial.position,to:initial.position,start:0,duration:1,
       facing:initial.facing};
-    let frameSize={width:312,height:184};
+    let frameSize={width:312,height:184},density=3;
     const resize=()=>{
       const {width,height}=element.getBoundingClientRect();
-      if(width>0&&height>0)frameSize=adventureFrameSize(width,height);
+      if(width>0&&height>0){
+        frameSize=adventureFrameSize(width,height);
+        density=Math.min(6,Math.max(2,Math.ceil(width/frameSize.width*window.devicePixelRatio)));
+      }
     };
     const observer=new ResizeObserver(resize);
     observer.observe(element);resize();
@@ -196,14 +201,14 @@ export function MortalInterior({world,site,position,message,facing='north',marke
       }
       motion.facing=current.facing;
       const player=motionFrame(motion,time);
-      if(element.width!==frameSize.width||element.height!==frameSize.height){
-        element.width=frameSize.width;element.height=frameSize.height;
-        ctx.imageSmoothingEnabled=false;
+      if(element.width!==frameSize.width*density||element.height!==frameSize.height*density){
+        element.width=frameSize.width*density;element.height=frameSize.height*density;
       }
+      ctx.setTransform(density,0,0,density,0,0);ctx.imageSmoothingEnabled=false;
       const offset=adventureCamera({x:OX+(player.x+.5)*CELL,y:OY+(player.y+.84)*CELL},
         frameSize,{width:CW,height:CH});
-      camera.current=offset;
-      rect(ctx,'#111e27',0,0,element.width,element.height);
+      camera.current={...offset,...frameSize};
+      rect(ctx,'#111e27',0,0,frameSize.width,frameSize.height);
       ctx.save();
       ctx.translate(-offset.x,-offset.y);
       ctx.drawImage(staticArt,0,0);
@@ -217,16 +222,16 @@ export function MortalInterior({world,site,position,message,facing='north',marke
         .map(prop=>({y:prop.y,paint:()=>furniture(ctx,prop.kind,
           OX+prop.x*CELL+CELL/2,OY+prop.y*CELL+CELL/2)}));
       for(const {agent,position:at} of current.life.present){
-        const bob=Math.floor((time+agent.id*131)/680)%2===0?1:0;
-        drawables.push({y:at.y,paint:()=>paintPerson(ctx,agent,
-          OX+at.x*CELL+4,OY+at.y*CELL-2+bob,'south',0,'idle')});
+        drawables.push({y:at.y,paint:()=>paintVoxelPerson(ctx,agent,
+          {x:OX+(at.x+.5)*CELL,y:OY+at.y*CELL+19})});
       }
       const person=current.person;
       drawables.push({y:player.y,paint:()=>{
-        const x=Math.round(OX+player.x*CELL),y=Math.round(OY+player.y*CELL);
-        rect(ctx,'#f1cc7fbd',x+5,y+18,14,3);
-        rect(ctx,'#284035',x+7,y+19,10,1);
-        paintPerson(ctx,person,x+4,y-2,player.facing,player.stride,player.walking?'walk':'idle');
+        const x=OX+(player.x+.5)*CELL,y=OY+player.y*CELL+19;
+        rect(ctx,'#f1cc7fbd',x-7,y-1,14,3);
+        rect(ctx,'#284035',x-5,y,10,1);
+        paintVoxelPerson(ctx,person,{x,y},DESCENT_BLOCK_VIEW,DESCENT_PERSON_UNIT,
+          player.facing,player.stride,player.walking?'walk':'idle');
       }});
       for(const drawable of drawables.sort((a,b)=>a.y-b.y))drawable.paint();
       ctx.restore();
@@ -249,9 +254,10 @@ export function MortalInterior({world,site,position,message,facing='north',marke
         aria-label={`${INTERIOR_TEMPLATES[site.building.type].name} with walkable floor, furniture and an exit`}
         onClick={event=>{
           const element=event.currentTarget,box=element.getBoundingClientRect();
+          const {x,y,width,height}=camera.current;
           onSelectTile?.({
-            x:Math.floor((camera.current.x-OX+(event.clientX-box.left)*element.width/box.width)/CELL),
-            y:Math.floor((camera.current.y-OY+(event.clientY-box.top)*element.height/box.height)/CELL),
+            x:Math.floor((x-OX+(event.clientX-box.left)*width/box.width)/CELL),
+            y:Math.floor((y-OY+(event.clientY-box.top)*height/box.height)/CELL),
           });
         }}/>
       {active&&<aside className="adventure-dialogue room-dialogue"

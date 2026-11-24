@@ -13,12 +13,13 @@ import {ADVENTURE_TILE as TILE,adventureProp,adventurePropArt,paintAdventureStru
 import {actionPose,canAnimate,motionFrame,samePoint,type Facing,type Motion,
   type Point,type SpritePose} from './motion';
 import {adventureCamera,adventureFrameSize} from './adventureCamera';
-import {paintPerson} from './pixelArt';
+import {animalSprite,paintVoxelPerson} from './personArt';
+import {DESCENT_PERSON_UNIT} from './personSpriteScale';
 import {isOpenBuilding,mortalMovementDelay} from './mortalGameplay';
 import {pixelTerrainHash} from './depthWorldArt';
 import {fruitCycle,fruitStage} from './fruitTrees';
 import {adventureFruitAt,animalCalendarTime,animalPose,surfaceAnimals,surfaceLifeObstacles,type AnimalTrack} from './surfaceLife';
-import {blockAnimal,blockFruitTree,blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth,blockCrater,blockRealmHouse} from './blockModels';
+import {blockFruitTree,blockLandmark,blockSailboat,blockSettlement,blockShipyard,blockTidalMouth,blockCrater,blockRealmHouse} from './blockModels';
 import {settlementStage,type Building} from './construction';
 import {streetStructureUnit,structureSite} from './structureGround';
 import {buildingPlots,paintPlotGround,paintPlotOutline,type BuildingPlots} from './buildingPlots';
@@ -261,9 +262,8 @@ export function AdventureCanvas(props:Props){
       const time=animalCalendarTime(world)+(animate?now:0);
       for(const animal of animals){
         const pose=animalPose(animal,time,animate);
-        const ground={x:(pose.x+.5)*TILE,y:(pose.y+.73)*TILE};
-        const model=blockAnimal(animal.kind,pose.facing,pose.stride,animal.variant,animal.young);
-        const art=blockSceneryArt(model,ground,DESCENT_BLOCK_VIEW,animal.young?.71:1.08);
+        const ground={x:(pose.x+.5)*TILE,y:pose.y*TILE+19};
+        const art=animalSprite(animal,pose,ground,DESCENT_BLOCK_VIEW,DESCENT_PERSON_UNIT);
         sprites.push({x:pose.x,y:pose.y,depth:ground.y,opacity:1,art});
       }
       const marker=(point:Point,kind:'board'|'gather')=>sprites.push({...point,
@@ -272,17 +272,17 @@ export function AdventureCanvas(props:Props){
       if(gather)marker(gather,'gather');
       const drawCharacter=(agent:Agent,at:Point,facing:Motion['facing'],
         stride:0|1|2|3,pose:SpritePose,isPlayer:boolean)=>{
-        sprites.push({x:at.x,y:at.y,depth:at.y*TILE+19,opacity:1,
-          draw:(context,px,py)=>{
+        const ground={x:(at.x+.5)*TILE-x,y:at.y*TILE+19-y};
+        sprites.push({x:at.x,y:at.y,depth:ground.y+y,opacity:1,
+          draw:context=>{
             if(isPlayer){
               context.fillStyle='#f1cc7fbd';
-              context.fillRect(px+5,py+18,14,3);
-              context.fillRect(px+8,py+17,8,5);
+              context.fillRect(ground.x-7,ground.y-1,14,3);
+              context.fillRect(ground.x-4,ground.y-2,8,5);
               context.fillStyle='#284035';
-              context.fillRect(px+7,py+18,10,2);
+              context.fillRect(ground.x-5,ground.y-1,10,2);
             }
-            const bob=!isPlayer&&Math.floor((now+agent.id*153)/650)%2===0?1:0;
-            paintPerson(context,agent,px+4,py-2+bob,facing,stride,pose);
+            paintVoxelPerson(context,agent,ground,DESCENT_BLOCK_VIEW,DESCENT_PERSON_UNIT,facing,stride,pose);
           }});
       };
       for(const person of people){

@@ -7,7 +7,9 @@ import type {World} from './engine';
 import {mortalName} from './MortalHUD';
 import {canAnimate,directionBetween,motionFrame,samePoint,type Facing,type Motion,type Point} from './motion';
 import {inspectCaveFind,leaveTideCave,occupiedTidalCave,walkTideCave} from './mortalTidalCaves';
-import {paintPerson} from './pixelArt';
+import {paintVoxelPerson} from './personArt';
+import {DESCENT_BLOCK_VIEW} from './blockScenery';
+import {DESCENT_PERSON_UNIT} from './personSpriteScale';
 import {PixelPortrait} from './PixelPortrait';
 import {CAVE_TILE,markCavePoint,paintTidalCave} from './tidalCaveArt';
 import {CAVE_HEIGHT,CAVE_WIDTH,CAVE_FINDS,coastTide} from './tidalCaves';
@@ -60,7 +62,7 @@ function CaveCanvas({scene,onSelect}:{scene:Scene;onSelect:(cell:number)=>void})
       ctx.fillStyle='#121d26';ctx.fillRect(0,0,frameSize.width,frameSize.height);
       ctx.save();ctx.translate(-camera.x,-camera.y);ctx.drawImage(background,0,0);
       if(marked!==undefined)markCavePoint(ctx,marked);
-      paintPerson(ctx,visit.actor,Math.round(anchor.x-8),Math.round(anchor.y-20),facing,
+      paintVoxelPerson(ctx,visit.actor,anchor,DESCENT_BLOCK_VIEW,DESCENT_PERSON_UNIT,facing,
         position.stride,position.walking?'walk':'idle');
       ctx.restore();
       previous=view;moving=position.walking;

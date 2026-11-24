@@ -4,7 +4,7 @@ import type {DepthCamera} from './depthProjection';
 import {rasterFace} from './depthTerrain';
 import type {Point} from './motion';
 
-type BlockView={key:string;xx:number;xy:number;yx:number;yy:number;
+export type BlockView={key:string;xx:number;xy:number;yx:number;yy:number;
   rise:number;frontX:number;frontY:number;depthX:number;depthY:number;depthZ:number};
 
 /** Orthographic projection with the same horizontal axes as the atlas.
@@ -79,18 +79,32 @@ function projectBlock(model:BlockModel,view:BlockView,unit:number,trackDepth=fal
   return {projected,left,top,right,bottom};
 }
 
-function paintBlockRaster(ctx:CanvasRenderingContext2D,block:ReturnType<typeof projectBlock>,p:Point,
+function rasterBlock(frame:{width:number;height:number},pixels:Uint32Array,
+  block:ReturnType<typeof projectBlock>,p:Point,
   trackDepth=false){
-  const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
-  const pixels=new Uint32Array(image.data.buffer);
   const depths=trackDepth?new Float32Array(pixels.length).fill(-Infinity):undefined;
   for(const {points,color,depth} of block.projected){
     if(depths&&!depth)continue;
-    rasterFace(image,points.map(({x,y})=>({x:x+p.x,y:y+p.y})),pixels,color,undefined,0,
+    rasterFace(frame,points.map(({x,y})=>({x:x+p.x,y:y+p.y})),pixels,color,undefined,0,
       depths&&depth?{...depth,values:depths,origin:depth.origin-depth.dx*p.x-depth.dy*p.y}:undefined);
   }
+  return depths;
+}
+
+function paintBlockRaster(ctx:CanvasRenderingContext2D,block:ReturnType<typeof projectBlock>,p:Point,
+  trackDepth=false){
+  const image=ctx.createImageData(ctx.canvas.width,ctx.canvas.height);
+  const depth=rasterBlock(image,new Uint32Array(image.data.buffer),block,p,trackDepth);
   ctx.putImageData(image,0,0);
-  return {pixels:image.data,depth:depths};
+  return {pixels:image.data,depth};
+}
+
+/** The SVG settlement preview can share cube art without a browser canvas. */
+export function blockRasterPixels(model:BlockModel,view:BlockView,unit:number,
+  width:number,height:number,p:Point):Uint32Array{
+  const pixels=new Uint32Array(width*height);
+  rasterBlock({width,height},pixels,projectBlock(model,view,unit),p);
+  return pixels;
 }
 
 export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
@@ -101,7 +115,8 @@ export function paintBlockModel(ctx:CanvasRenderingContext2D,model:BlockModel,
 }
 
 const STAMP_DENSITY=4;
-export type BlockStamp=BuildingArt&{anchor:Point;density:number};
+export type BlockImage={image:HTMLCanvasElement;anchor:Point;density:number};
+export type BlockStamp=BuildingArt&BlockImage;
 const propCache=new Map<string,BlockStamp>();
 const largePropCache=new Map<string,BlockStamp>();
 
@@ -109,6 +124,14 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
   view:BlockView,unit:number,trackDepth=false):BlockStamp|undefined{
   const key=[model.key,view.key,unit,+trackDepth].join('|'),cached=cache.get(key);
   if(cached)return cached;
+  const art=createBlockStamp(model,view,unit,trackDepth);
+  if(!art)return;
+  if(cache.size>=(model.sculpted||art.density===1?5:200))cache.clear();
+  cache.set(key,art);
+  return art;
+}
+
+export function createBlockStamp(model:BlockModel,view:BlockView,unit:number,trackDepth=false):BlockStamp|undefined{
   const density=model.sculpted?3:unit>=10?1:STAMP_DENSITY;
   const block=projectBlock(model,view,unit*density,trackDepth);
   // Size the sprite to the real projected geometry, including extended
@@ -121,10 +144,7 @@ export function blockBuildingArt(cache:Map<string,BlockStamp>,model:BlockModel,
   if(!painter)return;
   const raster=paintBlockRaster(painter,block,anchor,trackDepth);
   const bounds={left:0,top:0,right:image.width,bottom:image.height};
-  const art={image,anchor,...raster,bounds,density};
-  if(cache.size>=(model.sculpted||density===1?5:200))cache.clear();
-  cache.set(key,art);
-  return art;
+  return {image,anchor,...raster,bounds,density};
 }
 
 export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
@@ -135,7 +155,8 @@ export function paintBlockScenery(ctx:CanvasRenderingContext2D,model:BlockModel,
   paintPlacedBlock(ctx,sprite);
 }
 
-export function paintPlacedBlock(ctx:CanvasRenderingContext2D,{art:{image},x,y,scale}:PlacedArt){
+export function paintPlacedBlock(ctx:CanvasRenderingContext2D,{art:{image},x,y,scale}:
+  Pick<PlacedArt,'x'|'y'|'scale'>&{art:Pick<BlockImage,'image'>}){
   ctx.drawImage(image,x,y,image.width*scale,image.height*scale);
 }
 
@@ -144,7 +165,7 @@ export function blockSceneryArt(model:BlockModel,p:Point,view:BlockView,unit:num
   return art&&placeBlockArt(art,p,1);
 }
 
-export function placeBlockArt(art:BlockStamp,p:Point,unit:number){
+export function placeBlockArt<T extends BlockImage>(art:T,p:Point,unit:number){
   const scale=unit/art.density;
   return {art,x:p.x-art.anchor.x*scale,y:p.y-art.anchor.y*scale,scale};
 }

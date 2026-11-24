@@ -1,11 +1,11 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
 import {buildingSiteClear,type Building} from './construction';
 import {buildingVisualScale,depthRenderDensity,depthSceneryDensity,
   DEPTH_PERSON_SIZE,paintDepthPerson}
   from './depthSprites';
 import {uncrowdedDistrictBuildings} from './depthPerformance';
 import {createWorld} from './engine';
-import {spriteKey} from './pixelArt';
+import {depthBlockView} from './blockScenery';
 
 const residence=(id:number,x:number,y:number):Building=>({
   id,x,y,type:'house',culture:'human',stage:'complete',progress:100,
@@ -69,14 +69,27 @@ describe('v2.4.4 — readable settlements and close-up mortals',()=>{
 
   it('keeps fractional walking positions in the high-resolution sprite layer',()=>{
     const agent=createWorld({seed:91,size:'small'}).agents[0];
-    const sprite={} as HTMLCanvasElement;
-    const cached=new Map([[spriteKey(agent)+':south:idle',sprite]]);
-    const args:number[][]=[];
-    const ctx={imageSmoothingEnabled:true,
+    const makeCanvas=vi.fn(()=>{
+      const canvas={width:0,height:0};
+      return {...canvas,getContext(){return {canvas:this,
+        createImageData:(width:number,height:number)=>({width,height,data:new Uint8ClampedArray(width*height*4)}),
+        putImageData:()=>{},
+      };}};
+    });
+    vi.stubGlobal('document',{createElement:makeCanvas});
+    const args:number[][]=[],view=depthBlockView({yaw:18,pitch:30});
+    const ctx={imageSmoothingEnabled:true,fillRect:()=>{},
       drawImage:(_image:HTMLCanvasElement,...coords:number[])=>args.push(coords),
     } as unknown as CanvasRenderingContext2D;
-    paintDepthPerson(ctx,agent,{x:12.25,y:17.75},false,false,cached);
-    expect(args).toEqual([[10.75,13.75,3,5]]);
+    try{
+      paintDepthPerson(ctx,agent,{x:12.25,y:17.75},true,false,view,'east',1);
+      paintDepthPerson(ctx,agent,{x:12.50,y:17.875},true,false,view,'east',1);
+    }finally{vi.unstubAllGlobals();}
+    expect(makeCanvas).toHaveBeenCalledTimes(1);
+    expect(args).toHaveLength(2);
+    expect(args[1][0]-args[0][0]).toBeCloseTo(.25);
+    expect(args[1][1]-args[0][1]).toBeCloseTo(.125);
+    expect(args[1].slice(2)).toEqual(args[0].slice(2));
     expect(ctx.imageSmoothingEnabled).toBe(false);
   });
 });
