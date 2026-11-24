@@ -4,7 +4,7 @@
  * It never advances the world RNG. Older saves leave `climateEcology` unset
  * and keep the previous geography, growth and travel costs.
  */
-import {terrainHash,terrainHumidity,terrainTemperature} from './biomeGeneration';
+import {terrainHash,terrainHumidity,terrainNoise,terrainTemperature} from './biomeGeneration';
 import type {Biome,World} from './engine';
 import {generateHydrology,hydrologyForWorld,riverBanks,type Hydrology} from './hydrology';
 import {visualSeason,VISUAL_SEASONS,type VisualSeason} from './sceneAtmosphere';
@@ -15,12 +15,12 @@ export type ClimateBiome=typeof CLIMATE_BIOMES[number];
 export function isClimateBiome(biome:string):biome is ClimateBiome{
   return (CLIMATE_BIOMES as readonly string[]).includes(biome);
 }
-export type Weather='clear'|'rain'|'storm'|'snow'|'drought'|'fog';
+export type Weather='clear'|'overcast'|'rain'|'storm'|'snow'|'drought'|'fog';
 export const WEATHER_NAMES:Record<Weather,string>={
-  clear:'Clear',rain:'Rain',storm:'Storm',snow:'Snow',drought:'Drought',fog:'Fog',
+  clear:'Clear',overcast:'Overcast',rain:'Rain',storm:'Thunderstorm',snow:'Snow',drought:'Drought',fog:'Fog',
 };
 const WEATHER_STRAIN:Record<Weather,number>={
-  clear:1,drought:1,rain:1.06,fog:1.04,storm:1.18,snow:1.34,
+  clear:1,overcast:1,drought:1,rain:1.06,fog:1.04,storm:1.18,snow:1.34,
 };
 const SEASON_SHIFT:Record<VisualSeason,{temperature:number;moisture:number}>={
   Bloom:{temperature:-.04,moisture:.08},
@@ -320,19 +320,67 @@ export function weatherAnomaly(seed:number,year:number,x:number,y:number):number
   return terrainHash(Math.floor(x/8),Math.floor(y/8),seed+year*17+90)*2-1;
 }
 
+export type WeatherSample={kind:Weather;cover:number;intensity:number};
+
+function weatherPattern(seed:number,year:number,day:number){
+  const wind=prevailingWind(seed),date=year*365+day;
+  const shift={x:wind.x*date*1.45,y:wind.y*date*1.45};
+  return {seed,date,wind,shift,season:visualSeason(day)};
+}
+
+function sampleWeather({seed,shift,wind,season}:ReturnType<typeof weatherPattern>,
+  temperature:number,moisture:number,x:number,y:number):WeatherSample{
+  const shifted=seasonalClimate(temperature,moisture,season);
+  // Sample the same pressure field after moving it downwind. Stretch it
+  // across the wind so neighboring districts share the front and its edges.
+  const dx=x-shift.x,dy=y-shift.y;
+  const along=dx*wind.x+dy*wind.y,across=dy*wind.x-dx*wind.y;
+  const pressure=terrainNoise(along,across*.62,17,seed+701);
+  const eddies=terrainNoise(along+11,across-13,8,seed+1909);
+  const cover=clamp(.51+pressure*.49+eddies*.12+(shifted.moisture-.43)*.34,0,1);
+  if(cover>.59&&shifted.moisture>.25){
+    const intensity=clamp((cover-.59)/.36,.13,1);
+    const kind=shifted.temperature<.38?'snow':cover>.80?'storm':'rain';
+    return {kind,cover,intensity};
+  }
+  if(shifted.temperature<.65&&shifted.moisture>.52&&cover>.34&&cover<.53&&eddies>.18){
+    return {kind:'fog',cover,intensity:clamp((shifted.moisture-.48)*1.8,.18,.8)};
+  }
+  if(season==='Highsun'&&shifted.moisture<.32&&shifted.temperature>.61&&cover<.48)
+    return {kind:'drought',cover:cover*.28,intensity:0};
+  return {kind:cover>=.46?'overcast':'clear',cover,intensity:0};
+}
+
 export function weatherAt(temperature:number,moisture:number,day:number,
   x:number,y:number,seed:number,year:number):Weather{
-  const season=visualSeason(day);
-  const shifted=seasonalClimate(temperature,moisture,season);
-  const roll=terrainHash(x+year,y+Math.floor(day),seed+701);
-  if(season==='Frost'&&shifted.temperature<.5&&roll>.22)return 'snow';
-  if(season==='Highsun'&&shifted.moisture<.4&&shifted.temperature>.52&&roll>.5)
-    return 'drought';
-  if(shifted.moisture>.6&&roll>.92)return 'storm';
-  if(shifted.moisture>.48&&roll>.7)return 'rain';
-  if(season!=='Highsun'&&shifted.moisture>.55&&shifted.temperature<.72&&roll<.07)
-    return 'fog';
-  return 'clear';
+  return sampleWeather(weatherPattern(seed,year,day),temperature,moisture,x,y).kind;
+}
+
+type WeatherWorld=ClimateWorld&Pick<World,'dayOfYear'|'year'>;
+export type WeatherField=ReturnType<typeof weatherPattern>&{
+  width:number;height:number;at:(x:number,y:number)=>WeatherSample;
+};
+const weatherCache=new WeakMap<ClimateField,WeatherField>();
+
+/** Shared by the local report, travel and the cloud overlays. The
+ * heightfield and calendar are enough to restore any saved weather. */
+export function weatherField(world:WeatherWorld):WeatherField{
+  const climate=climateField(world),day=world.dayOfYear??0,{width,height}=world;
+  const seed=world.settings.seed,date=world.year*365+day;
+  const previous=weatherCache.get(climate);
+  if(previous?.date===date&&previous.seed===seed)return previous;
+  const pattern=weatherPattern(seed,world.year,day),samples=new Map<number,WeatherSample>();
+  const field={...pattern,width,height,at(x:number,y:number):WeatherSample{
+    const col=clamp(Math.floor(x),0,width-1),row=clamp(Math.floor(y),0,height-1),index=row*width+col;
+    let sample=samples.get(index);
+    if(!sample){
+      sample=sampleWeather(pattern,climate.temperature[index],climate.moisture[index],col,row);
+      samples.set(index,sample);
+    }
+    return sample;
+  }};
+  weatherCache.set(climate,field);
+  return field;
 }
 
 /** The yearly food pulse averages all four seasons, then a local wet or dry year. */
@@ -356,22 +404,15 @@ export function annualGrowthFactor(biome:Biome,temperature:number,moisture:numbe
   return clamp(factor,.35,1.45);
 }
 
-export function describeWeather(field:ClimateField,index:number,day:number,
-  seed:number,year:number,width:number):{title:string;detail:string}{
-  const temperature=field.temperature[index],moisture=field.moisture[index];
-  const weather=weatherAt(temperature,moisture,day,index%width,
-    Math.floor(index/width),seed,year);
-  return {title:WEATHER_NAMES[weather],
-    detail:'Temperature '+Math.round(temperature*100)+
-      ' · moisture '+Math.round(moisture*100)};
+export function describeWeather(world:WeatherWorld,index:number){
+  const {temperature,moisture}=climateField(world);
+  const {kind}=weatherField(world).at(index%world.width,Math.floor(index/world.width));
+  return {kind,title:WEATHER_NAMES[kind],
+    detail:'Temperature '+Math.round(temperature[index]*100)+
+      ' · moisture '+Math.round(moisture[index]*100)};
 }
 
-type StrainWorld=Pick<World,'width'|'height'|'tiles'|'settings'|'topography'|'dayOfYear'|'year'>;
-export function travelStrainAt(world:StrainWorld,index:number):number{
+export function travelStrainAt(world:WeatherWorld,index:number):number{
   if(!world.settings.climateEcology)return 1;
-  const field=climateField(world);
-  const weather=weatherAt(field.temperature[index],field.moisture[index],
-    world.dayOfYear??0,index%world.width,Math.floor(index/world.width),
-    world.settings.seed,world.year);
-  return WEATHER_STRAIN[weather];
+  return WEATHER_STRAIN[weatherField(world).at(index%world.width,Math.floor(index/world.width)).kind];
 }

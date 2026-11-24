@@ -418,10 +418,12 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
   const size=projector.size;
   const cloudProjection=useMemo(()=>{
     const {width,height}=world,elevations=topography.heights;
-    return (cloud:CloudPose)=>{
-      const x=cloud.x-.5,y=cloud.y-.5;
-      const ground=interpolatedGroundHeight(elevations,width,height,x,y);
-      return projector.projectSmooth(x,y,Math.max(cloud.height,ground+22));
+    const elevation=(p:Point)=>Math.max(SEA_LEVEL-9,
+      interpolatedGroundHeight(elevations,width,height,p.x-.5,p.y-.5));
+    return {
+      project:(cloud:CloudPose)=>projector.projectSmooth(cloud.x-.5,cloud.y-.5,
+        Math.max(cloud.height,elevation(cloud)+14)),
+      ground:(p:Point)=>projector.projectSmooth(p.x-.5,p.y-.5,elevation(p)),
     };
   },[projector,world.width,world.height,topography]);
   // Pinch changes the canvas CSS scale continuously. Rebuilding the terrain
@@ -804,9 +806,6 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
         detailPatch.current=patch;
         if(patch)paintDetail.current?.(patch);
       }}/>
-    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds seed={world.settings.seed}
-      columns={world.width} rows={world.height} width={size.width} unit={DEPTH_TILE_WIDTH/(2*VISUAL_TERRAIN_SIDE)}
-      view={depthBlockView(camera)} project={cloudProjection}/>}
     {fillWidth&&overlay==='terrain'&&!orbiting&&
       <AtlasWater world={world} width={size.width} height={size.height} square={1.5} showFish={showBuildings} project={p=>{
         const index=Math.floor(p.y)*world.width+Math.floor(p.x);
@@ -818,5 +817,8 @@ export function DepthCanvas({world,brush,overlay,selected,onSelect,onEdit,river,
         const x=Math.floor(point.x/size.width*hit.width),y=Math.floor(point.y/size.height*hit.height);
         if(hit.ids[y*hit.width+x]===index+1)return point;
       }}/>}
+    {fillWidth&&overlay==='terrain'&&showClouds&&<AtlasClouds world={world}
+      width={size.width} unit={DEPTH_TILE_WIDTH/(2*VISUAL_TERRAIN_SIDE)}
+      view={depthBlockView(camera)} {...cloudProjection}/>}
   </>;
 }

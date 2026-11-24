@@ -8,6 +8,7 @@ import type {TreeKind} from './biomeTrees';
 import type {VisualSeason} from './sceneAtmosphere';
 import type {RegionalBuildingStyle} from './riverArchitecture';
 import type {StructureSite} from './structureGround';
+import type {CloudTone} from './surfaceClouds';
 import type {CaveStone} from './tidalCaves';
 import type {RealmFormationKind} from './realmScenery';
 import type {RealmLink} from './underworld';
@@ -96,21 +97,28 @@ class BlockGrid {
 }
 
 /** Round clusters carved on the same cube lattice as the atlas scenery. */
-export function blockCloud(shape:number):BlockModel{
-  return model('cloud:'+shape,grid=>{
+export function blockCloud(shape:number,tone:CloudTone='fair'):BlockModel{
+  return model('cloud:'+tone+':'+shape,grid=>{
+    const thickness=tone==='storm'?1.46:tone==='fog'?.34:1;
     const lobes=[
       {x:-7,y:0,z:2.5,rx:6.4,ry:3.8,rz:2.6},
       {x:-3,y:1,z:4,rx:5.4,ry:5.2,rz:4.2},
       {x:3,y:-1,z:4.7,rx:5.5,ry:5.4,rz:4.4},
       {x:8,y:0,z:3.1,rx:5.5,ry:3.5,rz:3.1},
     ].map((p,i)=>({...p,y:p.y+(terrainHash(shape,i,1412)-.5)*4,
-      z:p.z+(terrainHash(shape,i,5729)-.5)*2.3}));
-    const tints=['#b1cdd5','#cbe2e2','#ddebe6','#ebf4ea'];
-    for(let z=0;z<11;z++)for(let y=-8;y<=8;y++)for(let x=-14;x<=14;x++){
+      z:(p.z+(terrainHash(shape,i,5729)-.5)*2.3)*thickness,rz:p.rz*thickness}));
+    const tints={
+      fair:['#b1cdd5','#cbe2e2','#ddebe6','#ebf4ea'],
+      overcast:['#566b80','#72869a','#96a9b4','#b6c6cd'],
+      storm:['#29354f','#3f4f67','#566980','#78899a'],
+      snow:['#92a8bf','#afc5d8','#cddfeb','#e7f2f7'],
+      fog:['#9aadaf','#afc1c2','#c4d2cd','#d2ddd2'],
+    }[tone];
+    for(let z=0;z<Math.ceil(11*thickness);z++)for(let y=-8;y<=8;y++)for(let x=-14;x<=14;x++){
       const edge=terrainHash(x+37*z,y,shape+932);
       if(!lobes.some(p=>((x-p.x)/p.rx)**2+((y-p.y)/p.ry)**2+((z-p.z)/p.rz)**2<.93+edge*.19))continue;
-      const tone=Math.min(tints.length-1,Math.floor(z*.37+edge*.9));
-      grid.box(x,y,z,1,1,1,tints[tone]);
+      const sheen=Math.min(tints.length-1,Math.floor(z/thickness*.37+edge*.9));
+      grid.box(x,y,z,1,1,1,tints[sheen]);
     }
   });
 }

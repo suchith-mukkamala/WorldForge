@@ -1,6 +1,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {ATLAS_TOWN_ZOOM,atlasCloseupZoom,atlasLevel,atlasScrollGeometry} from './atlasMap';
 import {CaveCutaway} from './CaveCutaway';
+import {describeWeather} from './climate';
 import {BIOME_INFO,type Brush,type World} from './engine';
 import {DepthCanvas} from './DepthCanvas';
 import type {DepthCamera} from './depthProjection';
@@ -98,6 +99,7 @@ export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld,showClou
   const corresponding=links.find(shaft=>selected&&
     (selected.layer==='surface'?shaft.link.surface===selected.cell:shaft.link.cell===selected.cell));
   const chosen=selected&&seaPoint(selected.layer==='surface'?world.width:map.width,selected.cell);
+  const localWeather=selected?.layer==='surface'?describeWeather(world,selected.cell):undefined;
   const town=selected?.layer==='underworld'?map.towns.find(town=>town.index===selected.cell):undefined;
   const vent=corresponding&&world.volcanicLayout?.vents.find(vent=>vent.rim===corresponding.link.surface);
   const title=town?.name??(corresponding&&realmLinkName(world,corresponding.link))??
@@ -172,7 +174,7 @@ export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld,showClou
           <button type="button" className="strata-roof-toggle" aria-pressed={roof}
             onClick={()=>setRoof(value=>!value)}>Cave roof</button>
           {onToggleClouds&&<button type="button" aria-pressed={showClouds}
-            onClick={onToggleClouds}>Clouds</button>}
+            onClick={onToggleClouds}>Weather</button>}
           <button type="button" onClick={fit}>Fit both</button>
           <button type="button" aria-label="Zoom out" disabled={zoom<=1} onClick={()=>zoomTo(stepAtlasZoom(zoom,-1))}>−</button>
           <button type="button" aria-label="Zoom in" disabled={zoom>=MAX_ATLAS_ZOOM} onClick={()=>zoomTo(stepAtlasZoom(zoom,1))}>+</button>
@@ -255,6 +257,7 @@ export function StackedAtlas({world,map:floor,at,onSurface,onUnderworld,showClou
         <div className="strata-details">
           {selected&&chosen?<p>{selected.layer==='surface'?'Surface':'Underworld'} · X {chosen.x} · Y {chosen.y}</p>:
             <p>Select a crater shaft to trace the passage between layers.</p>}
+          {localWeather&&<p data-weather={localWeather.kind}>{localWeather.title}</p>}
           {vent&&<p>{volcanoPhase(world,vent)} · Volcano</p>}
           {selected?.layer==='underworld'&&<p>{caveRoomName(caverns,selected.cell)}
             {' · '}{caverns.clearance[selected.cell]} blocks of headroom</p>}

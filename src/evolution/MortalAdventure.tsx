@@ -5,11 +5,13 @@ import {volcanoPhase} from './volcanism';
 import {useEffect,useRef,useState} from 'react';
 import type {Agent,World} from './engine';
 import {calendarDate,MONTH_NAMES} from './calendar';
+import {weatherField,WEATHER_NAMES} from './climate';
 import {BUILDING_LABELS,settlementStage} from './construction';
 import {AdventureCanvas} from './AdventureCanvas';
 import {AdventureDirections} from './AdventureDirections';
 import {MortalHUD,mortalName} from './MortalHUD';
 import {MortalInterior} from './MortalInterior';
+import {LocalWeather} from './LocalWeather';
 import {ErrandTracker,TownNoticeBoard} from './TownErrands';
 import {CoastalJournal,FieldJournal} from './FieldJournal';
 import {PixelPortrait} from './PixelPortrait';
@@ -130,6 +132,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
   const objective=activeErrand&&errandObjective(world,map,region,activeErrand);
   const showBoard=boardOpen&&boardNear&&!interior;
   const date=calendarDate(world);
+  const weather=weatherField(world),condition=weather.at(actor.x,actor.y);
   const nearby=nearbyMortals(world,12).filter(a=>region.area.has(a.y*world.width+a.x));
   const buildings=nearbyMortalBuildings(world,12).filter(site=>
     region.area.has(site.entrance.y*world.width+site.entrance.x)&&
@@ -520,7 +523,8 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
     <main className="adventure-main">
       <header className="adventure-heading">
         <div>
-          <p>{interiorSite?region.name+' · Indoors':regionDetails}</p>
+          <p>{interiorSite?region.name+' · Indoors':<>{regionDetails} ·{' '}
+            <span data-weather={condition.kind}>{WEATHER_NAMES[condition.kind]}</span></>}</p>
           <h1 aria-live="polite">{interiorSite?interiorTitle(interiorSite.building.type):region.name}</h1>
         </div>
         <time>{MONTH_NAMES[date.month]} {date.day} <span>· Year {date.year}</span></time>
@@ -545,6 +549,7 @@ function MortalOnFoot({world,actor,notice,onChange,onAscend,running,onToggleTime
                   (cavePin!==null&&cave?.mouth===cavePin?cavePoint:undefined)??
                   goalPoint??(markRiver?nextBank:undefined)??primary?.point??null}
                 onSelect={selectTile}/>
+              <LocalWeather sample={condition} wind={weather.wind} seed={weather.seed}/>
               {showBoard?<TownNoticeBoard world={world} journal={journal}
                 offers={availableErrands(world,region)} objective={objective}
                 canDeliver={goalNear&&objective?.action==='deliver'} message={errandMessage}
